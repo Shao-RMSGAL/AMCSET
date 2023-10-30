@@ -16,7 +16,7 @@ def TMagic(MASS1, Z1, MASS2, Z2, INELAB, P):
 ############## AMagic Function ###############
 def AMagic(THETAO, ALPHAO, THETA1RELATIVE, THETA2RELATIVE):
 
-
+##test changes for git history
 
 
 ############## F Function ###############
