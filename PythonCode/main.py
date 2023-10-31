@@ -93,3 +93,11 @@ ALPHAP.append(0)
 
 # INELAB is the implantation Energy of the incident ion
 EP.append(INELAB)
+
+# rum is the index. In the original code it began at 1 due to 
+# how arrays used to work in Quick Basic
+rum = 0
+MASS2 = MASSSUB
+Z2 = ZSUB
+DENSITY = SUBDENSITY
+
