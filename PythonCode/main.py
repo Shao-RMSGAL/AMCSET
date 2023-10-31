@@ -8,14 +8,18 @@
 ##  Python translation currently in progress.
 ##==================================
 
+from random import random
 
-##################INPUT_STARTING_DATA###################################################
 
+##################INPUT_STARTING_DATA##################
 # Mass of the incident atom
 massp = int(input("Input incident atom mass:") or  "14")
 
 # Charge of incident atom
-ZP = int(input("Input incident atom charge Z:") or "14")
+# In the original code this variable was called "ZP" but 
+# in this code it would clash with the list that holds the Z-position
+# of the atom being tracked.
+ZProj = int(input("Input incident atom charge Z:") or "14")
 
 # Substrate atom mass
 MASSSUB = int(input("Input substrate atom mass:") or "28")
@@ -30,13 +34,13 @@ SUBDENSITY = float(input("Input substrate density (atoms/cc):") or "5E22")/ floa
 INELAB = float(input("Input incident atom energy (keV):") or "50")
 
 # Substrate Window
-SUBWINDOW = int(input("Substrate Window (A)") or "2000")
+SUBWINDOW = int(input("Substrate Window (A):") or "2000")
 
 # Amount of Simulations
 SIMULS = int(input("How many simulations:") or "100")
 
 
-#########################DEFINING_LISTS###########################################
+#########################DEFINING_LISTS#########################
 
 # Primary Ion Range
 PR = []
@@ -76,3 +80,16 @@ EP = []
 
 # Minimum Energy for Atom Displacement (20 eV)
 EBARRIER = 0.02
+
+###################SETTING_UP_STARTING_PROJECTILE###################
+
+XP.append(0)
+YP.append(0)
+ZP.append(random() * SUBDENSITY**(1/3))
+CP.append(ZProj)
+mp.append(massp)
+THETAP.append(0)
+ALPHAP.append(0)
+
+# INELAB is the implantation Energy of the incident ion
+EP.append(INELAB)
