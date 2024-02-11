@@ -6,7 +6,7 @@ Last modified:  February 9th, 2024
 Group:          Shao Group, Texas A&M Nuclear Engineering
 
 Description:
--   This file contains useful constants and functions for use in Dr. 
+-   This file contains useful constants and functions for use in Dr.
     Shao's particle collision simulation software
 """
 
@@ -80,7 +80,7 @@ atoms/cubic centimeters. Default density is that of iron.
 SUBWINDOW_DEFAULT: int = 80000000
 """This is the default value for the depth of the window in Angstroms."""
 
-ZP_DEFAULT: int = 14
+ZP1_DEFAULT: int = 14
 """This is the default charge number of the incident atom. Default
 charge is that of silicon.
 """
@@ -92,36 +92,52 @@ charge is that of iron.
 
 # Functions
 
+
 def AMAGIC(THETAO, ALPHAO, THETA1RELATIVE, THETA2RELATIVE):
-    return -1
+    THETA1 = -1
+    ALPHA1 = -1
+    THETA2 = -1
+    ALPHA2 = -1
+    return THETA1, ALPHA1, THETA2, ALPHA2
+
 
 def BremsEloss(ZSUB, DENSITY, ElecE):
     return -1
 
-def DF(X, COLUMBIAVK, Z1, Z2, AU):
-    return -1
 
-def DSCMOTT(mott,scr, ElectronEnergy, SubstrateZ, Theta):
-    return -1
+def DF(X, COLUMBIAVK, Z1, Z2, AU):
+    result = -1
+    return result
+
+
+def DSCMOTT(mott, scr, ElectronEnergy, SubstrateZ, Theta):
+    DiffCross = -1
+    return DiffCross
+
 
 def EMAGIC(X):
     return -1
 
+
 def F(X, COLUMBIAVK, Z1, Z2, AU):
     return -1
+
 
 def IMAGE(Scan, NewDeltaZ, NewDeltaX, NewDeltaY, NewTheta, NewAlpha, NewEP,
           Resolution, size):
     return -1
 
+
 def IoniElecLoss(ZSUB, DENSITY, EleE):
     return -1
 
-def TMAGIC(MASS1, MASS2, Z2, INELAB, P):
-    return -1
+
+def TMAGIC(MASS1, MASS2, Z2, INELAB, EP, P):
+    return -1, -1, -1   
 
 
 T = TypeVar('T')
+
 
 def type_check_input(prompt: str, type: Union[type, T], default: T) -> T:
     """
@@ -134,7 +150,7 @@ def type_check_input(prompt: str, type: Union[type, T], default: T) -> T:
         default (any):  The default value
     """
     if not isinstance(default, type):
-            raise ValueError("Default type does not match specified type")
+        raise ValueError("Default type does not match specified type")
     if type is bool:
         try:
             mod_prompt = prompt + " (y/n - default = " + (" y" if default else
@@ -154,7 +170,8 @@ def type_check_input(prompt: str, type: Union[type, T], default: T) -> T:
             return type_check_input(prompt, type, default)
     elif type is int:
         try:
-            mod_prompt = prompt + " (integer, default = " + str(default)+ "): "
+            mod_prompt = prompt + " (integer, default = " + str(default)\
+                                + "): "
             output = input(mod_prompt)
             if output == "":
                 output = default
@@ -172,7 +189,7 @@ def type_check_input(prompt: str, type: Union[type, T], default: T) -> T:
             if output == "":
                 output = default
             else:
-                output = float(output)            
+                output = float(output)
         except ValueError as e:
             print("Error:", e)
             print("Please enter a floating-point number")
@@ -180,6 +197,7 @@ def type_check_input(prompt: str, type: Union[type, T], default: T) -> T:
     else:
         raise ValueError("Invalid type")
     return output
+
 
 if __name__ == "__main__":
     """Only run this module as main for debugging purposes"""
