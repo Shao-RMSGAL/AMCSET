@@ -1,2 +1,20 @@
 
 .vscode/settings.json
+latex/main.aux
+latex/main.fdb_latexmk
+latex/main.fls
+latex/main.log
+latex/main.synctex.gz
+latex/main.pdf
+latex/_minted-main/default.pygstyle
+latex/_minted-main/26EBECB3506CDEED75069643A25C3AFE5018845A16FEE2F871CFA2D2B2CFB1C6.pygtex
+latex/_minted-main/6124A0808299C485B9C9F28A882DBE1DFC8F7963E505338D044F84404B522A24.pygtex
+latex/_minted-main/BDEAE1F975D8FCA0979B77FF33DE9487FC8F7963E505338D044F84404B522A24.pygtex
+latex/_minted-main/CA22930C49DB5C592AD4F87DE6E480AAFC8F7963E505338D044F84404B522A24.pygtex
+latex/dist/quickbasic_lexer-0.1-py3.10.egg
+latex/quickbasic_lexer.egg-info/dependency_links.txt
+latex/quickbasic_lexer.egg-info/entry_points.txt
+latex/quickbasic_lexer.egg-info/PKG-INFO
+latex/quickbasic_lexer.egg-info/SOURCES.txt
+latex/quickbasic_lexer.egg-info/top_level.txt
+latex/formatted_basic_code.bas
