@@ -32,6 +32,8 @@
 \usepackage{pgfplots}
 \usepackage{svg}
 \usepackage{upgreek}
+\usepackage{longtable}
+\usepackage{graphics}
 
 \pgfplotsset{compat=1.18}
 
@@ -65,10 +67,287 @@
 
 \noindent\hrule width \textwidth height 2pt
 
+\section{Notes on Syntax}
+
+This section will quickly explain the most important syntax to be aware of in QuickBASIC. This language is unlike many other languages and requires some additional familiarization before you can fully understand how this program works. \par
+
+\subsection{Comments}
+
+All comments in QuickBASIC are indicated using a single quote, "'". Any text following this symbol is treated as a comment, and does not affect the functionality of the code. 
+
+\subsection{Keywords}
+
+There are several reserved "keywords" in QuickBASIC which carry special meaning to the QuickBASIC compiler. Table \ref{tbl:keywords} contains a largely comprehensive list of all of these keywords, as well as their purpose:
+
+% Generated using ChatGPT 3.5, prompt: 
+% I am tabulating all of the keywords in QuickBASIC, along with their type (Function, Operator, etc.), use ( varA AND varB, for example), and purpose. This is a template with the ABS keyword.
+
+% \begin{table}[h]
+%     \centering
+%     \begin{tabular}{|c|c|c|c|c|}
+%         \hline
+%         Keyword & Type & Use  & Purpose  \\
+%         \hline
+%         ABS & Function & ABS(x), x is a SINGLE, DOUBLE, or INT & Calculate absolute value of a number \\
+%         \hline
+%     \end{tabular}
+%     \caption{Comprehensive list of all QuickBASIC Keywords}
+%     \label{tbl:keywords}
+% \end{table}
+
+% Please provide a complete version of this table for all  QuickBASIC keywords.
+
+{
+\footnotesize
+\begin{longtable}{|c|c|c|c|}
+    \caption{Comprehensive list of all QuickBASIC Keywords}
+    \label{tbl:keywords} \\
+    \hline
+    Keyword & Type & Use & Purpose \\
+    \hline
+    ABS & Function & ABS(x) & Calculate absolute value of a number \\
+    ACCESS & Statement & ACCESS mode, path & Set or return the access mode of a file \\
+    AND & Operator & varA AND varB & Logical AND operation \\
+    ANY & Operator & varA ANY varB & Bitwise OR operation \\
+    APPEND & Statement & APPEND mode, path & Open a file for appending data \\
+    AS & Keyword & DIM var AS type & Declare a variable with a specific data type \\
+    ASC & Function & ASC(string) & Return ASCII code of the first character in a string \\
+    ATN & Function & ATN(x) & Return arctangent of a number \\
+    BASE & Statement & BASE value & Set or return the default base for numeric input and output \\
+    BEEP & Statement & BEEP & Produce a beep sound \\
+    BLOAD & Statement & BLOAD "filename", address & Load binary data from a file into memory \\
+    BSAVE & Statement & BSAVE "filename", address, length & Save binary data from memory to a file \\
+    BYVAL & Keyword & BYVAL parameter & Pass a parameter by value in a procedure \\
+    CALL & Statement & CALL subroutine & Call a subroutine or function \\
+    CALLS & Function & CALLS & Return number of subroutine or function calls \\
+    CASE & Keyword & SELECT CASE expression & Define a case in a SELECT CASE structure \\
+    CHAIN & Statement & CHAIN "filename" & Start execution of another program file \\
+    CHDIR & Statement & CHDIR "path" & Change current directory \\
+    CHR\$ & Function & CHR\$(code) & Return character associated with ASCII code \\
+    CIRCLE & Statement & CIRCLE (x, y), radius & Draw a circle on the screen \\
+    CLEAR & Statement & CLEAR & Clear all variable values \\
+    CLNG & Function & CLNG(expression) & Convert expression to a long integer \\
+    CLOSE & Statement & CLOSE [fileNumber] & Close an open file \\
+    CLS & Statement & CLS & Clear the screen \\
+    COLOR & Statement & COLOR foreground, background & Set text and background colors \\
+    COMMON & Statement & COMMON [sharedVariable] & Declare shared variables \\
+    CONST & Statement & CONST constantName = value & Define a constant \\
+    COS & Function & COS(angle) & Return cosine of an angle \\
+    CSRLIN & Function & CSRLIN & Return current cursor line position \\
+    CVD & Function & CVD(string) & Convert string to a date value \\
+    CVDMBF & Function & CVDMBF(string) & Convert string to a date value using the default date format \\
+    CVI & Function & CVI(string) & Convert string to an integer value \\
+    CVL & Function & CVL(string) & Convert string to a long integer value \\
+    CVS & Function & CVS(string) & Convert string to a single-precision floating-point value \\
+    DATA & Statement & DATA value1, value2, ... & Define data for READ statement \\
+    DATE\$ & Function & DATE\$ & Return current date \\
+    DECLARE & Statement & DECLARE subName [LIB "libraryName"] & Declare external subroutines or functions \\
+    DEF FN & Statement & DEF FN functionName (parameters) = expression & Define a user-defined function \\
+    DEF SEG & Statement & DEF SEG = segmentAddress & Set default segment for memory access \\
+    DEFDBL & Statement & DEFDBL variableList & Declare double-precision variables by default \\
+    DEFINT & Statement & DEFINT variableList & Declare integer variables by default \\
+    DEFLNG & Statement & DEFLNG variableList & Declare long integer variables by default \\
+    DEFSNG & Statement & DEFSNG variableList & Declare single-precision variables by default \\
+    DEFSTR & Statement & DEFSTR variableList & Declare string variables by default \\
+    DEFVAR & Statement & DEFVAR variableList & Declare variables with specific data types by default \\
+    DELETE & Statement & DELETE & Delete a line in a program \\
+    DIM & Statement & DIM array(dimensions) & Declare array variables \\
+    DO & Statement & DO & Start a DO...LOOP loop \\
+    DOUBLE & Type & DOUBLE & Double-precision floating-point data type \\
+    DRAW & Statement & DRAW "action" & Draw graphics primitives \\
+    DSKO\$ & Function & DSKO\$(drive) & Return description of disk \\
+    DSKI\$ & Function & DSKI\$(drive) & Return information about disk \\
+    ELSE & Keyword & IF condition THEN statement ELSE statement & Execute if condition is false \\
+    ELSEIF & Keyword & IF condition THEN statement ELSEIF condition THEN statement & Execute if previous condition is false and current condition is true \\
+    END & Statement & END & Terminate program execution \\
+    END FUNCTION & Statement & END FUNCTION & End a function definition \\
+    END IF & Statement & END IF & End an IF...THEN...ELSE block \\
+    END SELECT & Statement & END SELECT & End a SELECT CASE block \\
+    END SUB & Statement & END SUB & End a subroutine definition \\
+    END TYPE & Statement & END TYPE & End a user-defined type definition \\
+    END WHILE & Statement & END WHILE & End a WHILE...WEND loop \\
+    ENVIRON\$ & Function & ENVIRON\$(name) & Return value of an environment variable \\
+    EOF & Function & EOF(fileNumber) & Test for end of file \\
+    ERASE & Statement & ERASE array & Delete array variables \\
+    ERDEV & Function & ERDEV & Return error device number \\
+    ERDEV\$ & Function & ERDEV\$ & Return error device name \\
+    ERL & Function & ERL & Return line number of last error \\
+    ERR & Function & ERR & Return error number \\
+    ERROR\$ & Function & ERROR\$ & Return error message \\
+    EXIT & Statement & EXIT DO & Exit a DO...LOOP loop \\
+    EXP & Function & EXP(x) & Return exponential value of a number \\
+    FIELD & Statement & FIELD [fileNumber], fieldNumber AS fieldDefinition & Define random-access file records \\
+    FILES\$ & Function & FILES\$ & Return files in the current directory \\
+    FILL & Statement & FILL & Fill graphics screen with a color \\
+    FIX & Function & FIX(number) & Return integer part of a number \\
+    FNEND & Statement & FNEND & End a user-defined function \\
+    FOR & Statement & FOR counter = start TO end [STEP step] & Start a FOR...NEXT loop \\
+    FORMAT\$ & Function & FORMAT\$(expression, format) & Format a numeric value \\
+    FRAME & Statement & FRAME & Draw a frame around the graphics screen \\
+    FREEFILE & Function & FREEFILE & Return a free file number \\
+    FREQUENCY & Function & FREQUENCY & Return timer frequency \\
+    FUNCTION & Statement & FUNCTION functionName (parameters) & Define a function \\
+    GET & Statement & GET [fileNumber, ]recordNumber & Read a record from a random-access file \\
+    GOSUB & Statement & GOSUB lineLabel & Call a subroutine \\
+    GOTO & Statement & GOTO lineLabel & Unconditional jump to a line label \\
+    HEX\$ & Function & HEX\$(number) & Return hexadecimal representation of a number \\
+    IF & Statement & IF condition THEN statement & Execute if condition is true \\
+    IMP & Operator & varA IMP varB & Logical implication \\
+    INKEY\$ & Function & INKEY\$ & Check for a key press \\
+    INP & Function & INP(port) & Read from an I/O port \\
+    INPUT & Statement & INPUT prompt; variable & Prompt user for input \\
+    INPUT\$ & Function & INPUT\$(prompt) & Prompt user for input and return string \\
+    INPUT\# & Statement & INPUT\# fileNumber, variable & Read from an input file \\
+    INSTR & Function & INSTR([start, ]string1, string2) & Return position of one string within another \\
+    INT & Function & INT(number) & Return integer part of a number \\
+    IRQ & Function & IRQ(number) & Return interrupt request status \\
+    KILL & Statement & KILL "filename" & Delete a file \\
+    LEFT\$ & Function & LEFT\$(string, count) & Return leftmost characters of a string \\
+    LEN & Function & LEN(string) & Return length of a string \\
+    LET & Statement & LET variable = expression & Assign a value to a variable \\
+    LINE & Statement & LINE (x1, y1)-(x2, y2) & Draw a line on the screen \\
+    LINE INPUT & Statement & LINE INPUT prompt; variable & Prompt user for input and read a line \\
+    LINE INPUT\# & Statement & LINE INPUT\# fileNumber, variable & Read a line from an input file \\
+    LOAD & Statement & LOAD "filename" & Load and run a program \\
+    LOCATE & Statement & LOCATE row, column & Move cursor to specified position \\
+    LOCK & Statement & LOCK [recordNumber] & Lock a record in a random-access file \\
+    LOF & Function & LOF(fileNumber) & Return length of an open file \\
+    LOG & Function & LOG(number) & Return natural logarithm of a number \\
+    LONG & Type & LONG & Long integer data type \\
+    LPOS & Function & LPOS & Return current cursor column position \\
+    LPRINT & Statement & LPRINT expression & Print to the printer \\
+    LSET & Statement & LSET variable = string & Assign a string to a variable \\
+    LTRIM\$ & Function & LTRIM\$(string) & Return string with leading spaces removed \\
+    MID\$ & Function & MID\$(string, start[, length]) & Return a substring of a string \\
+    MKD\$ & Function & MKD\$(dateValue) & Convert date value to string \\
+    MKDIR & Statement & MKDIR "path" & Create a directory \\
+    MKI\$ & Function & MKI\$(integerValue) & Convert integer value to string \\
+    MKL & Function & MKL(longValue) & Convert long integer value to string \\
+    MKS\$ & Function & MKS\$(singleValue) & Convert single-precision value to string \\
+    MOD & Operator & varA MOD varB & Modulus (remainder) operation \\
+    NAME & Statement & NAME "oldName" AS "newName" & Rename a file or directory \\
+    NEW & Statement & NEW & Clear memory and reset program execution \\
+    NEXT & Statement & NEXT counter & Increment counter in a FOR...NEXT loop \\
+    NOT & Operator & NOT expression & Logical negation \\
+    OCT\$ & Function & OCT\$(number) & Return octal representation of a number \\
+    ON & Statement & ON expression GOSUB lineLabel & Define a line label for GOSUB or GOTO \\
+    OPEN & Statement & OPEN mode, fileNumber, "filename" & Open a file for input, output, or append \\
+    OPTION & Statement & OPTION BASE number & Set the base index for array dimensions \\
+    OR & Operator & varA OR varB & Logical OR operation \\
+    OUT & Statement & OUT port, value & Write to an I/O port \\
+    OUTPUT & Statement & OUTPUT & Switch output to the screen \\
+    OVERLAY & Statement & OVERLAY "filename" & Overlay the current program with another program \\
+    PAINT & Statement & PAINT (x, y), fillColor, borderColor & Fill an enclosed area with color \\
+    PEN & Statement & PEN color & Set pen color for graphics drawing \\
+    PLAY & Statement & PLAY "notes" & Play music notes \\
+    POINT & Function & POINT(x, y) & Return color of a point on the screen \\
+    POKE & Statement & POKE address, value & Write a value to a memory address \\
+    POS & Function & POS & Return current cursor position \\
+    PRINT & Statement & PRINT expression & Print to the screen \\
+    PRINT USING & Statement & PRINT USING format; expression & Print using a specified format \\
+    PSET & Statement & PSET (x, y), color & Set a pixel to a specified color \\
+    PUT & Statement & PUT [fileNumber, ]recordNumber & Write a record to a random-access file \\
+    RANDOMIZE & Statement & RANDOMIZE [seed] & Initialize random number generator \\
+    READ & Statement & READ variableList & Read data from a DATA statement \\
+    REDIM & Statement & REDIM array(dimensions) & Redimension an array \\
+    REM & Statement & REM comment & Add a remark or comment to the code \\
+    RESTORE & Statement & RESTORE [lineLabel] & Reset data pointer for READ statement \\
+    RESUME & Statement & RESUME [lineLabel] & Resume execution after an error \\
+    RETURN & Statement & RETURN [expression] & Return from a subroutine or function \\
+    RIGHT\$ & Function & RIGHT\$(string, count) & Return rightmost characters of a string \\
+    RMDIR & Statement & RMDIR "path" & Remove a directory \\
+    RND & Function & RND & Return a random number \\
+    RSET & Statement & RSET string = expression & Assign a string to a variable, right-justified \\
+    RUN & Statement & RUN "filename" & Run another program \\
+    SAVE & Statement & SAVE "filename" & Save the current program to a file \\
+    SCREEN & Statement & SCREEN mode & Set video mode and screen resolution \\
+    SEG & Function & SEG(variable) & Return segment part of a memory address \\
+    SELECT & Statement & SELECT CASE expression & Start a SELECT CASE block \\
+    SET & Statement & SET statement & Set environment attributes \\
+    SETATTR & Statement & SETATTR "filename", attribute & Set file attributes \\
+    SGN & Function & SGN(number) & Return sign of a number \\
+    SIN & Function & SIN(angle) & Return sine of an angle \\
+    SOUND & Statement & SOUND frequency, duration & Generate sound \\
+    SPACE\$ & Function & SPACE\$(count) & Return a string of spaces \\
+    SPC & Function & SPC(count) & Print a number of spaces \\
+    SQR & Function & SQR(number) & Return square root of a number \\
+    STATIC & Statement & STATIC variable & Declare a static variable \\
+    STICK & Function & STICK(number) & Return joystick position \\
+    STOP & Statement & STOP & Stop program execution \\
+    STR\$ & Function & STR\$(number) & Convert number to string \\
+    STRING\$ & Function & STRING\$(count, character) & Return a string of repeated characters \\
+    SUB & Statement & SUB subName (parameters) & Define a subroutine \\
+    SWAP & Statement & SWAP varA, varB & Exchange values of two variables \\
+    SYSTEM & Statement & SYSTEM & Execute an operating system command \\
+    TAB & Function & TAB(position) & Move cursor to a specified column \\
+    TAN & Function & TAN(angle) & Return tangent of an angle \\
+    THEN & Keyword & IF condition THEN statement & Execute if condition is true \\
+    TIME\$ & Function & TIME\$ & Return current time \\
+    TIMER & Function & TIMER & Return timer value \\
+    TO & Keyword & FOR counter = start TO end & Specify range in a FOR...NEXT loop \\
+    TRIM\$ & Function & TRIM\$(string) & Return string with leading and trailing spaces removed \\
+    TYPE & Statement & TYPE typeName & Define a user-defined type \\
+    UBOUND & Function & UBOUND(array, [dimension]) & Return upper bound of an array \\
+    UCASE\$ & Function & UCASE\$(string) & Convert string to uppercase \\
+    UNLOCK & Statement & UNLOCK [recordNumber] & Unlock a record in a random-access file \\
+    UNTIL & Keyword & DO UNTIL condition & End a DO...LOOP loop until condition is true \\
+    USING & Statement & PRINT USING format; expression & Print using a specified format \\
+    VAL & Function & VAL(string) & Convert string to numeric value \\
+    VIEW & Statement & VIEW PRINT [ON | OFF] & Control output to the screen \\
+    WAIT & Statement & WAIT time & Pause program execution for specified time \\
+    WEND & Statement & WHILE condition WEND & End a WHILE...WEND loop \\
+    WHILE & Statement & WHILE condition & Start a WHILE...WEND loop \\
+    WIDTH & Statement & WIDTH columns & Set width for screen output \\
+    WINDOW & Statement & WINDOW (row1, col1)-(row2, col2) & Set window for screen output \\
+    WRITE & Statement & WRITE fileNumber, record & Write to a sequential file \\
+    XOR & Operator & varA XOR varB & Logical exclusive OR operation \\
+    \hline
+\end{longtable}
+}
+
+\pagebreak
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|c|c|c|c|}
+    \hline
+    Character & Type & Use & Purpose \\
+    \hline
+    ' & Special Character & ' This is a comment & Indicates a comment \\
+    " & Special Character & "Hello, world!" & Denotes string literals \\
+    : & Special Character & statement1 : statement2 & Separates multiple statements \\
+    , & Special Character & FUNCTION(arg1, arg2) & Separates function arguments \\
+    ; & Special Character & PRINT expr1; expr2 & Suppresses newline in PRINT statement \\
+    . & Special Character & 3.14159 & Represents the decimal point in numbers \\
+    + & Operator & varA + varB & Adds two numbers or concatenates strings \\
+    - & Operator & varA - varB & Subtracts one number from another \\
+    * & Operator & varA * varB & Multiplies two numbers \\
+    / & Operator & varA / varB & Divides one number by another \\
+    < & Operator & varA < varB & Checks if varA is less than varB \\
+    > & Operator & varA > varB & Checks if varA is greater than varB \\
+    = & Operator & varA = varB & Assigns a value to a variable \\
+    ( & Special Character & (expr1 + expr2) & Indicates the start of an expression \\
+    ) & Special Character & (expr1 + expr2) & Indicates the end of an expression \\
+    [ & Special Character & array[index] & Indicates the start of an array index \\
+    ] & Special Character & array[index] & Indicates the end of an array index \\
+    { & Special Character & { statement1; statement2 } & Indicates the start of a code block \\
+    } & Special Character & { statement1; statement2 } & Indicates the end of a code block \\
+    ! & Special Character & !variable & Indicates a single-precision floating-point variable \\
+    & & & (some dialects) \\
+    & & & \\
+    \hline
+    \end{tabular}
+    \caption{Comprehensive list of all QuickBASIC reserved characters}
+    \label{tbl:reserved characters}
+\end{table}
 
 \section{The Code}
 
-\subsection{Function Declarations}
+\textbf{Note that any bolded text indicates an unknown value or an unanswered question.}
+
+\subsection{Initialization}
+
+\subsubsection{Function Declarations}
 
 A number of functions and subroutines are declared at the start of the program. This is a feature of quickBASIC, where functions and subroutines must be declared first and then defined. The behavior of each of these functions and subroutines will be described in detail later on.
 
@@ -84,7 +363,7 @@ A number of functions and subroutines are declared at the start of the program. 
     DECLARE SUB IMAGE(Scan(),NewDeltaZ, NewDeltaX, NewDeltaY, NewTheta, NewAlpha, NewEP, Resolution,size)
 \end{minted}
 
-\subsection{Constants}
+\subsubsection{Constants and Variables}
 
 A number of constants and variables are defined in this portion of the code. They are shown in Table \ref{tbl:constants_and_variables}
 
@@ -95,18 +374,18 @@ A number of constants and variables are defined in this portion of the code. The
         \hline
         Name & Constant? & Data Type & Purpose & Unit \\
         \hline
-        e\_range & Yes & Integer & Depth of interest for the simulation. & Angstrom \\
-        e\_interval & Yes & Integer & Number of intervals for storing electron penetration data.* & Dimensionless \\
-        e\_ave\_range & Yes & Integer & Unknown* & Unknown* \\
-        e\_deltaLat & No & Float & Used to calculate the length of an e-penetration interval. & Angstrom \\
-        e\_deltaDep & No & Float & Used to calculate the height of an e-penetration interval. & Angstrom \\
-        e\_stopping & Yes & Float & Stopping energy of electrons & keV \\
-        ion\_stopping & Yes & Float & Stopping energy of ions & keV \\
-        ion\_Ed & Yes & Float & Threshold displacement energy & keV \\
-        Divisor & Yes & Integer & Number of angle intervals from 0-180 for Mott scattering & Dimensionless \\
-        fly0 & Yes &  & & \\
-        fly1 & & & & \\
-        flyC & & & & \\
+        e\_range & Yes & INTEGER & Depth of interest for the simulation. & Angstrom \\
+        e\_interval & Yes & INTEGER & Number of intervals for storing electron penetration data.* & Dimensionless \\
+        e\_ave\_range & Yes & INTEGER & Unknown* & Unknown* \\
+        e\_deltaLat & No & FLOAT & Used to calculate the length of an e-penetration interval. & Angstrom \\
+        e\_deltaDep & No & FLOAT & Used to calculate the height of an e-penetration interval. & Angstrom \\
+        e\_stopping & Yes & FLOAT & Stopping energy of electrons & keV \\
+        ion\_stopping & Yes & FLOAT & Stopping energy of ions & keV \\
+        ion\_Ed & Yes & FLOAT & Threshold displacement energy & keV \\
+        Divisor & Yes & INTEGER & Number of angle intervals from 0-180 for Mott scattering & Dimensionless \\
+        fly0 & Yes & INTEGER & \textbf{Unkown} & \textbf{Unkown} \\
+        fly1 & Yes & INTEGER & \textbf{Unkown} & \textbf{Unkown} \\
+        flyC & No & INTEGER & \textbf{Unknown} & \textbf{Unkown} \\
         flyjudge & & & & \\
         sizeScan & & & & \\
         Resolution & & & & \\
@@ -114,10 +393,32 @@ A number of constants and variables are defined in this portion of the code. The
         EMAX & & & & \\
         switch & & & & \\
         \hline
+        totalRE &  & DOUBLE & \textbf{Unknown} & \textbf{Unknown} \\
+        ElecRE  &  &   &   &   \\
+        EP  &   &   &   &   \\
+        ElecREup    &   &   &   &   \\
+        ElecREdown  &   &   &   &   \\
+        L   &   &   &   &   \\
+        Lselected   &   &   &   &   \\
+        TotalCross  &   &   &   &   \\
+        SHARED  &   &   &   &   \\
+        SHARED  &   &   &   &   \\
+        SHARED  &   &   &   &   \\
+        SHARED  &   &   &   &   \\
+        E0  &   &   &   &   \\
+        E1  &   &   &   &   \\
+        E2  &   &   &   &   \\
+        E3  &   &   &   &   \\
+        E4V     &   &   &   &   \\
+        e\_output    &   &   &   &   \\
+        \hline
     \end{tabular}
     \label{tbl:constants_and_variables} \\
-    If an asterick (*) is present, that means that the purpose is not confirmed. 
 \end{table}
+
+\pagebreak
+
+Here some of the values shown in Table \ref{tbl:constants_and_variables} are assigned. Note that these are variables that are not first declared.
 
 \begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=10]{quickbasic.py:QuickBASICLexer -x}
     e_range = 80000000 '7000000 'interested region depth in unit of Angsrom
@@ -140,7 +441,30 @@ A number of constants and variables are defined in this portion of the code. The
     switch = 1 'switch 0 is for explicit method, switch 1 is for middlepoint method, and switch 2 si for back (implicit) method
 \end{minted}
 
-\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=30]{quickbasic.py:QuickBASICLexer -x}
+\subsubsection{Arrays}
+
+The "RANDOMIZE TIMER" command sets the seed for the random number generator to the current system time. Dividing by three divides the seed (the system time) by three. \textbf{It is not clear why this value is divided by 3.} \par
+
+Following that, several different arrays are declared using the DIM command. For example, "DIM RN(flyC) AS DOUBLE" declares an array called "RN" with a size that is the same as the value of "flyC". The data type of the array entries are "DOUBLE", which is a 64-bit (generally) floating point number. Table \ref{tbl:arrays} lists the different arrays present in the program, as well as their purposes. Note that any lines missing the "AS <Datatype>" expression is automatically established as an array of SINGLEs, or single-precision floating point numbers, which are usually represented with 32 bits. \par
+
+\begin{table}[h]
+    \centering
+    \caption{Table of arrays used in the eSRIM program}
+    \begin{tabular}{|c|c|c|c|c|}
+        \hline
+        Name & Size & Data Type & Purpose & Unit \\
+        \hline
+        RN  & flyC & DOUBLE & \textbf{Unknown} & \textbf{Unknown} \\
+        RL  & flyC + 1 & SINGLE & \textbf{Unknown} & \textbf{Unknown} \\
+        RA  & flyC & DOUBLE & \textbf{Unknown} & \textbf{Unknown} \\
+        RE  & flyC & DOUBLE & \textbf{Unknown} & \textbf{Unknown} \\
+        mott & $96\times 5\times 6$ & SINGLE & Store parameters for Mott Scattering calculations & Various \\
+        \hline
+    \end{tabular}
+    \label{tbl:arrays} \\
+\end{table}
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=28]{quickbasic.py:QuickBASICLexer -x}
     RANDOMIZE TIMER / 3
     
     DIM RN(flyC) AS DOUBLE
@@ -172,6 +496,24 @@ A number of constants and variables are defined in this portion of the code. The
     
     
     DIM SHARED mott(96, 5, 6) ' Creating a matrix of size 96x5x6 to save parameters for Mott scattering. 96 is the number of elements (from Z=1 to Z=96) 
+\end{minted}
+
+\subsubsection{Reading in Mott Scattering Parameters}
+
+This portion of the code reads the Mott Scattering Parameters in from literature, up to element 96. \par
+
+\vspace{0.5 cm}
+
+\begin{minted}[mathescape=false]{quickbasic.py:QuickBASICLexer -x}
+OPEN "C:\Users\lshao.AUTH\Downloads\Mott.txt" FOR INPUT AS #1
+\end{minted}
+
+opens a file as the file handle "\#1" from the directory "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash Downloads\textbackslash Mott.txt". Note that this should be changed to the relevant directory on other machines.
+
+
+INPUT \#1 reads 
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=54]{quickbasic.py:QuickBASICLexer -x}
     ROW = 1   ‘starting row number for data reading
     OPEN "C:\Users\lshao.AUTH\Downloads\Mott.txt" FOR INPUT AS #1 ‘Reading the input file for Mott scattering
     DO WHILE NOT EOF(1)   ‘Continue to read until the end of the input file
