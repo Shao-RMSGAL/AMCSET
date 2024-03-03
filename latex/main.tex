@@ -307,8 +307,14 @@ There are several reserved "keywords" in QuickBASIC which carry special meaning 
 
 \pagebreak
 
+\subsection{Reserved characters}
+
+Table \ref{tbl:reserved characters} most of the reserved characters in QuickBASIC.
+
 \begin{table}[h]
     \centering
+    \caption{Comprehensive list of all QuickBASIC reserved characters}
+    \label{tbl:reserved characters}
     \begin{tabular}{|c|c|c|c|}
     \hline
     Character & Type & Use & Purpose \\
@@ -328,25 +334,19 @@ There are several reserved "keywords" in QuickBASIC which carry special meaning 
     = & Operator & varA = varB & Assigns a value to a variable \\
     ( & Special Character & (expr1 + expr2) & Indicates the start of an expression \\
     ) & Special Character & (expr1 + expr2) & Indicates the end of an expression \\
-    [ & Special Character & array[index] & Indicates the start of an array index \\
-    ] & Special Character & array[index] & Indicates the end of an array index \\
-    { & Special Character & { statement1; statement2 } & Indicates the start of a code block \\
-    } & Special Character & { statement1; statement2 } & Indicates the end of a code block \\
+    $[$ & Special Character & array[index] & Indicates the start of an array index \\
+    $]$ & Special Character & array[index] & Indicates the end of an array index \\
+    $\{$ & Special Character & { statement1; statement2 } & Indicates the start of a code block \\
+    $\}$ & Special Character & { statement1; statement2 } & Indicates the end of a code block \\
     ! & Special Character & !variable & Indicates a single-precision floating-point variable \\
-    & & & (some dialects) \\
-    & & & \\
+    % & & & (some dialects) \\
+    % & & & \\
     \hline
     \end{tabular}
-    \caption{Comprehensive list of all QuickBASIC reserved characters}
-    \label{tbl:reserved characters}
 \end{table}
-
 \section{The Code}
-
 \textbf{Note that any bolded text indicates an unknown value or an unanswered question.}
-
 \subsection{Initialization}
-
 \subsubsection{Function Declarations}
 
 A number of functions and subroutines are declared at the start of the program. This is a feature of quickBASIC, where functions and subroutines must be declared first and then defined. The behavior of each of these functions and subroutines will be described in detail later on.
@@ -362,15 +362,15 @@ A number of functions and subroutines are declared at the start of the program. 
     DECLARE SUB BremsEloss (ZSUB, DENSITY, ElecE)
     DECLARE SUB IMAGE(Scan(),NewDeltaZ, NewDeltaX, NewDeltaY, NewTheta, NewAlpha, NewEP, Resolution,size)
 \end{minted}
-
-\subsubsection{Constants and Variables}
-
+\subsubsection{Constants and Variables} 
 A number of constants and variables are defined in this portion of the code. They are shown in Table \ref{tbl:constants_and_variables}
+\pagebreak
 
-\begin{table}[h]
-    \centering
-    \caption{Table of constants/variables used in the eSRIM program}
-    \begin{tabular}{|c|c|c|c|c|}
+
+{    
+    \begin{longtable}{|c|c|c|c|c|}
+        \caption{Table of constants/variables used in the eSRIM program}
+        \label{tbl:constants_and_variables} \\
         \hline
         Name & Constant? & Data Type & Purpose & Unit \\
         \hline
@@ -383,10 +383,10 @@ A number of constants and variables are defined in this portion of the code. The
         ion\_stopping & Yes & FLOAT & Stopping energy of ions & keV \\
         ion\_Ed & Yes & FLOAT & Threshold displacement energy & keV \\
         Divisor & Yes & INTEGER & Number of angle intervals from 0-180 for Mott scattering & Dimensionless \\
-        fly0 & Yes & INTEGER & \textbf{Unkown} & \textbf{Unkown} \\
-        fly1 & Yes & INTEGER & \textbf{Unkown} & \textbf{Unkown} \\
-        flyC & No & INTEGER & \textbf{Unknown} & \textbf{Unkown} \\
-        flyjudge & & & & \\
+        fly0 & Yes & INTEGER & Number of groupings for very low energy and high energy electrons & None \\
+        fly1 & Yes & INTEGER & Number of groupings for standard energy-range electrons & None \\
+        flyC & No & INTEGER & The current grouping number for electrons & None \\
+        flyjudge & Yes & INTEGER & Used to track the critical energy for grouping-number switching. & None \\
         sizeScan & & & & \\
         Resolution & & & & \\
         scandelta & & & & \\
@@ -401,25 +401,41 @@ A number of constants and variables are defined in this portion of the code. The
         L   &   &   &   &   \\
         Lselected   &   &   &   &   \\
         TotalCross  &   &   &   &   \\
-        SHARED  &   &   &   &   \\
-        SHARED  &   &   &   &   \\
-        SHARED  &   &   &   &   \\
-        SHARED  &   &   &   &   \\
-        E0  &   &   &   &   \\
-        E1  &   &   &   &   \\
-        E2  &   &   &   &   \\
-        E3  &   &   &   &   \\
-        E4V     &   &   &   &   \\
-        e\_output    &   &   &   &   \\
+        DiffCross  &   &   &   &   \\
+        IoniEloss1  &   &   &   &   \\
+        IoniEloss2  &   &   &   &   \\
+        BEloss  &   &   &   &   \\
+        E0  & No & SINGLE  & Stores radial stopping distance of a projectile from the z-axis & Angstrom \\
+        E1  & No  & SINGLE  & Stores longitudinal depth of projectile & Angstrom  \\
+        E2  &   & SINGLE  &   &   \\
+        E3  &   & SINGLE  &   &   \\
+        E4V     & SINGLE  &   &   &   \\
         \hline
-    \end{tabular}
-    \label{tbl:constants_and_variables} \\
-\end{table}
-
+        iontype & No & Integer & Stores the type of bombardment particle (1 is electron, 0 is ion.) & None \\
+        ElecE0 & No & SINGLE & Stores electron energy & keV \\
+        Elecmassp & Yes & SINGLE & The mass of an electron & amu \\
+        ElecCP & No & INTEGER & The charge of an electron & e \\
+        ePRbin & Yes & SINGLE & \textbf{Electron depth profile interval} & \si{\angstrom} \\
+        massp & No & SINGLE & Mass of incident ion & amu \\
+        CP & No & SINGLE & Charge of incident atom & e \\
+        INELAB & No & SINGLE & Energy of incident atom & keV \\
+        MASSSUB & No & SINGLE & Substrate atom mass & amu \\
+        ZSUB & No & SINGLE & Substrate atom charge & e \\
+        SUBDENSITY & No & SINGLE & Substrate atom density & \si{atoms/cm^3} $\rightarrow$ \si{atoms/\angstrom^3} \\
+        SUBWINDOW & No & INTEGER & Plotting window area & \si{\angstrom} \\
+        WINDOWX & Yes & Integer & Width of window plotting & pixels \\
+        WINDOWY & Yes & Integer & Height of window plotting & pixels \\
+        SIMULS & No & Integer & Number of particle bombardments to simulate & simulations \\
+        PI & Yes & SINGLE & Constant for the number $\pi$ & None \\
+        \hline
+        MASS2 & No & SINGLE & Substrate atom mass, used in simulation & amu \\
+        Z2 & No & SINGLE & Substrate atomic number, used in simulation & amu \\
+        DENSITY & SINGLE & Substrate density, used in simulation & amu \\
+        \hline
+    \end{longtable}
+}
 \pagebreak
-
 Here some of the values shown in Table \ref{tbl:constants_and_variables} are assigned. Note that these are variables that are not first declared.
-
 \begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=10]{quickbasic.py:QuickBASICLexer -x}
     e_range = 80000000 '7000000 'interested region depth in unit of Angsrom
     e_interval = 30 'interval number for the interest region
@@ -440,7 +456,6 @@ Here some of the values shown in Table \ref{tbl:constants_and_variables} are ass
     EMAX = 10000
     switch = 1 'switch 0 is for explicit method, switch 1 is for middlepoint method, and switch 2 si for back (implicit) method
 \end{minted}
-
 \subsubsection{Arrays}
 
 The "RANDOMIZE TIMER" command sets the seed for the random number generator to the current system time. Dividing by three divides the seed (the system time) by three. \textbf{It is not clear why this value is divided by 3.} \par
@@ -450,6 +465,7 @@ Following that, several different arrays are declared using the DIM command. For
 \begin{table}[h]
     \centering
     \caption{Table of arrays used in the eSRIM program}
+    \footnotesize
     \begin{tabular}{|c|c|c|c|c|}
         \hline
         Name & Size & Data Type & Purpose & Unit \\
@@ -459,11 +475,25 @@ Following that, several different arrays are declared using the DIM command. For
         RA  & flyC & DOUBLE & \textbf{Unknown} & \textbf{Unknown} \\
         RE  & flyC & DOUBLE & \textbf{Unknown} & \textbf{Unknown} \\
         mott & $96\times 5\times 6$ & SINGLE & Store parameters for Mott Scattering calculations & Various \\
+        XP & 2000 & DOUBLE & Stores x-position of projectiles and target atoms & \si{\angstrom} \\
+        YP & 2000 & DOUBLE & Stores y-position of projectiles and target atoms & \si{\angstrom} \\
+        ZP & 2000 & DOUBLE & Stores z-position of projectiles and target atoms & \si{\angstrom} \\
+        CP & 2000 & INTEGER & Stores charge number of projectile & e \\
+        mp & 2000 & SINGLE & Stores mass of projective & amu \\
+        THETAP & 2000 & SINGLE & Stores angle with respect to z-axis & radians \\
+        ALPHAP & 2000 & SINGLE & Stores angle with respect to x-axis on yz-plane & radians \\
+        EP & 2000 & DOUBLE & Stores energy of projectile & keV \\
+        Ptype & 2000 & DOUBLE & Stores particle type (1 is electron, 0 is ion) & None \\
+        ePR & 2000 & DOUBLE & Stores profile of projectile along the z axis & \textbf{None} \\
+        THETA2 & 2000 & SINGLE & \textbf{Unknown} & radians \\
+        ALPHA2 & 2000 & SINGLE & \textbf{Unknown} & radians \\
+        Scan & sizeScan + 1 $\times$ sizeScan + 1 $\times$ 8 & SINGLE & For 2D plot of backscattered electrons & \textbf{None} \\
+        e\_output & e\_interval$\times$ e\_interval$\times$ 4  &  SINGLE  & Stores location, energy loss, elastic scattering, and vacancy information for electrons & Various   \\
         \hline
     \end{tabular}
     \label{tbl:arrays} \\
 \end{table}
-
+{
 \begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=28]{quickbasic.py:QuickBASICLexer -x}
     RANDOMIZE TIMER / 3
     
@@ -497,7 +527,6 @@ Following that, several different arrays are declared using the DIM command. For
     
     DIM SHARED mott(96, 5, 6) ' Creating a matrix of size 96x5x6 to save parameters for Mott scattering. 96 is the number of elements (from Z=1 to Z=96) 
 \end{minted}
-
 \subsubsection{Reading in Mott Scattering Parameters}
 
 This portion of the code reads the Mott Scattering Parameters in from literature, up to element 96. \par
@@ -508,10 +537,8 @@ This portion of the code reads the Mott Scattering Parameters in from literature
 OPEN "C:\Users\lshao.AUTH\Downloads\Mott.txt" FOR INPUT AS #1
 \end{minted}
 
-opens a file as the file handle "\#1" from the directory "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash Downloads\textbackslash Mott.txt". Note that this should be changed to the relevant directory on other machines.
+opens a file as the file handle "\#1" from the directory "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash Downloads\textbackslash Mott.txt". Note that this should be changed to the relevant directory on other machines. The file handle is closed once reading is done.
 
-
-INPUT \#1 reads 
 
 \begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=54]{quickbasic.py:QuickBASICLexer -x}
     ROW = 1   ‘starting row number for data reading
@@ -526,9 +553,24 @@ INPUT \#1 reads
     
     LOOP  ‘reading continues and restarts from line 75, with ROW increased by 1
     CLOSE #1 ' Close the file after reading the last input line
-    
+
     PRINT "mott(26,1,1)="; mott(26, 1, 1) ‘print on the screen to check if the reading is accurate
-    
+    PRINT "mott(26,1,1)="; mott(26, 1, 1) ‘print on the screen to check if the reading is accurate
+\end{minted}
+\subsubsection{Reading in Electron Screening Parameters}
+
+This portion of the code reads the Electron Screening Scattering Parameters in from literature, up to element 92. \par
+
+\vspace{0.5 cm}
+
+\begin{minted}[mathescape=false]{quickbasic.py:QuickBASICLexer -x}
+    OPEN "C:\Users\lshao.AUTH\Downloads\screen factor.txt" FOR INPUT AS #2
+\end{minted}
+
+opens a file as the file handle "\#2" from the directory "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash Downloads\textbackslash screen factor.txt". Note that this should be changed to the relevant directory on other machines. The file handle is closed once the reading is done.
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=69]{quickbasic.py:QuickBASICLexer -x}
+
     DIM SHARED scr(92, 6) ‘Creating a matrix of size 96x6 to save parameters for charge screening effect. 96 is the number of elements (from Z=1 to Z=96)
     ROW = 1 ‘starting row number for data reading
     OPEN "C:\Users\lshao.AUTH\Downloads\screen factor.txt" FOR INPUT AS #2 'Reading the input file for charge screening effect
@@ -541,6 +583,39 @@ INPUT \#1 reads
     
     PRINT "scr(26,1)="; scr(26, 5) ) ‘print on the screen to check if the reading is accurate
     
+\end{minted}
+\subsubsection{Output file opening}
+
+In this section of the code, a number of files are opened for output files. Table \ref{tbl:output files} shows all of the output files that are created for the program, as well as their purpose.
+
+\begin{table}[h]
+    \centering
+    \caption{Output files produced by the program, as well as their file handles and purposes}
+    \label{tbl:output files}
+    \begin{tabular}{|c|c|c|}
+        \hline
+        File Name & File Handle & Purpose \\
+        \hline
+        PRANGEEd40.DAT  & 1 & \textbf{Unknown}  \\
+        simulEd40.DAT   & 2 & \textbf{Unknown}  \\
+        simulvimageEd40 & 3 & \textbf{Unknown}  \\
+        3DINTLimageEd40.DAT & 4 & \textbf{Unknown}  \\
+        eRangeimageEd40.dat & 5 & \textbf{Unknown}  \\
+        ProjectedeRangeimageEd40    & 6 & \textbf{Unknown}  \\
+        e-outimageEd40  & 7 & \textbf{Unknown}  \\
+        Projected\_e\_rangeImageEd40.txt  & 9 & \textbf{Unknown}  \\
+        20imageEd40.txt & 10 & \textbf{Unknown}  \\
+        crossimageEd40.txt  & 11 & \textbf{Unknown}  \\
+        imageEd40.txt   & 12 & \textbf{Unknown}  \\
+        VancancyEd40.txt    & 13 & \textbf{Unknown}  \\
+        dedx.txt    & 14 & \textbf{Unknown}  \\
+        \hline
+    \end{tabular}
+\end{table}
+
+Note that the directories used here are all inside of "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash ". To run this code on other machines, these lines must be changed to the correct directory.
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=82]{quickbasic.py:QuickBASICLexer -x}
     ‘Lines 108 to 120 are for creating various output files to save data calculated. 
     OPEN "C:\Users\lshao.AUTH\Downloads\PRANGEEd40.DAT" FOR OUTPUT AS #1
     OPEN "C:\Users\lshao.AUTH\Downloads\simulEd40.DAT" FOR OUTPUT AS #2
@@ -555,6 +630,13 @@ INPUT \#1 reads
     OPEN "C:\Users\lshao.AUTH\Downloads\imageEd40.txt" FOR OUTPUT AS #12
     OPEN "C:\Users\lshao.AUTH\Downloads\VancancyEd40.txt" FOR OUTPUT AS #13
     OPEN "C:\Users\lshao.AUTH\Downloads\dedx.txt" FOR OUTPUT AS #14 '''''''''''''''''
+\end{minted}
+}
+\subsubsection{User prompting}
+
+At this point in the code, the user is prompted for a number of important parameters, such as whether this is an electron bombardment, the ion/electron energy, and substrate information, along with other important details. All of the variables assigned here are described in Table \ref{tbl:constants_and_variables}.
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=96]{quickbasic.py:QuickBASICLexer -x}
     
     
     INPUT "Is this an electron bombardment (1=yes, 0=no)", iontype  ‘iontype decides whether it is an electron bombardment or ion bombardment. Default without typing = 0
@@ -595,7 +677,13 @@ INPUT \#1 reads
     
     INPUT "HOW MANY SIMULATION YOU WANT(50)?", SIMULS  ‘input for how many particles to be simulated
     IF SIMULS = 0 THEN SIMULS = 1000 ‘if there is no input, 1000 particles are to be simulated
-    
+\end{minted}
+\subsubsection{Additional Array Declarations}
+
+More arrays are declared here, mostly for storing particle collision information        . The details are listed in Table \ref{tbl:arrays}. Several arrays are of size 2000. This is an arbitrary choice which is representative of the maximum collision recursion depth (number of generations of knock-on particles.). 
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=136]{quickbasic.py:QuickBASICLexer -x}
+
     
     DIM XP(2000) AS DOUBLE 'saving X POSTION of ion/electron projectiles and target atoms, up to 2000 in a single bombardment
     DIM YP(2000) AS DOUBLE 'saving Y POSITION of ion/electron projectile or target atoms
@@ -610,7 +698,13 @@ INPUT \#1 reads
     DIM THETA2(2000)
     DIM ALPHA2(2000)
     DIM SHARED Scan(sizeScan + 1, sizeScan + 1, 8) 'AS DOUBLE 'For 2D plot of backscattered electrons
-    
+\end{minted}
+\subsubsection{Matrix zeroing}  
+
+This portion of the code runs through the matrices initialized for storing particle information and zeros all of the elements in each array. Some other variables are set or zerod as well.
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=151]{quickbasic.py:QuickBASICLexer -x}
+
     ‘lines 187 to 199 for setting initial values of matrix as zero
     FOR rum = 1 TO 2000
         XP(rum) = 0
@@ -624,7 +718,6 @@ INPUT \#1 reads
         Ptype(rum) = 0
         ePR(rum) = 0
     NEXT rum
-    
     
     
     SCREEN 9 ‘setting screen color
@@ -641,8 +734,22 @@ INPUT \#1 reads
             Scan(i, j, 8) = 0 'zero the initial value for backscattered electron count
         NEXT j
     NEXT i
-    
-    
+\end{minted}
+\subsection{Primary bombardment}
+
+This portion of the code simulates actual projectile bombardments. The number of bombardments that are simulated is taken as an argument in the SIMUL variable.
+
+\subsubsection{Bombardment Initialization}
+
+Here, a number of initialization steps are taken to prepare for the bombardment simulation. First, the random number generator is initialized to the system time divded by three. This only happens once for every 200 simulations. \par
+
+Then, depending on whether the bombardment projectile is an ion or an electron, a number of particle collision data arrays are initialized with the energy, mass, and charge (for ions only) specified by the user, as well as the particle type. All particles are started at x,y,z = 0. \par
+
+\textbf{Finally, the Scan array is populated with some information. The exact purpose of this is not known.}
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=181]{quickbasic.py:QuickBASICLexer -x}
+
+
     FOR SIMUL = 1 TO SIMULS    ‘starting the bombardment 
     
         IF SIMUL - 200 * INT(SIMUL / 200) = 0 THEN RANDOMIZE TIMER / 3  ‘change random number seed every 200 particles
@@ -693,7 +800,21 @@ INPUT \#1 reads
             NEXT j 'scanning
         NEXT i 'scanning
         'scanning ======================
-    
+\end{minted}
+\subsubsection{Bombardment bounds checking}
+
+At this point, several variables are assigned. The "rum" variable is particularly important, as it is used for tracking recursive bombardment. When the initial particle is simulated, it has a "rum" value of 1. But when that particle hits another particle and transfer enough energy to cause it to begin moving like a projectile, it is given a value of "rum + 1", or a "rum" value of 2. This variable is used to track how deeply the particle collisions cascade. Due to the nature of the program, the maximum cascade depth is 2000, which was mentioned earlier on. \par
+
+The substrate atomic mass, charge, and density are also assigned to simulation variables. \textbf{The reason why the original variables are not used is not clear.} \par
+
+Some bounds checking statements are then run to ensure that the particle has not done any of the follwing:
+
+\begin{enumerate}
+    \item Flown out of the window: If the Z-position of the particle is greater than the size of the plotting window (SUBWINDOW), then the particle no longer needs to be simulated. The "rum" variable is decremented, as the current cascade depth is terminated, and the simulation continues simulating the "parent" (the particle which caused the current one to cascade).
+    \item Scattered off the surface: If the Z-position of the particle is less than 0, then the particle bounced off the surface of the substrate. This is considered a back-scattered particle, which no longer needs to be simulated. A counter tracking the number of backscattered particles (SPUTTER) is incremented to account for the particle, and the simulation continues to the parent particle.
+\end{enumerate}
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=233]{quickbasic.py:QuickBASICLexer -x}
     
         rum = 1        ‘the first simulation of a new bombardment event 
         MASS2 = MASSSUB  ‘substrate atomic mass
@@ -716,12 +837,37 @@ INPUT \#1 reads
     
         ELSE
         END IF
-    
+\end{minted}
+\subsubsection{Grouping number changes}
+
+The code uses an optimization technique where several groups of "flying distances" (Essentailly, the random distance a projectile travels between atoms) are processed together in a group with a size of the variable "flyC". In the case of electrons, at low energies, this technique may slightly overestimate the amount of energy lost in a bombardment, resulting in a negative electron energy. This barrier is set to the value of the variable "flyjudge" multiplied by the value of the electron stopping energy (e\_stopping). To avoid this situation, the number of groupings are changed to a value (fly0) to allow for a more accurate simulation. \par
+
+A different problem may arise for high energy electrons, where if an electron energy is beyond a certain value (EMAX), it may travel too far in a single flying distance grouping. \textbf{The exact reason why this is a problem is not known.} Because of this, the number of flying distances grouped is changed to a value to avoid this (fly0). \par
+
+In all other cases, the number of groupings is set to fly1. \par
+
+\textbf{There are a number of issues with this portion of the code however. Contrary to the comments, the value of fly0 and fly1 are equal (1000) and are not changed at any point in the code. Also, the value of flyjudge is also not changed, and is set to 1 at the start of the code. The result is that the value of flyC is always 1000 regardless of the energy of the projectile.}
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=255]{quickbasic.py:QuickBASICLexer -x}
+
     
         IF Ptype(rum) = 1 AND EP(rum) < flyjudge * e_stopping THEN flyC = fly0   ‘if the projectile is an electron and if the electron energy is smaller than a value, the number of flying distances to be combined for evaluation is set to be fly0.  The critical value is flyjudge X e_stopping.  Flyjudge is a number defined in the input. e_stopping is the value simulations stop when electron energy is reduced to this value.  This command is used to avoid the situation that final electron energy become negative when the flying distance combination overestimates the energy loss. 
         IF Ptype(rum) = 1 AND EP(rum) >= flyjudge * e_stopping THEN flyC = fly1 ‘if the projectile is an electron and if electron energy is above flyjudge X e_stopping, the number of flying distances to be combined is fly1. This is to allow flying distance combination if electron energy is not too low.
         IF Ptype(rum) = 1 AND EP(rum) > EMAX THEN flyC = fly0  “if the energy of the electron is above EMAX, the number of combined free flying distance is fly0. This is used to avoid the situation that flying distance combination become too long as very high energy since a single free flying distance is large at high energy. 
-    
+\end{minted}
+\subsubsection{Stopped particle information}
+
+If a particle's energy is reduced to less than the threshold energies (e\_stopping for electrons, ion\_stopping for ions), then the particle's information is stored and written to the output data array (e\_output). \par
+
+The radial stopping distance from the z-axis is calculated using Equation \ref{eq:radial distance}:
+
+\begin{equation}
+    z &= \sqrt{x^2 + y^2} 
+    \label{eq:radial distance}
+\end{equation}
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=260]{quickbasic.py:QuickBASICLexer -x}
+
     
         ''    IF mp(rum) = MASS2 THEN PRINT #4, USING "##.###^^^^^ ##.###^^^^^ ##.###^^^^^"; XP(rum); YP(rum); ZP(rum) 'modified 01/12/01
         ''    I(INT(ZP(rum))) = I(INT(ZP(rum))) + 1
@@ -757,7 +903,9 @@ INPUT \#1 reads
     
         ELSE
         END IF
-    
+\end{minted}
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=296]{quickbasic.py:QuickBASICLexer -x}   
+
     
         '================== BEGIN A NEW COLLISION
     
