@@ -34,6 +34,7 @@
 \usepackage{upgreek}
 \usepackage{longtable}
 \usepackage{graphics}
+\usepackage{hyperref}
 
 \pgfplotsset{compat=1.18}
 
@@ -375,8 +376,8 @@ A number of constants and variables are defined in this portion of the code. The
         Name & Constant? & Data Type & Purpose & Unit \\
         \hline
         e\_range & Yes & INTEGER & Depth of interest for the simulation. & Angstrom \\
-        e\_interval & Yes & INTEGER & Number of intervals for storing electron penetration data.* & Dimensionless \\
-        e\_ave\_range & Yes & INTEGER & Unknown* & Unknown* \\
+        e\_interval & Yes & INTEGER & Number of intervals for storing electron penetration data. & Dimensionless \\
+        e\_ave\_range & Yes & INTEGER & \textbf{Unknown} & \textbf{Unknown} \\
         e\_deltaLat & No & FLOAT & Used to calculate the length of an e-penetration interval. & Angstrom \\
         e\_deltaDep & No & FLOAT & Used to calculate the height of an e-penetration interval. & Angstrom \\
         e\_stopping & Yes & FLOAT & Stopping energy of electrons & keV \\
@@ -395,7 +396,6 @@ A number of constants and variables are defined in this portion of the code. The
         \hline
         totalRE &  & DOUBLE & \textbf{Unknown} & \textbf{Unknown} \\
         ElecRE  &  &   &   &   \\
-        EP  &   &   &   &   \\
         ElecREup    &   &   &   &   \\
         ElecREdown  &   &   &   &   \\
         L   &   &   &   &   \\
@@ -417,7 +417,6 @@ A number of constants and variables are defined in this portion of the code. The
         ElecCP & No & INTEGER & The charge of an electron & e \\
         ePRbin & Yes & SINGLE & \textbf{Electron depth profile interval} & \si{\angstrom} \\
         massp & No & SINGLE & Mass of incident ion & amu \\
-        CP & No & SINGLE & Charge of incident atom & e \\
         INELAB & No & SINGLE & Energy of incident atom & keV \\
         MASSSUB & No & SINGLE & Substrate atom mass & amu \\
         ZSUB & No & SINGLE & Substrate atom charge & e \\
@@ -471,7 +470,7 @@ Following that, several different arrays are declared using the DIM command. For
         Name & Size & Data Type & Purpose & Unit \\
         \hline
         RN  & flyC & DOUBLE & \textbf{Unknown} & \textbf{Unknown} \\
-        RL  & flyC + 1 & SINGLE & \textbf{Unknown} & \textbf{Unknown} \\
+        RL  & flyC + 1 & SINGLE & Stores random numbers for electron flying distance calculations & None \\
         RA  & flyC & DOUBLE & \textbf{Unknown} & \textbf{Unknown} \\
         RE  & flyC & DOUBLE & \textbf{Unknown} & \textbf{Unknown} \\
         mott & $96\times 5\times 6$ & SINGLE & Store parameters for Mott Scattering calculations & Various \\
@@ -479,7 +478,7 @@ Following that, several different arrays are declared using the DIM command. For
         YP & 2000 & DOUBLE & Stores y-position of projectiles and target atoms & \si{\angstrom} \\
         ZP & 2000 & DOUBLE & Stores z-position of projectiles and target atoms & \si{\angstrom} \\
         CP & 2000 & INTEGER & Stores charge number of projectile & e \\
-        mp & 2000 & SINGLE & Stores mass of projective & amu \\
+        mp & 2000 & SINGLE & Stores mass of projectile & amu \\
         THETAP & 2000 & SINGLE & Stores angle with respect to z-axis & radians \\
         ALPHAP & 2000 & SINGLE & Stores angle with respect to x-axis on yz-plane & radians \\
         EP & 2000 & DOUBLE & Stores energy of projectile & keV \\
@@ -735,17 +734,24 @@ This portion of the code runs through the matrices initialized for storing parti
         NEXT j
     NEXT i
 \end{minted}
-\subsection{Primary bombardment}
-
+\subsection{Ion bombardment}
+\label{sec:ion bombardment}
 This portion of the code simulates actual projectile bombardments. The number of bombardments that are simulated is taken as an argument in the SIMUL variable.
+
+\subsubsection{Coordinate system explanation}
+
+Before explaining the bombardment calculations in detail, it will be useful to understand how coordinates and velocities are tracked in the code. The position is the Cartesian system. These are standard X, Y, and Z coordinates, stored in the "XP", "YP", and "ZP" arrays respectively. To track velocities, angle between the z-axis and the velocity vecotr is specified (THETAP), as well as the angle from the x-axis on the xy plane to the velocity vector. \textbf{The code's comments suggest that the plane is the yz plane, but this does not appear to make sense.} Figure \ref{fig:coordinate system} illustrates this system.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width = 0.5\textwidth]{figures/coordinate_system_explanation.png}
+    \caption{Illustration showing the coordinate and velocity system used in the program.}
+    \label{fig:coordinate system}
+\end{figure}
 
 \subsubsection{Bombardment Initialization}
 
 Here, a number of initialization steps are taken to prepare for the bombardment simulation. First, the random number generator is initialized to the system time divded by three. This only happens once for every 200 simulations. \par
-
-Then, depending on whether the bombardment projectile is an ion or an electron, a number of particle collision data arrays are initialized with the energy, mass, and charge (for ions only) specified by the user, as well as the particle type. All particles are started at x,y,z = 0. \par
-
-\textbf{Finally, the Scan array is populated with some information. The exact purpose of this is not known.}
 
 \begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=181]{quickbasic.py:QuickBASICLexer -x}
 
@@ -753,7 +759,9 @@ Then, depending on whether the bombardment projectile is an ion or an electron, 
     FOR SIMUL = 1 TO SIMULS    ‘starting the bombardment 
     
         IF SIMUL - 200 * INT(SIMUL / 200) = 0 THEN RANDOMIZE TIMER / 3  ‘change random number seed every 200 particles
-    
+\end{minted}
+Then, depending on whether the bombardment projectile is an ion or an electron, a number of particle collision data arrays are initialized with the energy, mass, and charge (for ions only) specified by the user, as well as the particle type. All particles are started at x,y,z = 0. \par
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=186]{quickbasic.py:QuickBASICLexer -x}
     
         IF iontype = 1 THEN 'iontype=1 means electron irradiation, lines 225 to 236 are for initial projectile conditions
             XP(1) = 0 ‘projectile starting location is at the original point with X=0
@@ -782,6 +790,9 @@ Then, depending on whether the bombardment projectile is an ion or an electron, 
             Ptype(1) = 0 ‘particle type is ion
         ELSE
         END IF
+\end{minted}
+\textbf{Finally, the Scan array is populated with some information. The exact purpose of this is not known.}
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=213]{quickbasic.py:QuickBASICLexer -x}
         'scanning ===============================
     
         FOR i = 0 TO sizeScan 'scanning
@@ -802,10 +813,11 @@ Then, depending on whether the bombardment projectile is an ion or an electron, 
         'scanning ======================
 \end{minted}
 \subsubsection{Bombardment bounds checking}
+\label{sec:bounds checking}
 
 At this point, several variables are assigned. The "rum" variable is particularly important, as it is used for tracking recursive bombardment. When the initial particle is simulated, it has a "rum" value of 1. But when that particle hits another particle and transfer enough energy to cause it to begin moving like a projectile, it is given a value of "rum + 1", or a "rum" value of 2. This variable is used to track how deeply the particle collisions cascade. Due to the nature of the program, the maximum cascade depth is 2000, which was mentioned earlier on. \par
 
-The substrate atomic mass, charge, and density are also assigned to simulation variables. \textbf{The reason why the original variables are not used is not clear.} \par
+The substrate atomic mass, charge, and density are also assigned to simulation variables. \textbf{The reason why the original variables are not used is not clear.} The presence of the "100" label is used by other portions of the code to jump to new projectile calculations. Something else to note is the check to see if "rum" has a value of 0. If so, this indicates, that all collision calculations are complete, and the program can move on to simulating the next collision. \par
 
 Some bounds checking statements are then run to ensure that the particle has not done any of the follwing:
 
@@ -856,15 +868,17 @@ In all other cases, the number of groupings is set to fly1. \par
         IF Ptype(rum) = 1 AND EP(rum) > EMAX THEN flyC = fly0  “if the energy of the electron is above EMAX, the number of combined free flying distance is fly0. This is used to avoid the situation that flying distance combination become too long as very high energy since a single free flying distance is large at high energy. 
 \end{minted}
 \subsubsection{Stopped particle information}
-
+\label{sec:stopped particle}
 If a particle's energy is reduced to less than the threshold energies (e\_stopping for electrons, ion\_stopping for ions), then the particle's information is stored and written to the output data array (e\_output). \par
 
-The radial stopping distance from the z-axis is calculated using Equation \ref{eq:radial distance}:
+The radial stopping distance from the z-axis is calculated using Equation \ref{eq:radial distance} and stored as the variable "E0" and the longitudinal depth (z-position) is stored as "E1" from the arry ZP. \par
 
 \begin{equation}
-    z &= \sqrt{x^2 + y^2} 
+    z = \sqrt{x^2 + y^2} 
     \label{eq:radial distance}
 \end{equation}
+
+A check is performed to ensure that the electron is inside of the plotting area. Once that is confirmed, the location of the stopped electron is recorded in the "e\_output" array. This array has dimensions "e\_interval $\times$ e\_interval $\times$ 4", where e\_interval is a constant with a value of 30. The third dimension corresponds to different data type, where \textbf{"1" is the number of stopped electrons, "2" is the location where energy was lost from an electron, "3" is the location where elastic occursed, and "4" is the location of vanacies caused by electron bombardment.} This essentially divides an area of interest, defined by the "e\_range" constant (Currently set to \SI{80000000}{\angstrom}) into 30 slices along the z-axis. In each of these slices are 30 concentric rings that expand out from the z-axis. The slice that an electron stops in is determined by INT(1 + E1 / e\_deltaDep), while the ring that it stops in is found using INT(1 + E0 / e\_deltaLat). e\_deltaDep is defined as e\_range/e\_interval, or approximately \SI{2666666}{\angstrom} This is the width of each slice, and the radial separation of each ring. When, for example, an electron stops in a particular slice, the code below increments the element in the array to record the fact that an electron stopped in that slice. This information can later be used for analysis. \par
 
 \begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=260]{quickbasic.py:QuickBASICLexer -x}
 
@@ -888,7 +902,10 @@ The radial stopping distance from the z-axis is calculated using Equation \ref{e
     
         ELSE
         END IF
-    
+\end{minted}
+Notably, the code performs an identical action even if the projectile type is an ion. \textbf{It seems that, contrary to the comments and naming schemes of the variables, e\_output is used to store information on ions as well.}
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=281  ]{quickbasic.py:QuickBASICLexer -x}
+
         IF Ptype(rum) = 0 AND EP(rum) < ion_stopping THEN    ‘check if the new particle is an atom and the energy is below the threshold value
     
             E0 = (XP(rum) ^ 2 + YP(rum) ^ 2) ^ 0.5   ‘if yes, calculate the radial distance from z axis
@@ -904,6 +921,37 @@ The radial stopping distance from the z-axis is calculated using Equation \ref{e
         ELSE
         END IF
 \end{minted}
+\subsubsection{Electronic stopping}
+
+This portion of the code calculates a collosion of an ion. First, a number of collision calculation parameters are calculated using the following equations:
+
+\begin{equation}
+    K_L = \frac{1.212\cdot Z_1^{7/6}\cdot Z_2}{(Z_1^{2/3} + Z_2^{2/3})^{3/2}m^{1/2}}
+    \label{eq:first electronic stopping parameter}
+\end{equation}
+
+where $K_L$ is the first electronic stopping parameter, $Z_1$ is the atomic charge of the incident ion, $Z_2$ is the atomic charge of the substrate, and $m$ is the mass of the incident ion. \par
+
+\begin{equation}
+    S_E = K_L \sqrt{E}
+\end{equation}
+
+is the electronic stopping energy, where $E$ is the incident ion energy in eV. \par
+
+\begin{equation}
+    L = \sqrt[1/3]{\rho}
+\end{equation}
+
+$L$ is the average atomic distance in the substrate in \si{\angstrom}, and $\rho$ is the density of the substrate, in \si{atoms/\angstrom^{3}}.
+
+\begin{equation}
+    P = \sqrt{\frac{R}{\pi \cdot \rho^{2/3}}}
+\end{equation}
+
+is a collision parameter $R$ is a random number between 0,1, including 0 and excluding 1. [0,1).
+
+\textbf{A significant potential problem is the fact that the CP variable overrides the CP array. Whether this effects the behavior of the code is not clear.}
+
 \begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=296]{quickbasic.py:QuickBASICLexer -x}   
 
     
@@ -915,22 +963,57 @@ The radial stopping distance from the z-axis is calculated using Equation \ref{e
             SE = KL * (EP(rum) * 1000) ^ PL 'electronic stopping at energy EP(), in the unit of eV
             L = DENSITY ^ (-1 / 3) ‘average atomic distance of the target, in the unit of Angstrom
             P = (RND / (PI * DENSITY ^ (2 / 3))) ^ .5  ‘using random number RND to select a collision parameter
-    
+\end{minted}
+
+The energy after electron energy loss is found using:
+
+\begin{equation}
+    E_P = E_{P0} - \frac{1.59\cdot L \cdot \rho \cdot S_E}{\SI{1000}{eV/keV}}
+\end{equation}
+
+where $E_{P0}$ is the pre-collision energy. 
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=306]{quickbasic.py:QuickBASICLexer -x}   
+
     
             '================== COLLISON PARAMETER
     
             EP(rum) = EP(rum) - 1.59 * L * DENSITY * SE / 1000 ‘get an updated energy after considering electron energy loss. L is the average atomic distance selected as the step length. DENSITY is the atomic density in the unit of atoms per angstrom  ^3. SE is the electronic stopping power. 1/1000 is to convert the energy loss from eV to keV
-    
+\end{minted}
+
+Once the electronic energy loss is calculated, a check is performed to determine if the ion has stopped. If the energy of the particle is less than the "ion\_stopping" variable, then the ion is considered stopped. The "rum" counter is decremented to indicate a finished collision, and the code jumps up to the "100" label on line 239 (Section \ref{sec:bounds checking}) to continue calculations on another projectile.
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=311]{quickbasic.py:QuickBASICLexer -x}   
+
             IF EP(rum) < ion_stopping THEN ‘check again if adding electronic stopping leads to  ion stopping. Ion_stopping is the energy criteria to stop. The stopping criteria is not necessary to be threshold displacement energy
                 rum = rum – 1 ‘after the stopped atom finishes the position counting, move to the previously saved not-yet-finished collision, by pointing the index number to rum-1. 
     
                 GOTO 100 ‘go back to start the next particle (other particles not-yet-finished, but produced from the same bombardment)
             ELSE
             END IF
+\end{minted}
+
+At this point in the code, the recoil direction of the incident ion, as well as the direction of a knocked off atom from the substrate (if there is one), is found using the "TMAGIC" function. The results from TMAGIC are stored in three "hidden" variables, "THETA1RELATIVE", "THETA2RELATIVE", and "RE". These represent the projectile's deviation angle from the projectile velocity vector, the deviation from the projectile's velocity vector of the target atom, and the energy transferred from the projectile to the target atom, respectively. TMAGIC calculated these values using the incident ion mass, atomic charge, substrate mass, substrate charge, ion energy, and the collision parameter. \par
+
+The results of TMAGIC are then passed to a function called "AMAGIC" to convert the relative projectile angle to values relative to the main coordinate system. This function takes the projectile's velocity vector angle relative to the z axis (THETAP) and the angle relative to the x axis on the yz plane (ALPHAP), as well as the relative angles of THETA1RELATIVE and THETA2RELATIVE. It then returns the the absolute z (THETA1) and x (ALPHA1) of the projectile, as well as the absoluate z (THETA2) and x (ALPHA2) of the target atom. Figure \ref{fig:relative angles explanation} illustrates this idea.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width = 0.5\textwidth]{figures/relative_angles_explanation.png}
+    \caption{An illustration of the relative and absolute angles discussed when explaining TMAGIC and AMAGIC. The projectile ion is illustrated in light blue, while the target atom is shown in black. This is a 2-dimensional view, only concerning the angle relative to the Z-axis (THETA).}
+    \label{fig:relative angles explanation}
+\end{figure}
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=311]{quickbasic.py:QuickBASICLexer -x}   
             CALL TMAGIC(mp(rum), CP(rum), MASS2, Z2, EP(rum), P)  
             'TO get recoil energy RE, deviation angle from the incident direction for the projectile THETA1RELATIVE, , recoil direction of target atom with respect to the incident direction THETA2RELATIVE
             CALL AMAGIC(THETAP(rum), ALPHAP(rum), THETA1RELATIVE, THETA2RELATIVE)  ‘obtain the new directions with respect to the original xyz coordinate for the projectile and target atom (THETAP is the angle away from the z axis, ALPHAP is the angle away from the x axis on YZ plane); THETAP(RUM), ALPHA(RUM) are angles before collision; THETA1 and THETA2 are new angles relative to the direction before the collision
-    
+\end{minted}
+
+This portion of the code saves information regarding the collision to the target atom (rum + 1). The position of the target is stored as the position of the incident ion, offset by the atomic separation in the direction of the ion's velocity vector. The target charge is then set to the value for the substrate. The target mass is set to the mass of the substrate. This is logical, as the target atom will naturally be one of the substrate atoms. The target velocity angle (THETA2, ALPHA2), as well as the energy (RE) are assigned to the target.
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=314]{quickbasic.py:QuickBASICLexer -x}   
+            
             '=====TEMPERARY SAVE INFORMATION.  Using matrix at index rum+1 to save everything about the target. Note the information about project is save with index rum
     
             ZP(rum + 1) = ZP(rum) + L * COS(THETAP(rum))   ‘assign new depth to target
@@ -941,17 +1024,37 @@ The radial stopping distance from the z-axis is calculated using Equation \ref{e
             THETAP(rum + 1) = THETA2   ‘transfer angle information of Recoiled target. Note “2” for target. THETA2 is a shared parameter obtained from subroutine AMAGIC 
             ALPHAP(rum + 1) = ALPHA2 'transfer angle information of  Recoiled target. Note “2” for target. ALPHA2 is a shared parameter obtained from subroutine AAMAGIC
             EP(rum + 1) = RE  ‘transfer recoil energy to target atom energy. RE is a shared parameter obtained from subroutine TMAGIC
-    
+\end{minted}
+
+\subsubsection{Plotting}
+
+A few lines of code for plotting are shown here. First, a window is drawn, and then some text displaying the number of simulations run so far. \par
+
+Following that, a line is drawn in the window (which is a 630 $\times$ 330 pixel window) from $x_1 = \text{round}\left(\frac{z}{x_{\text{total}\cdot w_x}}\right)$ and $y_1 = \text{round}\left(0.5 + \frac{x}{y_{\text{total}}\cdot w_y}\right)$ to $x_2 = \text{round}\left(\frac{z_t}{x_{\text{total}\cdot w_x}}\right)$ and $y_2 = \text{round}\left(0.5 + \frac{x_t}{y_{\text{total}}\cdot w_y}\right)$, where $z$ is the z-position of the incident ion (ZP(rum)) in \si{\angstrom}, $x$ is the x-position of the incident ion (XP(rum)) in \si{\angstrom}, $x_{\text{total}}$ is the total length of the plotting window in \si{\angstrom} (SUBWINDOW), $y_{\text{total}}$ is the total height of the plotting window in \si{\angstrom} (SUBWINDOW), $w_x$ is the number of pixels in the x-direction for the plotting window (WINDOWX), and $w_y$ is the number of pixels in the y-direction for the plotting window (WINDOWY). \par
+
+If the mass of the particle is equal to that of the incident ion, the line is drawn in red. In the case that the mass of the projectile is equal to that of the substrate, the line is drawn white (color code "1"). \textbf{Note that for self-bombardment, where the ion and the substrate are the same atom, both lines will be drawn. Since the "white line" command comes later, it will likely draw over the red line.}
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=325]{quickbasic.py:QuickBASICLexer -x}   
+
     
             WINDOW SCREEN(0, 0)-(WINDOWX, WINDOWY)  ‘define/draw a window
     
             LOCATE 4, 47 ‘locate position for words below
             PRINT " SIMULATION:"; SIMUL; "("; SIMULS; ")" 'provide updates on how many finished out of the total
-    
+
     
             IF mp(rum) = massp THEN LINE (INT(ZP(rum) / SUBWINDOW * WINDOWX), INT((0.5 + XP(rum) / SUBWINDOW) * WINDOWY))-(INT(ZP(rum + 1) / SUBWINDOW * WINDOWX), INT((0.5 + XP(rum + 1) / SUBWINDOW) * WINDOWY)), 4 'draw a short line from previous position to the current position. Note all positions are normalized by the window size and then change to correct pixel number. The drawing is for projectile ion
             IF mp(rum) = MASSSUB THEN LINE (INT(ZP(rum) / SUBWINDOW * WINDOWX), INT((0.5 + XP(rum) / SUBWINDOW) * WINDOWY))-(INT(ZP(rum + 1) / SUBWINDOW * WINDOWX), INT((0.5 + XP(rum + 1) / SUBWINDOW) * WINDOWY)), 1 'similar to the above but the drawing is for target atoms with a different color
-    
+\end{minted}
+
+\subsubsection{Projectile update}
+
+In the case that the transferred energy (RE) is not enought to displace the target atom, the code updates the original projectile with new position and velocity information. The particle assumes the position of the target, and is given the updated velocity vecotr direction from the AMAGIC function (THETA1, ALPHA1). The new energy of the projectile is assigned by subtracting RE from the energy of the projectile. \par
+
+The simulation will continue calculating the collision information for current particle, and will jump back to the "100" label on line 239 (Section \ref{sec:bounds checking}). 
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=335]{quickbasic.py:QuickBASICLexer -x}   
+
     
     
             IF RE <= ion_Ed THEN ‘if target atom energy is too low. No need to save information for target since there is no displacement. Saved information in rum+1 for the target is “selectively” transferred back to rum for the projectile.  
@@ -966,7 +1069,14 @@ The radial stopping distance from the z-axis is calculated using Equation \ref{e
                 GOTO 100    ‘return for the next step with new position and new energy. Note the index is kept at rum. It means the pointer stays on the same projectile.  All previous saved information on rum+1 are not used if target atom does not become a displacement
             ELSE
             END IF
-    
+\end{minted}
+
+\subsubsection{Target cascade calculations}
+
+In the case that RE was large enough to cause a displacement, the same assignments as before are made for the current particle. \textbf{This is not necessary, since the same assignments are done whether a cascade happens or not.}
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=350]{quickbasic.py:QuickBASICLexer -x}   
+
             '====IF RE>0.02  A target displacement is created. The new atom needs to be assigned with rum+1.  From lines 411 to 420, the information transfer for rum+1 already happened. So, only the projectile needs to be updated for rum
     
             XP(rum) = XP(rum + 1)    ‘projectile has the same X as the target
@@ -977,7 +1087,14 @@ The radial stopping distance from the z-axis is calculated using Equation \ref{e
             THETAP(rum) = THETA1 'projectile has its updated angle, obtained from AMAGIC. “1” is for projectile. TEHTA1 is shared from AMAGIC
             ALPHAP(rum) = ALPHA1 'projectile has its updated angle, obtained from AMAGIC. “1” is for projectile. ALPHA1 is shared from AMAGIC
             EP(rum) = EP(rum) - RE 'new energy considering the recoil energy loss
-    
+\end{minted}
+
+Here, since the target atom is displaced, the vanacy created must be accounted for. In order to do this, the code checks whether the displaced particle is inside the range of interest. If so, a process very similar to that found in Section \ref{sec:stopped particle} is used to set the e\_output vacancy data. \par
+
+Following that, rum is then incremented to focus the simulation calculations on the target particle that was displaced. The program then jumps to the "100" label on line 239 (Section \ref{sec:bounds checking}) to continue calculations for the cascaded particle.
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=361]{quickbasic.py:QuickBASICLexer -x}   
+
             IF ZP(rum + 1) > 0 AND ZP(rum + 1) < SUBWINDOW THEN  ‘Since one displacement occurs, vacancy information needs to be saved, if the displacement position is within two boundaries: surface and backside.
                 '            V(INT(ZP(rum + 1))) = V(INT(ZP(rum + 1))) + 1  ‘optional for vacancy counting 
                 E0 = (XP(rum) ^ 2 + YP(rum) ^ 2) ^ 0.5   ‘distance away from z axis
@@ -990,6 +1107,17 @@ The radial stopping distance from the z-axis is calculated using Equation \ref{e
             GOTO 100   ‘restart a new calculation with pointer at rum+1. If a displacement is created. The newly displaced atom will finish the simulation. Then the pointer moves back to the projectile to continue
         ELSE
         END IF
+\end{minted}
+
+\subsection{Electron irradiation}
+
+All of the code in Section \ref{sec:ion bombardment} was for ion bombardment. This portion of the code focuses on electron bombardment. This is a significantly more complicated task, as several different computationally intensive tasks must be performed in order to calculate electron bombardment. In particular, Mott scattering must be calculated, which takes a great deal of computation time. A number of optimiziations are made to reduce the computational cost of these calculatiosn, most notably the "flying distance grouping method". This method assumes that Mott scattering results in such a small energy loss that it can be assumed to be negligible for groups of flying distances, provided that the total flying distance is sufficiently small. Using this assumption, the same energy can be used for all of the calculations for a group of flying distances. This greatly reduces computation time, as the Mott scattering total cross-section does not have to be recalculated for every flying distance, which is computationally expensive. \par 
+
+\subsubsection{Flying distace creation}
+
+A single group of flying distances is generated using random numbers. An array "RL" with a size corresponding to the variable "flyC" is used to store random numbers to be used to calculate the flying distances.
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=374]{quickbasic.py:QuickBASICLexer -x}
     
         'Below is for electron irradiation
     
@@ -999,7 +1127,12 @@ The radial stopping distance from the z-axis is calculated using Equation \ref{e
                 '    RANDOMIZE TIMER / 3   
                 RL(trial2) = RND    ‘Assigned random number to random number matrix with ID of trial2. Trial2 starts from 1, increase till flyC. 
             NEXT trial2     ‘repeat until all numbers are assigned
-    
+\end{minted}
+
+The randomly generated numbers are then sorted in acending order. The following is an implementation of the bubble sort algorithm. More on the bubble osrt algorithm: \href{https://en.wikipedia.org/wiki/Bubble_sort}{Bubble Sort Wikipedia Page}
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=383]{quickbasic.py:QuickBASICLexer -x}
+
             FOR trial3 = 1 TO flyC – 1   ‘first step to rank random number from low to high. Here is to pick from the original order.
                 FOR trial4 = trial3 + 1 TO flyC  ‘compare with the rest after the one being picked 
                     IF RL(trial3) > RL(trial4) THEN  ‘judge whether there is random number behind is smaller than the picked one
@@ -1009,7 +1142,12 @@ The radial stopping distance from the z-axis is calculated using Equation \ref{e
                     END IF
                 NEXT trial4   ‘finish everyone behind trial3
             NEXT trial3  ‘finish all trial3 from 1 to fly-1
-    
+\end{minted}
+
+\subsubsection{Mott scattering integrated cross section calculation}
+
+\begin{minted}[fontsize=\tiny,mathescape=false,linenos,firstnumber=393]{quickbasic.py:QuickBASICLexer -x}
+
             
             TotalCross = 0      ‘preparing to calculate integrated cross section 
             FOR ANGLE1 = 1 TO (Divisor - 1) ‘dividing 180 degrees by Divisor, performing integration
