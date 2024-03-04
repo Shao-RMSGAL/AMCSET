@@ -2,7 +2,7 @@
 \usepackage[utf8]{inputenc}
 \usepackage{amsthm}
 \usepackage{libertine}
-\usepackage[margin=0.25in, includefoot]{geometry}
+\usepackage[margin=0.5in, includefoot]{geometry}
 \usepackage{amsmath,amssymb}
 \usepackage{multicol}
 \usepackage[shortlabels]{enumitem}
@@ -359,6 +359,7 @@ Table \ref{tbl:reserved characters} most of the reserved characters in QuickBASI
 \textbf{Note that any bolded text indicates an unknown value or an unanswered question.}
 \subsection{Initialization}
 \subsubsection{Function Declarations}
+\label{sec:function declarations}
 
 A number of functions and subroutines are declared at the start of the program. This is a feature of quickBASIC, where functions and subroutines must be declared first and then defined. The behavior of each of these functions and subroutines will be described in detail later on.
 
@@ -379,6 +380,7 @@ A number of constants and variables are defined in this portion of the code. The
 
 
 {    
+    \scriptsize
     \begin{longtable}{|c|c|c|c|c|}
         \caption{Table of constants/variables used in the eSRIM program}
         \label{tbl:constants_and_variables} \\
@@ -387,7 +389,7 @@ A number of constants and variables are defined in this portion of the code. The
         \hline
         e\_range & Yes & INTEGER & Depth of interest for the simulation. & Angstrom \\
         e\_interval & Yes & INTEGER & Number of intervals for storing electron penetration data. & Dimensionless \\
-        e\_ave\_range & Yes & INTEGER & \textbf{Unknown} & \textbf{Unknown} \\
+        e\_ave\_range & Yes & INTEGER & Number of adjacent data points for data smoothing. & None \\
         e\_deltaLat & No & FLOAT & Used to calculate the length of an e-penetration interval. & Angstrom \\
         e\_deltaDep & No & FLOAT & Used to calculate the height of an e-penetration interval. & Angstrom \\
         e\_stopping & Yes & FLOAT & Stopping energy of electrons & keV \\
@@ -398,10 +400,10 @@ A number of constants and variables are defined in this portion of the code. The
         fly1 & Yes & INTEGER & Number of groupings for standard energy-range electrons & None \\
         flyC & No & INTEGER & The current grouping number for electrons & None \\
         flyjudge & Yes & INTEGER & Used to track the critical energy for grouping-number switching. & None \\
-        sizeScan & & & & \\
-        Resolution & & & & \\
-        scandelta & & & & \\
-        EMAX & & & & \\
+        sizeScan & Yes & INTEGER & Used in sizing the Scan array & None \\
+        Resolution & Yes & INTEGER & Used in the unused IMAGE function & None \\
+        scandelta & Yes & INTEGER & Used for determining spacing in the Scan array & None \\
+        EMAX & Yes & SINGLE & Used as a threshold value for changing the flying distance size at high energy &  keV \\
         switch & Yes & INTEGER & Use to determine the type of energy approximation (0 is explicit, 1 is midpoint, 2 is implicit) & None \\
         \hline
         totalRE & No & DOUBLE & Total energy loss due to Mott scattering & keV \\
@@ -419,7 +421,7 @@ A number of constants and variables are defined in this portion of the code. The
         E1  & No  & SINGLE  & Stores longitudinal depth of projectile & Angstrom  \\
         E2  & No & SINGLE  & Stores the ionization energy loss rate  & keV \\
         E3  & No & SINGLE  & Stores energy lost due to Mott scattering  & keV  \\
-        E4V     & SINGLE  &   &   &   \\
+        E4V     & -- & -- & Unused & --  \\
         \hline
         iontype & No & Integer & Stores the type of bombardment particle (1 is electron, 0 is ion.) & None \\
         ElecE0 & No & SINGLE & Stores electron energy & keV \\
@@ -439,8 +441,8 @@ A number of constants and variables are defined in this portion of the code. The
         \hline
         MASS2 & No & SINGLE & Substrate atom mass, used in simulation & amu \\
         Z2 & No & SINGLE & Substrate atomic number, used in simulation & amu \\
-        DENSITY & SINGLE & Substrate density, used in simulation & amu \\
-        Ltotal & DOUBLE & Total distance traveled by a projectile & \si{\angstrom} \\
+        DENSITY & No & SINGLE & Substrate density, used in simulation & amu \\
+        Ltotal & No & DOUBLE & Total distance traveled by a projectile & \si{\angstrom} \\
         \hline
     \end{longtable}
 }
@@ -498,7 +500,8 @@ Following that, several different arrays are declared using the DIM command. For
         THETA2 & 2000 & SINGLE & Stores the target atom velocity absolute angle from the z-axis & radians \\
         ALPHA2 & 2000 & SINGLE & Stores the target atom velocty absolute angle from the x-axis on the xy-plane & radians \\
         Scan & sizeScan + 1 $\times$ sizeScan + 1 $\times$ 8 & SINGLE & For 2D plot of backscattered electrons & \textbf{None} \\
-        e\_output & e\_interval$\times$ e\_interval$\times$ 4  &  SINGLE  & Stores location, ionization energy loss, elastic scattering loss, and vacancy information for electrons & Various   \\
+        e\_output & e\_interval$\times$ e\_interval$\times$ 4  &  SINGLE  & Stores location, ionization energy loss, elastic scattering loss, and vacancy information for electrons & None   \\
+        Backup\_e\_output & e\_interval$\times$ e\_interval$\times$ 4 & SINGLE & Array for unsmoothed electron data found in e\_output & None \\
         \hline
     \end{tabular}
     \label{tbl:arrays} \\
@@ -602,7 +605,7 @@ In this section of the code, a number of files are opened for output files. Tabl
     \centering
     \caption{Output files produced by the program, as well as their file handles and purposes}
     \label{tbl:output files}
-    \begin{tabular}{|c|c|c|}
+    \begin{tabular}{|c|c|l|}
         \hline
         File Name & File Handle & Purpose \\
         \hline
@@ -612,8 +615,10 @@ In this section of the code, a number of files are opened for output files. Tabl
         3DINTLimageEd40.DAT & 4 & \textbf{Unknown}  \\
         eRangeimageEd40.dat & 5 & \textbf{Unknown}  \\
         ProjectedeRangeimageEd40    & 6 & \textbf{Unknown}  \\
-        e-outimageEd40  & 7 & \textbf{Unknown}  \\
-        Projected\_e\_rangeImageEd40.txt  & 9 & \textbf{Unknown}  \\
+        e-outimageEd40  & 7 & Stores e\_output information (electron fraction\si{/\micro\meter^3}, \\
+        && ionization energy loss/\si{electron/\micro\meter^3}, Mott scattering energy loss/electron/\si{\micro\meter^3},\\
+        &&  and vacancies/electron/\si{\micro\meter^3}) \\
+        Projected\_e\_rangeImageEd40.txt  & 9 & Output file for electron stopping depth data.  \\
         20imageEd40.txt & 10 & \textbf{Unknown}  \\
         crossimageEd40.txt  & 11 & \textbf{Unknown}  \\
         imageEd40.txt   & 12 & \textbf{Unknown}  \\
@@ -1674,11 +1679,13 @@ The simulation then goes on to calculate the cascaded particles from the electro
     NEXT SIMUL
 \end{minted}
 
-\subsection{Functions}
+\subsubsection{Output}
 
-That concludes the main simulation loop. This portion of the code discusses the implementations of the various subroutines used in the code.
+The main simulation has ended by this point. The code will now focus on outputting the results of each function to output files. \par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=590]{quickbasic.py:QuickBASICLexer -x}
+First, all of the data in the e\_output array is copied to the "Backup\_e\_output" file. \par
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=638]{quickbasic.py:QuickBASICLexer -x}
     
     
     '''''''FOR m = 0 TO sizeScan
@@ -1710,6 +1717,19 @@ That concludes the main simulation loop. This portion of the code discusses the 
             NEXT N2
         NEXT N1
     NEXT N0
+\end{minted}
+
+This portion of the code smooths the data present in the e\_output array. The variable "e\_ave\_range" is used to track how many neighboring datapoints should be used in the averageing. Then all data are smoothed with adjacent data (both along the z-axis and radially). \par
+
+This is accomplished by adding the datapoints together in the "combine\#" variable, where "\#" is 1, 2, 3, or 4, representing electron stopping location, ionization energy loss, elastic scattering loss, and vacancy information. The following equation is then applied to smooth the data:
+
+\begin{equation}
+    d_{\text{smooth, i}} = \frac{\sum_1^{n}d_{\text{raw, i}}}{(2n + 1)^2}
+\end{equation}
+
+where $d_{\text{smooth,i}}$ is the $i$\textsuperscript{th} smoothed datapoint,$d_{\text{raw}, i}$ is the $i$\textsuperscript{th} raw datapoint, and $n$ is the number of adjacent datapoints to smooth with.
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=669]{quickbasic.py:QuickBASICLexer -x}
     
     
     FOR R0 = 1 + e_ave_range TO e_interval - e_ave_range
@@ -1734,6 +1754,17 @@ That concludes the main simulation loop. This portion of the code discusses the 
             e_output(R0, R1, 4) = combine4 / (2 * e_ave_range + 1) ^ 2
         NEXT R1
     NEXT R0
+\end{minted}
+
+\pagebreak
+
+This code counts up all of the electrons to stop within various slices of the region of interest. The first index of e\_output is the radial distance from the z-axis, while the second index is the depth along the z-axis. By counting all of the stopped projectiles along a cross-sectional slice along the z-axis, the penetration depth of the electrons can be visiualized, \par
+
+\vspace{0.5 cm}
+
+The summation of electrons in a slice at a certain depth is stored in the "accum" variable, and is output to file \#9, which corresponds to the "Projected\_e\_erangeImageEd40.txt" file (See Table \ref{tbl:output files}). The depth is converted from \si{\angstrom} to \si{\micro \meter} on line 700, and the number of electrons found in a slice is divided by the total number of electrons simulated. This is then divided by the slice length (converted to \si{\micro\meter}), to result in a final unit of \si{fraction\ of\ total\ electrons/\micro\meter}. 
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=693]{quickbasic.py:QuickBASICLexer -x}
     
     
     FOR W0 = 1 TO e_interval
@@ -1743,6 +1774,11 @@ That concludes the main simulation loop. This portion of the code discusses the 
         NEXT w1
         PRINT #9, USING "##.###^^^^^ ##.###^^^^^"; (W0 - 1 + 0.5) * e_deltaDep / 10000; accum / SIMULS / ((e_deltaDep / 1E4) * 1E4 * 1E4)
     NEXT W0
+\end{minted}
+
+This extracts and stores more information from the e\_output array in the form of "Metric of interest/electron/unit of volume". For each data type stored in the e\_output array, the value is divided by the total number of electons, \textbf{as well as the volume of the annular slice (line, 711, it is not clear how this formula works)}. The results are written to the "e-outimageEd40" file (See Table \ref{tbl:output files}). The total integrated number of electrons, ionization energy loss, elastic energy loss, and displacements are printed to the output.
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=702]{quickbasic.py:QuickBASICLexer -x}
     
     
     test_e = 0
@@ -1765,6 +1801,26 @@ That concludes the main simulation loop. This portion of the code discusses the 
     PRINT "integrated total elastic energy loss="; test_RecE
     PRINT "integrated total displacement creation="; test_Disp
     END
+\end{minted}
+
+\subsection{Functions}
+
+That conclued the main body of the code. This portion of the code implements all of the function declarations found at the top of the code (Section \ref{sec:function declarations}). \par
+
+
+\subsubsection{AMAGIC Subroutine}
+
+This function calculates the absolute velocity vector direction given the incident projectile velocity vector direction and the relative angular changes of the projectile and target atom. \par
+
+\vspace{0.5 cm}
+
+The input arguments "THETA0" and "ALPHA0" correspond to the current velocity vector direction, and "THETA1RELATIVE" and "THETA2RELATIVE" correspond to the projectile and target atom relative angular change from the projectile's direction. See Figure \ref{fig:relative angles explanation} to understand how the relative and absoluate angles work. \par
+
+\vspace{0.5 cm}
+
+The output of this subroutine is returned in the "THETA1" and "ALPHA1" variables for absolute velocity vector of the projcetile relative to the simulation coordinate system, while "THETA2" and "ALPHA2" correspond to the target atom's velocity direction. \par
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=702]{quickbasic.py:QuickBASICLexer -x}
     
     SUB AMAGIC (THETAO, ALPHAO, THETA1RELATIVE, THETA2RELATIVE)
         SHARED PI
@@ -1827,11 +1883,21 @@ That concludes the main simulation loop. This portion of the code discusses the 
     
     
     END SUB
-    
+\end{minted}
+
+\subsubsection{DF Function}
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=768]{quickbasic.py:QuickBASICLexer -x}
+
     FUNCTION DF (X, COLUMBIAVK, Z1, Z2, AU)
         DF = F(X, COLUMBIAVK, Z1, Z2, AU) / X + COLUMBIAVK / X * (.35 * EXP(-.3 / X / AU) * .3 / AU + .55 * EXP(-1.2 / X / AU) * 1.2 / AU + .1 * EXP(-6 / X / AU) * 6 / AU)
     END FUNCTION
-    
+\end{minted}
+
+\subsubsection{EG MAGIC Subroutine}
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=764]{quickbasic.py:QuickBASICLexer -x}
+
     SUB EMAGIC (X)
         SHARED ATOMD
         SHARED ELOSS
@@ -1843,6 +1909,11 @@ That concludes the main simulation loop. This portion of the code discusses the 
         IF X * 1000 > 1000 AND X * 1000 <= 10000 THEN ELOSS = ATOMD * (9.28 + .00144 * X * 1000) / 1000
         IF X * 1000 > 10000 THEN ELOSS = ATOMD * (9.28 + .00144 * X * 1000) / 1000
     END SUB
+\end{minted}
+
+\subsubsection{F Function}
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=780]{quickbasic.py:QuickBASICLexer -x}
     
     FUNCTION F (X, COLUMBIAVK, Z1, Z2, AU)
         '===========================UNIVERAIAL SCREENING POTENTIAL=================
@@ -1856,6 +1927,11 @@ That concludes the main simulation loop. This portion of the code discusses the 
     
     
     END FUNCTION
+\end{minted}
+
+\subsubsection{TMAGIC Subroutine}
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=793]{quickbasic.py:QuickBASICLexer -x}
     
     SUB TMAGIC (MASS1, Z1, MASS2, Z2, INELAB, P)
     
@@ -1937,6 +2013,11 @@ That concludes the main simulation loop. This portion of the code discusses the 
         THETA2RELATIVE = (PI - CALPHA1) / 2 'RECOILED DIRECTION
         'PRINT "RE="; RE, "CALPHA1="; CALPHA1
     END SUB
+\end{minted}
+
+\subsubsection{DSCMOTT Subroutine}
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=874]{quickbasic.py:QuickBASICLexer -x}
     
     SUB DSCMOTT (mott(), scr(), ElectronEnergy, SubstrateZ, Theta)
     
@@ -1978,6 +2059,11 @@ That concludes the main simulation loop. This portion of the code discusses the 
         'INPUT XXXXXX
     
     END SUB
+\end{minted}
+
+\subsubsection{IoniElecLoss Subroutine}
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=915]{quickbasic.py:QuickBASICLexer -x}
     
     SUB IoniElecLoss (ZSUB, DENSITY, ElecE)
         ' SHARED IoniEloss2 AS DOUBLE
@@ -1999,6 +2085,11 @@ That concludes the main simulation loop. This portion of the code discusses the 
         '  IF IoniEloss2 < IoniEloss1 THEN IoniEloss2 = IoniEloss1
     
     END SUB
+\end{minted}
+
+\subsubsection{BremsELoss Subroutine}
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=936]{quickbasic.py:QuickBASICLexer -x}
     
     SUB BremsELoss (ZSUB, DENSITY, ElecE)
         '   SHARED BEloss AS DOUBLE
@@ -2007,6 +2098,11 @@ That concludes the main simulation loop. This portion of the code discusses the 
         ' PRINT "what the help ElecE="; ElecE
         '    PRINT "BEloss inside="; BEloss
     END SUB
+\end{minted}
+
+\subsubsection{IMAGE Subroutine}
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=944]{quickbasic.py:QuickBASICLexer -x}
     
     
     SUB IMAGE (Scan(), DeltaZima, DeltaXima, DeltaYima, Thetaima, Alphaima, Eima, Resolution, size)
@@ -2085,5 +2181,22 @@ That concludes the main simulation loop. This portion of the code discusses the 
     ' FOR i = 0 TO sizeScan 'scanning
     '    FOR j = 0 TO sizeScan 'scanning
 \end{minted}
+
+\section{Code Conversion}
+
+Now that the review of the QuickBASIC Code is complete, the next objective is to convert the code to another programming language to improve performance. A few different programming languages will be considered, as well as program strucutres.
+
+
+\subsection{Python}
+
+\subsection{C++}
+
+\subsection{Fortran}
+
+\subsection{Hybrid}
+
+\subsection{Code structure}
+
+\subsection{Conclusion}
 
 \end{document}
