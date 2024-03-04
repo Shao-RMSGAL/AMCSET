@@ -602,6 +602,7 @@ opens a file as the file handle "\#2" from the directory "C:\textbackslash Users
 In this section of the code, a number of files are opened for output files. Table \ref{tbl:output files} shows all of the output files that are created for the program, as well as their purpose.
 
 \begin{table}[h]
+    \footnotesize
     \centering
     \caption{Output files produced by the program, as well as their file handles and purposes}
     \label{tbl:output files}
@@ -609,21 +610,22 @@ In this section of the code, a number of files are opened for output files. Tabl
         \hline
         File Name & File Handle & Purpose \\
         \hline
-        PRANGEEd40.DAT  & 1 & \textbf{Unknown}  \\
-        simulEd40.DAT   & 2 & \textbf{Unknown}  \\
-        simulvimageEd40 & 3 & \textbf{Unknown}  \\
-        3DINTLimageEd40.DAT & 4 & \textbf{Unknown}  \\
-        eRangeimageEd40.dat & 5 & \textbf{Unknown}  \\
-        ProjectedeRangeimageEd40    & 6 & \textbf{Unknown}  \\
+        PRANGEEd40.DAT  & 1 & Unused, saves differential cross section and integrated cross section as a function of angle \\
+        &&  (Commented out use on line 654)  \\
+        simulEd40.DAT   & 2 & Unused (Commented out use on line 657)  \\
+        simulvimageEd40 & 3 & Unused (Commented out use on line 658)  \\
+        3DINTLimageEd40.DAT & 4 & Unused (Commented out use on line 262)  \\
+        eRangeimageEd40.dat & 5 & Unused (Commented out use on line 265)  \\
+        ProjectedeRangeimageEd40    & 6 & Unused  \\
         e-outimageEd40  & 7 & Stores e\_output information (electron fraction\si{/\micro\meter^3}, \\
         && ionization energy loss/\si{electron/\micro\meter^3}, Mott scattering energy loss/electron/\si{\micro\meter^3},\\
         &&  and vacancies/electron/\si{\micro\meter^3}) \\
         Projected\_e\_rangeImageEd40.txt  & 9 & Output file for electron stopping depth data.  \\
-        20imageEd40.txt & 10 & \textbf{Unknown}  \\
-        crossimageEd40.txt  & 11 & \textbf{Unknown}  \\
-        imageEd40.txt   & 12 & \textbf{Unknown}  \\
-        VancancyEd40.txt    & 13 & \textbf{Unknown}  \\
-        dedx.txt    & 14 & \textbf{Unknown}  \\
+        20imageEd40.txt & 10 &  Unused, stores correction factor (commented out use on lines 516 and 622) \\
+        crossimageEd40.txt  & 11 & Unused, used for storing differential and integrated cross section as a function of angle (commented out use on line 403) \\
+        imageEd40.txt   & 12 & Unused (commented out use on lines 642, 984, and 998) \\
+        VancancyEd40.txt    & 13 & Stores energy of electrons that create vacancies.  \\
+        dedx.txt    & 14 & Unused, stores non-Mott energy loss as a function of energy (commented out use on line 472)  \\
         \hline
     \end{tabular}
 \end{table}
@@ -1626,7 +1628,7 @@ If the threshold energy is met, then the target atom's position, charge, mass, v
 
 This portion of the code records the vacancy created by the electron. It follows the same procedure as in Section \ref{sec:stopped particle}. \par
 
-The simulation then goes on to calculate the cascaded particles from the electron bombardment. This is done up to "mmmm" times, or for however many cascaded particles are created (line 513). 
+The simulation then goes on to calculate the cascaded particles from the electron bombardment. This is done up to "mmmm" times, or for however many cascaded particles are created (line 513). The energy of the electron causing the vacancy is then written to the "VancancyEd40.txt" (See Table \ref{tbl:output files}).
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=590]{quickbasic.py:QuickBASICLexer -x}
 
