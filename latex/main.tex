@@ -877,15 +877,15 @@ Then, depending on whether the bombardment projectile is an ion or an electron (
 \subsubsection{Bombardment bounds checking}
 \label{sec:bounds checking}
 
-At this point, several variables are assigned. The "rum" variable is particularly important, as it is used for tracking recursive bombardment. When the initial particle is simulated, it has a "rum" value of 1. But when that particle hits another particle and transfer enough energy to cause it to begin moving like a projectile, it is given a value of "rum + 1", or a "rum" value of 2. This variable is used to track how deeply the particle collisions cascade. Due to the nature of the program, the maximum cascade depth is 2000, which was mentioned earlier on. \par
+At this point, several variables are assigned . The "rum" variable (line 248) is particularly important, as it is used for tracking recursive bombardment. When the initial particle is simulated, it has a "rum" value of 1. But when that particle hits another particle and transfer enough energy to cause it to begin moving like a projectile, it is given a value of "rum + 1", or a "rum" value of 2. This variable is used to track how deeply the particle collisions cascade. Due to the nature of the program, the maximum cascade depth is 2000, which was mentioned earlier on. \par
 
-The substrate atomic mass, charge, and density are also assigned to simulation variables. \textbf{The reason why the original variables are not used is not clear.} The presence of the "100" label is used by other portions of the code to jump to new projectile calculations. Something else to note is the check to see if "rum" has a value of 0. If so, this indicates, that all collision calculations are complete, and the program can move on to simulating the next collision. \par
+The substrate atomic mass, charge, and density are also assigned to simulation variables (lines 249-251). \textbf{The reason why the original variables are not used is not clear.} The presence of the "100" label is used by other portions of the code to jump to new projectile calculations. Something else to note is the check to see if "rum" has a value of 0. If so, this indicates, that all collision calculations are complete, and the program can move on to simulating the next collision. \par
 
-Some bounds checking statements are then run to ensure that the particle has not done any of the follwing:
+Some bounds checking statements are then run to ensure that the particle has not done any of the follwing: \par
 
 \begin{enumerate}
-    \item Flown out of the window: If the Z-position of the particle is greater than the size of the plotting window (SUBWINDOW), then the particle no longer needs to be simulated. The "rum" variable is decremented, as the current cascade depth is terminated, and the simulation continues simulating the "parent" (the particle which caused the current one to cascade).
-    \item Scattered off the surface: If the Z-position of the particle is less than 0, then the particle bounced off the surface of the substrate. This is considered a back-scattered particle, which no longer needs to be simulated. A counter tracking the number of backscattered particles (SPUTTER) is incremented to account for the particle, and the simulation continues to the parent particle.
+    \item Flown out of the window (line 256): If the Z-position of the particle is greater than the size of the plotting window (SUBWINDOW), then the particle no longer needs to be simulated. The "rum" variable is decremented (line 257), as the current cascade depth is terminated, and the simulation continues simulating the "parent" (the particle which caused the current one to cascade, line 258).
+    \item Scattered off the surface (line 261): If the Z-position of the particle is less than 0, then the particle bounced off the surface of the substrate. This is considered a back-scattered particle, which no longer needs to be simulated. A counter tracking the number of backscattered particles (SPUTTER, line 262) is incremented to account for the particle, and the simulation continues to the parent particle (lines 263-264).
 \end{enumerate}
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=246]{quickbasic.py:QuickBASICLexer -x}
@@ -915,13 +915,13 @@ Some bounds checking statements are then run to ensure that the particle has not
 \end{minted}
 \subsubsection{Grouping number changes}
 
-The code uses an optimization technique where several groups of "flying distances" (Essentailly, the random distance a projectile travels between atoms) are processed together in a group with a size of the variable "flyC". In the case of electrons, at low energies, this technique may slightly overestimate the amount of energy lost in a bombardment, resulting in a negative electron energy. This barrier is set to the value of the variable "flyjudge" multiplied by the value of the electron stopping energy (e\_stopping). To avoid this situation, the number of groupings are changed to a value (fly0) to allow for a more accurate simulation. \par
+The code uses an optimization technique where several groups of "flying distances" (Essentailly, the random distance a projectile travels between atoms) are processed together in a group with a size of the variable "flyC". In the case of electrons, at low energies, this technique may slightly overestimate the amount of energy lost in a bombardment, resulting in a negative electron energy. This barrier is set to the value of the variable "flyjudge" multiplied by the value of the electron stopping energy (e\_stopping, line 271). To avoid this situation, the number of groupings are changed to a value (fly0) to allow for a more accurate simulation. \par
 
-A different problem may arise for high energy electrons, where if an electron energy is beyond a certain value (EMAX), it may travel too far in a single flying distance grouping. \textbf{The exact reason why this is a problem is not known.} Because of this, the number of flying distances grouped is changed to a value to avoid this (fly0). \par
+A different problem may arise for high energy electrons, where if an electron energy is beyond a certain value (EMAX, line 273), it may travel too far in a single flying distance grouping. \textbf{The exact reason why this is a problem is not known.} Because of this, the number of flying distances grouped is changed to a value to avoid this (fly0). \par
 
-In all other cases, the number of groupings is set to fly1. \par
+In all other cases, the number of groupings is set to fly1 (line 272). \par
 
-\textbf{There are a number of issues with this portion of the code however. Contrary to the comments, the value of fly0 and fly1 are equal (1000) and are not changed at any point in the code. Also, the value of flyjudge is also not changed, and is set to 1 at the start of the code. The result is that the value of flyC is always 1000 regardless of the energy of the projectile.}
+\textbf{There are a number of issues with this portion of the code however. Contrary to the comments, the value of fly0 and fly1 are equal (1000, line 23 and 24) and are not changed at any point in the code. Also, the value of flyjudge is also not changed, and is set to 1 (line 26) at the start of the code. The result is that the value of flyC is always 1000 regardless of the energy of the projectile.} \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=269]{quickbasic.py:QuickBASICLexer -x}
 
@@ -930,9 +930,12 @@ In all other cases, the number of groupings is set to fly1. \par
         IF Ptype(rum) = 1 AND EP(rum) >= flyjudge * e_stopping THEN flyC = fly1 ‘if the projectile is an electron and if electron energy is above flyjudge X e_stopping, the number of flying distances to be combined is fly1. This is to allow flying distance combination if electron energy is not too low.
         IF Ptype(rum) = 1 AND EP(rum) > EMAX THEN flyC = fly0  “if the energy of the electron is above EMAX, the number of combined free flying distance is fly0. This is used to avoid the situation that flying distance combination become too long as very high energy since a single free flying distance is large at high energy. 
 \end{minted}
+
+\clearpage
+
 \subsubsection{Stopped particle information}
 \label{sec:stopped particle}
-If a particle's energy is reduced to less than the threshold energies (e\_stopping for electrons, ion\_stopping for ions), then the particle's information is stored and written to the output data array (e\_output). \par
+If an electron's energy is reduced to less than the threshold energies (e\_stopping for electrons, ion\_stopping for ions, line 281), then the electron's positional information (lines 283-284) is stored and written to the output data array (e\_output, line 286). \par
 
 The radial stopping distance from the z-axis is calculated using Equation \ref{eq:radial distance} and stored as the variable "E0" and the longitudinal depth (z-position) is stored as "E1" from the arry ZP. \par
 
@@ -941,7 +944,7 @@ The radial stopping distance from the z-axis is calculated using Equation \ref{e
     \label{eq:radial distance}
 \end{equation}
 
-A check is performed to ensure that the electron is inside of the plotting area. Once that is confirmed, the location of the stopped electron is recorded in the "e\_output" array. This array has dimensions "e\_interval $\times$ e\_interval $\times$ 4", where e\_interval is a constant with a value of 30. The third dimension corresponds to different data type, where \textbf{"1" is the number of stopped electrons, "2" is the location where energy was lost from an electron, "3" is the location where elastic occursed, and "4" is the location of vanacies caused by electron bombardment.} This essentially divides an area of interest, defined by the "e\_range" constant (Currently set to \SI{80000000}{\angstrom}) into 30 slices along the z-axis. In each of these slices are 30 concentric rings that expand out from the z-axis. The slice that an electron stops in is determined by INT(1 + E1 / e\_deltaDep), while the ring that it stops in is found using INT(1 + E0 / e\_deltaLat). e\_deltaDep is defined as e\_range/e\_interval, or approximately \SI{2666666}{\angstrom} This is the width of each slice, and the radial separation of each ring. When, for example, an electron stops in a particular slice, the code below increments the element in the array to record the fact that an electron stopped in that slice. This information can later be used for analysis. \par
+A check is performed to ensure that the electron is inside of the plotting area (line 285). Once that is confirmed, the location of the stopped electron is recorded in the "e\_output" array. This array has dimensions "e\_interval $\times$ e\_interval $\times$ 4", where e\_interval is a constant with a value of 30. The third dimension corresponds to different data type, where "1" is the number of stopped electrons, "2" is ionization energy loss from an electron, "3" is the elastic energy loss of an electron, and "4" is the number of vanacies caused by electron bombardment. This essentially divides an area of interest, defined by the "e\_range" constant (Currently set to \SI{80000000}{\angstrom}, line 14) into 30 (e\_interval, line 15) slices along the z-axis. In each of these slices are 30 (e\_interval, line 15) concentric rings that expand out from the z-axis. The slice that an electron stops in is determined by INT(1 + E1 / e\_deltaDep) , while the ring that it stops in is found using INT(1 + E0 / e\_deltaLat) (line 286). e\_deltaDep is defined as e\_range/e\_interval, or approximately \SI{2666666}{\angstrom} (line 17). This is the width of each slice, while the radial separation of each ring is stored in e\_deltaLat, which has the same value as e\_deltaDep (line 18). When, for example, an electron stops in a particular slice, the code below increments the element in the array to record the fact that an electron stopped in that slice. This information can later be used for analysis. \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=274]{quickbasic.py:QuickBASICLexer -x}
 
@@ -966,7 +969,7 @@ A check is performed to ensure that the electron is inside of the plotting area.
         ELSE
         END IF
 \end{minted}
-Notably, the code performs an identical action even if the projectile type is an ion. \textbf{It seems that, contrary to the comments and naming schemes of the variables, e\_output is used to store information on ions as well.}
+Notably, the code performs an identical action even if the projectile type is an ion (lines 296-309). \textbf{It seems that, contrary to the comments and naming schemes of the variables, e\_output is used to store information on ions as well.} \par
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=295]{quickbasic.py:QuickBASICLexer -x}
 
         IF Ptype(rum) = 0 AND EP(rum) < ion_stopping THEN    ‘check if the new particle is an atom and the energy is below the threshold value
@@ -984,37 +987,40 @@ Notably, the code performs an identical action even if the projectile type is an
         ELSE
         END IF
 \end{minted}
-\subsubsection{Electronic stopping}
+
+\clearpage
+
+\subsubsection{Ion electronic stopping}
 \label{sec:electronic stopping}
 
-This portion of the code calculates a collosion of an ion. First, a number of collision calculation parameters are calculated using the following equations:
+This portion of the code calculates a collosion of an ion (line 314). First, a number of collision calculation parameters are calculated using the following equations: \par
 
 \begin{equation}
     K_L = \frac{1.212\cdot Z_1^{7/6}\cdot Z_2}{(Z_1^{2/3} + Z_2^{2/3})^{3/2}m^{1/2}}
     \label{eq:first electronic stopping parameter}
 \end{equation}
 
-where $K_L$ is the first electronic stopping parameter, $Z_1$ is the atomic charge of the incident ion, $Z_2$ is the atomic charge of the substrate, and $m$ is the mass of the incident ion. \par
+where $K_L$ is the first electronic stopping parameter (line 315), $Z_1$ is the atomic charge of the incident ion, $Z_2$ is the atomic charge of the substrate, and $m$ is the mass of the incident ion. \par
 
 \begin{equation}
     S_E = K_L \sqrt{E}
 \end{equation}
 
-is the electronic stopping energy, where $E$ is the incident ion energy in eV. \par
+is the electronic stopping energy (Line 316), where $E$ is the incident ion energy in eV. \par
 
 \begin{equation}
     L = \sqrt[1/3]{\rho}
 \end{equation}
 
-$L$ is the average atomic distance in the substrate in \si{\angstrom}, and $\rho$ is the density of the substrate, in \si{atoms/\angstrom^{3}}.
+$L$ is the average atomic distance in the substrate in \si{\angstrom} (line 318), and $\rho$ is the density of the substrate, in \si{atoms/\angstrom^{3}}. \par
 
 \begin{equation}
     P = \sqrt{\frac{R}{\pi \cdot \rho^{2/3}}}
 \end{equation}
 
-is a collision parameter $R$ is a random number between 0,1, including 0 and excluding 1. [0,1).
+$P$ is a collision parameter (line 319). $R$ is a random number between 0,1, including 0 and excluding 1. [0,1). \par
 
-\textbf{A significant potential problem is the fact that the CP variable overrides the CP array. Whether this effects the behavior of the code is not clear.}
+\textbf{A significant potential problem is the fact that the CP variable overrides the CP array (line 220). Whether this effects the behavior of the code is not clear.} \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=310]{quickbasic.py:QuickBASICLexer -x}   
 
@@ -1035,7 +1041,7 @@ The energy after electron energy loss is found using:
     E_P = E_{P0} - \frac{1.59\cdot L \cdot \rho \cdot S_E}{\SI{1000}{eV/keV}}
 \end{equation}
 
-where $E_{P0}$ is the pre-collision energy. 
+where $E_{P0}$ is the pre-collision energy (line 324). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=320]{quickbasic.py:QuickBASICLexer -x}   
 
@@ -1045,7 +1051,7 @@ where $E_{P0}$ is the pre-collision energy.
             EP(rum) = EP(rum) - 1.59 * L * DENSITY * SE / 1000 ‘get an updated energy after considering electron energy loss. L is the average atomic distance selected as the step length. DENSITY is the atomic density in the unit of atoms per angstrom  ^3. SE is the electronic stopping power. 1/1000 is to convert the energy loss from eV to keV
 \end{minted}
 
-Once the electronic energy loss is calculated, a check is performed to determine if the ion has stopped. If the energy of the particle is less than the "ion\_stopping" variable, then the ion is considered stopped. The "rum" counter is decremented to indicate a finished collision, and the code jumps up to the "100" label on line 239 (Section \ref{sec:bounds checking}) to continue calculations on another projectile.
+Once the electronic energy loss is calculated, a check is performed to determine if the ion has stopped (line 326). If the energy of the particle is less than the "ion\_stopping" variable, then the ion is considered stopped. The "rum" counter is decremented (line 327) to indicate a finished collision, and the code jumps up to the "100" label (line 329) on line 253  (Section \ref{sec:bounds checking}) to continue calculations on another projectile. \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=325]{quickbasic.py:QuickBASICLexer -x}   
 
@@ -1057,9 +1063,13 @@ Once the electronic energy loss is calculated, a check is performed to determine
             END IF
 \end{minted}
 
-At this point in the code, the recoil direction of the incident ion, as well as the direction of a knocked off atom from the substrate (if there is one), is found using the "TMAGIC" function. The results from TMAGIC are stored in three "hidden" variables, "THETA1RELATIVE", "THETA2RELATIVE", and "RE". These represent the projectile's deviation angle from the projectile velocity vector, the deviation from the projectile's velocity vector of the target atom, and the energy transferred from the projectile to the target atom, respectively. TMAGIC calculated these values using the incident ion mass, atomic charge, substrate mass, substrate charge, ion energy, and the collision parameter. \par
+\clearpage
 
-The results of TMAGIC are then passed to a function called "AMAGIC" to convert the relative projectile angle to values relative to the main coordinate system. This function takes the projectile's velocity vector angle relative to the z axis (THETAP) and the angle relative to the x axis on the yz plane (ALPHAP), as well as the relative angles of THETA1RELATIVE and THETA2RELATIVE. It then returns the the absolute z (THETA1) and x (ALPHA1) of the projectile, as well as the absoluate z (THETA2) and x (ALPHA2) of the target atom. Figure \ref{fig:relative angles explanation} illustrates this idea.
+\subsubsection{Ion and target recoil}
+
+At this point in the code, the recoil direction of the incident ion, as well as the direction of a knocked off atom from the substrate (if there is one), is found using the "TMAGIC" function (line 332). The results from TMAGIC are stored in three "hidden" variables, "THETA1RELATIVE", "THETA2RELATIVE", and "RE". These represent the projectile's deviation angle from the projectile velocity vector, the deviation from the projectile's velocity vector of the target atom, and the energy transferred from the projectile to the target atom, respectively. TMAGIC calculated these values using the incident ion mass, atomic charge, substrate mass, substrate charge, ion energy, and the collision parameter. \par
+
+The results of TMAGIC are then passed to a function called "AMAGIC" (line 334) to convert the relative projectile angle to values relative to the main coordinate system. This function takes the projectile's velocity vector angle relative to the z axis (THETAP) and the angle relative to the x axis on the yz plane (ALPHAP), as well as the relative angles of THETA1RELATIVE and THETA2RELATIVE. It then returns the the absolute z (THETA1) and x (ALPHA1) of the projectile, as well as the absoluate z (THETA2) and x (ALPHA2) of the target atom. Figure \ref{fig:relative angles explanation} illustrates this idea.
 
 \begin{figure}[h]
     \centering
@@ -1074,7 +1084,7 @@ The results of TMAGIC are then passed to a function called "AMAGIC" to convert t
             CALL AMAGIC(THETAP(rum), ALPHAP(rum), THETA1RELATIVE, THETA2RELATIVE)  ‘obtain the new directions with respect to the original xyz coordinate for the projectile and target atom (THETAP is the angle away from the z axis, ALPHAP is the angle away from the x axis on YZ plane); THETAP(RUM), ALPHA(RUM) are angles before collision; THETA1 and THETA2 are new angles relative to the direction before the collision
 \end{minted}
 
-This portion of the code saves information regarding the collision to the target atom (rum + 1). The position of the target is stored as the position of the incident ion, offset by the atomic separation in the direction of the ion's velocity vector. The target charge is then set to the value for the substrate. The target mass is set to the mass of the substrate. This is logical, as the target atom will naturally be one of the substrate atoms. The target velocity angle (THETA2, ALPHA2), as well as the energy (RE) are assigned to the target.
+This portion of the code saves information regarding the collision to the target atom (rum + 1). The position of the target is stored as the position of the incident ion, offset by the atomic separation in the direction of the ion's velocity vector (lines 338-340). The target charge is then set to the value for the substrate (line 341). The target mass is set to the mass of the substrate (line 342). This is logical, as the target atom will naturally be one of the substrate atoms. The target velocity angle (THETA2, ALPHA2, lines 343-344), as well as the energy (RE, line 345) are assigned to the target. \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=335]{quickbasic.py:QuickBASICLexer -x}   
             
@@ -1093,11 +1103,11 @@ This portion of the code saves information regarding the collision to the target
 \subsubsection{Plotting}
 \label{sec:ion plotting}
 
-A few lines of code for plotting are shown here. First, a window is drawn, and then some text displaying the number of simulations run so far. \par
+A few lines of code for plotting are shown here. First, a window is drawn (line 348), and then some text displaying the number of simulations run so far is drawn (line 350-351). \par
 
-Following that, a line is drawn in the window (which is a 630 $\times$ 330 pixel window) from $x_1 = \text{round}\left(\frac{z}{x_{\text{total}\cdot w_x}}\right)$ and $y_1 = \text{round}\left(0.5 + \frac{x}{y_{\text{total}}\cdot w_y}\right)$ to $x_2 = \text{round}\left(\frac{z_t}{x_{\text{total}\cdot w_x}}\right)$ and $y_2 = \text{round}\left(0.5 + \frac{x_t}{y_{\text{total}}\cdot w_y}\right)$, where $z$ is the z-position of the incident ion (ZP(rum)) in \si{\angstrom}, $x$ is the x-position of the incident ion (XP(rum)) in \si{\angstrom}, $x_{\text{total}}$ is the total length of the plotting window in \si{\angstrom} (SUBWINDOW), $y_{\text{total}}$ is the total height of the plotting window in \si{\angstrom} (SUBWINDOW), $w_x$ is the number of pixels in the x-direction for the plotting window (WINDOWX), and $w_y$ is the number of pixels in the y-direction for the plotting window (WINDOWY). \par
+Following that, a line is drawn in the window (which is a 630 $\times$ 330 pixel window, line 142-143) from $x_1 = \text{round}\left(\frac{z}{x_{\text{total}\cdot w_x}}\right)$ and $y_1 = \text{round}\left(0.5 + \frac{x}{y_{\text{total}}\cdot w_y}\right)$ to $x_2 = \text{round}\left(\frac{z_t}{x_{\text{total}\cdot w_x}}\right)$ and $y_2 = \text{round}\left(0.5 + \frac{x_t}{y_{\text{total}}\cdot w_y}\right)$ (line 354), where $z$ is the z-position of the incident ion (ZP(rum)) in \si{\angstrom}, $x$ is the x-position of the incident ion (XP(rum)) in \si{\angstrom}, $x_{\text{total}}$ is the total length of the plotting window in \si{\angstrom} (SUBWINDOW), $y_{\text{total}}$ is the total height of the plotting window in \si{\angstrom} (SUBWINDOW), $w_x$ is the number of pixels in the x-direction for the plotting window (WINDOWX), and $w_y$ is the number of pixels in the y-direction for the plotting window (WINDOWY). \par
 
-If the mass of the particle is equal to that of the incident ion, the line is drawn in red. In the case that the mass of the projectile is equal to that of the substrate, the line is drawn white (color code "1"). \textbf{Note that for self-bombardment, where the ion and the substrate are the same atom, both lines will be drawn. Since the "white line" command comes later, it will likely draw over the red line.}
+If the mass of the particle is equal to that of the incident ion, the line is drawn in red (color code  "4", line 354). In the case that the mass of the projectile is equal to that of the substrate, the line is drawn white (color code "1", line 355). \textbf{Note that for self-bombardment, where the ion and the substrate are the same atom, both lines will be drawn. Since the "white line" command comes later, it will likely draw over the red line.}
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=346]{quickbasic.py:QuickBASICLexer -x}   
 
@@ -1114,9 +1124,9 @@ If the mass of the particle is equal to that of the incident ion, the line is dr
 
 \subsubsection{Projectile update}
 
-In the case that the transferred energy (RE) is not enought to displace the target atom, the code updates the original projectile with new position and velocity information. The particle assumes the position of the target, and is given the updated velocity vecotr direction from the AMAGIC function (THETA1, ALPHA1). The new energy of the projectile is assigned by subtracting RE from the energy of the projectile. \par
+In the case that the transferred energy (RE) is not enought to displace the target atom (line 359), the code updates the original projectile with new position (lines 360-362) and velocity information (lines 365-366). The particle assumes the position of the target, and is given the updated velocity vecotr direction from the AMAGIC function (THETA1, ALPHA1). The new energy of the projectile is assigned by subtracting RE from the energy of the projectile (line 367). \par
 
-The simulation will continue calculating the collision information for current particle, and will jump back to the "100" label on line 239 (Section \ref{sec:bounds checking}). 
+The simulation will continue calculating the collision information for current particle, and will jump back to the "100" label (line 368) on line 253 (Section \ref{sec:bounds checking}). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=356]{quickbasic.py:QuickBASICLexer -x}   
 
@@ -1138,7 +1148,7 @@ The simulation will continue calculating the collision information for current p
 
 \subsubsection{Target cascade calculations}
 
-In the case that RE was large enough to cause a displacement, the same assignments as before are made for the current particle. \textbf{This is not necessary, since the same assignments are done whether a cascade happens or not.}
+In the case that RE was large enough to cause a displacement (line 372, commented out but the logic remains the same), the same assignments as before are made for the current particle (lines 374-381). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=371]{quickbasic.py:QuickBASICLexer -x}   
 
@@ -1154,9 +1164,9 @@ In the case that RE was large enough to cause a displacement, the same assignmen
             EP(rum) = EP(rum) - RE 'new energy considering the recoil energy loss
 \end{minted}
 
-Here, since the target atom is displaced, the vanacy created must be accounted for. In order to do this, the code checks whether the displaced particle is inside the range of interest. If so, a process very similar to that found in Section \ref{sec:stopped particle} is used to set the e\_output vacancy data. \par
+Here, since the target atom is displaced, the vacancy created must be accounted for. In order to do this, the code checks whether the displaced particle is inside the range of interest (line 383). If so, a process very similar to that found in Section \ref{sec:stopped particle} is used to set the e\_output vacancy data (lines 384-388). \par
 
-Following that, rum is then incremented to focus the simulation calculations on the target particle that was displaced. The program then jumps to the "100" label on line 239 (Section \ref{sec:bounds checking}) to continue calculations for the cascaded particle.
+Following that, rum is then incremented (line 391) to focus the simulation calculations on the target particle that was displaced. The program then jumps to the "100" label on line 253 (Section \ref{sec:bounds checking}) to continue calculations for the cascaded particle.z
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=382]{quickbasic.py:QuickBASICLexer -x}   
 
@@ -1176,11 +1186,12 @@ Following that, rum is then incremented to focus the simulation calculations on 
 
 \subsection{Electron irradiation}
 
-All of the code in Section \ref{sec:ion bombardment} was for ion bombardment. This portion of the code focuses on electron bombardment. This is a significantly more complicated task, as several different computationally intensive tasks must be performed in order to calculate electron bombardment. In particular, Mott scattering must be calculated, which takes a great deal of computation time. A number of optimiziations are made to reduce the computational cost of these calculatiosn, most notably the "flying distance grouping method". This method assumes that Mott scattering results in such a small energy loss that it can be assumed to be negligible for groups of flying distances, provided that the total flying distance is sufficiently small. Using this assumption, the same energy can be used for all of the calculations for a group of flying distances. This greatly reduces computation time, as the Mott scattering total cross-section does not have to be recalculated for every flying distance, which is computationally expensive. \par 
+All of the code in Section \ref{sec:ion bombardment} was for ion bombardment. This portion of the code focuses on electron bombardment (line 398). This is a significantly more complicated task, as several different computationally intensive steps must be performed in order to calculate electron bombardment. In particular, Mott scattering must be calculated, which takes a great deal of computation time. A number of optimiziations are made to reduce the computational cost of these calculatiosn, most notably the "flying distance grouping method". This method assumes that Mott scattering results in such a small energy loss that it can be assumed to be negligible for groups of flying distances, provided that the total flying distance is sufficiently small. Using this assumption, the same energy can be used for all of the calculations for a group of flying distances. This greatly reduces computation time, as the Mott scattering total cross-section does not have to be recalculated for every flying distance, which is computationally expensive. \par 
 
-\subsubsection{Flying distace creation}
+\subsubsection{Flying distance creation}
+\label{sec:flying distance creation}
 
-A single group of flying distances is generated using random numbers. An array "RL" with a size corresponding to the variable "flyC" is used to store random numbers to be used to calculate the flying distances.
+A single group of flying distances is generated using random numbers (lines 400-403). An array "RL" with a size corresponding to the variable "flyC" is used to store random numbers to be used to calculate the flying distances. \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=395]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1194,7 +1205,7 @@ A single group of flying distances is generated using random numbers. An array "
             NEXT trial2     ‘repeat until all numbers are assigned
 \end{minted}
 
-The randomly generated numbers are then sorted in acending order. The following is an implementation of the bubble sort algorithm. More on the bubble sort algorithm: \href{https://en.wikipedia.org/wiki/Bubble_sort}{Bubble Sort Wikipedia Page}
+The randomly generated numbers are then sorted in acending order (lines 405-413). The following is an implementation of the bubble sort algorithm. More on the bubble sort algorithm: \href{https://en.wikipedia.org/wiki/Bubble_sort}{Bubble Sort Wikipedia Page}. Notably, this is one of the less efficient sorting algorithms. A more efficient algorithm would be \href{https://en.cppreference.com/w/cpp/algorithm/sort}{std::sort} from the C++ standard library. \par 
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=404]{quickbasic.py:QuickBASICLexer -x}
 
@@ -1209,20 +1220,22 @@ The randomly generated numbers are then sorted in acending order. The following 
             NEXT trial3  ‘finish all trial3 from 1 to fly-1
 \end{minted}
 
+\clearpage
+
 \subsubsection{Mott scattering integrated cross section calculation}
 
-The total Mott scattering cross section is calculated here. The maximum scattering angle is \SI{180}{\degree}, so this range is divided into 1000 intervals. Because the Mott scattering cross section increases rapidly at small angles, a non-uniform distribution was used for calculating small-angle scattering with higher resolution than large angle scattering. \par
+The total Mott scattering cross section is calculated here. The maximum scattering angle is \SI{180}{\degree}, so this range is divided into 1000 intervals. Because the Mott scattering cross section increases rapidly at small angles, a non-uniform distribution was used for calculating small-angle scattering with higher resolution than large angle scattering (Equation \ref{eq:angle distribution}). \par
 
-The DSCMOTT subroutine is used to calculate the Mott Scattering differential cross section. This is stored in the "hidden" variable called "DiffCross", which is the differential Mott scattering cross section. The function accepts the Mott scattering parameters, eletron screening parameters, electron energy, substrate atomic charge, and the angle. \par
+The DSCMOTT subroutine (line 418) is used to calculate the Mott Scattering differential cross section. This is stored in the "hidden" variable called "DiffCross", which is the differential Mott scattering cross section. The subroutine accepts the Mott scattering parameters, eletron screening parameters, electron energy, substrate atomic charge, and the angle. \par
 
-Angles are distributed using this expression:
+Angles are distributed using Equation \ref{eq:angle distribution}: \par
 
 \begin{equation}
     \theta_i = \pi\frac{1 - 10^{i/m}}{1 - 10}
     \label{eq:angle distribution}
 \end{equation}
 
-where $i$ is the interval being calculated (ANGLE1), and $m$ is the total number of intervals (Divisor). The reason behind this uneven angle distribution is illustrated in Figure \ref{fig:shao angle distribution}. \par
+where $i$ is the interval being calculated (ANGLE1), and $m$ is the total number of intervals (Divisor). The reason behind this uneven angle distribution is illustrated in Figure \ref{fig:shao angle distribution}. Note the sudden and large increase in scattering cross section between an angle of 0 and 1 degrees. This necessitates small angle intervals to ensure an accurate numerical integration. However, if all angles were calculated using the small angle interval, computational resources would be wasted on using such small angle intervals for the higher-angle cross sections. \par
 
 \begin{figure}
     \centering
@@ -1231,25 +1244,25 @@ where $i$ is the interval being calculated (ANGLE1), and $m$ is the total number
     \label{fig:shao angle distribution}
 \end{figure}
 
-Depending on which angle is being calculated, different equations are used to calculate the contribution to the total cross section. For the smallest (and first angle):
+Depending on which angle is being calculated, different equations are used to calculate the contribution to the total cross section. For the first (and smallest) angle (line 419): \par
 
 \begin{equation}
     \sigma_{t} = \sigma_{t,i} + \frac{d\sigma}{d\theta}\cdot 2\pi \sin(\theta_i)\frac{\theta_2 + \theta_1}{2}
 \end{equation}
 
-and for the last (and largest) angle,
+and for the last (and largest) angle (line 421): \par
 
 \begin{equation}
     \sigma_{t} = \sigma_{t,i} + \frac{d\sigma}{d\theta}\cdot 2\pi \sin(\theta_i)\left( \pi - \frac{\theta_{m-2} + \theta_{m-1}}{2}\right)
 \end{equation}
 
-and for all other angles,
+and for all other angles (line 420): \par
 
 \begin{equation}
     \sigma_{t} = \sigma_{t,i} + \frac{d\sigma}{d\theta}\cdot 2\pi \sin(\theta_i)\frac{\theta_{i+1} - \theta_{i-1}}{2}
 \end{equation}
 
-where $\sigma_{t}$ is the total Mott scattering cross section, and $\frac{d\sigma}{d\theta}$ is the differential cross section. Note that the electron energy is multiplied by a variable called "correctFactor". This variable is important, as it is used to correct the electron energy to a more accurate value than the value before scattering begins. This is part of the "mid-point approximation method" used to increase the accuracy of scattering calculations. This method will be discussed in greater detail later on.
+where $\sigma_{t}$ is the total Mott scattering cross section, and $\frac{d\sigma}{d\theta}$ is the differential cross section. Note that the electron energy is multiplied by a variable called "correctFactor". This variable is important, as it is used to correct the electron energy to a more accurate value than the value before scattering begins. This is part of the "mid-point approximation method" used to increase the accuracy of scattering calculations. This method will be discussed in greater detail in Section \ref{sec:midpoint}.
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=414]{quickbasic.py:QuickBASICLexer -x}
 
@@ -1273,7 +1286,7 @@ The flying distances for the current group of electrons is calculated here. For 
     \label{eq:flying distance}
 \end{equation}
 
-where $L$ is the flying distance in \si{\angstrom}, $R$ is a random number between 0 (inclusive) and 1 (exclusive), [0,1), $N$ is the atomic density of the substrate in \si{atoms/\angstrom^3}, and $\sigma_T$ is the total Mott scattering cross section. The values for these flying distances are stored in the "RN" array. There is a check that assings the random number to a variable called "ForLSelect", which checks if the random number is 0. It is important that the number is not zero, as this would result in an error, as the natural logarithm in Equation \ref{eq:flying distance} of 0 is undefined. In addition, the total flying distance of the entire group is calculated by calculating the sum of all the individual flying distances and storing them in a variable called "Lselected".
+where $L$ is the flying distance in \si{\angstrom} (line 434), $R$ is a random number between 0 (inclusive) and 1 (exclusive), [0,1), $N$ is the atomic density of the substrate in \si{atoms/\angstrom^3}, and $\sigma_T$ is the total Mott scattering cross section. The values for these flying distances are stored in the "RN" array. There is a check that assigns the random number to a variable called "ForLSelect" (line 432), which checks if the random number is 0 (line 433). It is important that the number is not zero, as this would result in an error, as the natural logarithm in Equation \ref{eq:flying distance} of 0 is undefined. In addition, the total flying distance of the entire group is calculated by calculating the sum of all the individual flying distances and storing them in a variable called "Lselected" (line 429 and 436). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=426]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1290,11 +1303,11 @@ where $L$ is the flying distance in \si{\angstrom}, $R$ is a random number betwe
             NEXT trial1  ‘repeat and go through all free flying distance in the group
 \end{minted}
 
-At this point, the scattering angle is calculated by performing a second integration. The program begins calculating a partial scattering cross section from the smallest to the largest angle (line 424), with the angle interavls being calculated using Equation \ref{eq:angle distribution}. It calculates a Mott partial cross section (lines 428-430), depending on the angle being considered (first, middle, or last for lines 428, 429, and 430, respectively). The total scattering angle is tracked using the "ForThetaSelect1". The previously calculated partial cross section is also stored in a variable called "ForThetaSelect0". These variables are used to re-calculate differential cross sections by taking the difference between them. \par
+\subsubsection{Mott scattering angle calculation}
 
-\vspace{0.5 cm}
+At this point, the scattering angle is calculated by performing a second integration. The program begins calculating a partial scattering cross section from the smallest to the largest angle (line 445), with the angle interavls being calculated using Equation \ref{eq:angle distribution}. It calculates a Mott differential cross section (lines 447) and adds it to an integrated cross section, depending on the angle being considered (first, middle, or last for lines 449, 450, and 451, respectively). The total scattering angle is tracked using the "ForThetaSelect1" variable. The previously calculated partial cross section is also stored in a variable called "ForThetaSelect0" (line 440). These variables are used to re-calculate differential cross sections by taking the difference between them (lines 455-457). \par
 
-Line 433 checks to see if the calculated partial cross section matches the randomly selected (and sorted) numbers found in lines 374 - 392. These random numbers represent possible Mott scattering cross sections. If the randomly selected cross section is too small, then the program advances to the next largest random number and checks it instead (lines 439, 439, and 432). Once the random number matches the calculated partial Mott scattering cross section is found, three different cases considered, and a different equation is used in each case to find the scattering angle. Note that $\Delta \theta_{i}$ is defined as follows, depending on the boundary conditions: \par
+Line 454 checks to see if the calculated partial cross section matches the randomly selected (and sorted) numbers calculated in Section \ref{sec:flying distance creation}. These random numbers represent possible Mott scattering cross sections. If the randomly selected cross section is too small , then the program increases the Mott scattering partial cross section and checks to see if it is large enough. Once the partial cross section is larger than the random number (454), three different cases considered, and a different equation is used in each case to find the scattering angle (lines 455-457). Note that $\Delta \theta_{i}$ is defined as follows, depending on the boundary conditions : \par
 
 \begin{equation}
     \Delta \theta_i = \begin{cases}
@@ -1306,9 +1319,7 @@ Line 433 checks to see if the calculated partial cross section matches the rando
 
 Also, in the code, $i$ is now represented by the variable "ANGLE2".\par
 
-\vspace{0.5 cm}
-
-In the case that the angle begin calculated is not at a boundary $2 \le i \le m - 1$ (Line 434): \par
+In the case that the angle begin calculated is not at a boundary $2 \le i \le m - 1$ (Line 455): \par
 
 \begin{equation}
         \theta = \frac{\theta_{i} + \theta_{i + 1}}{2} - \left[ \overbrace{\boxed{\frac{\sum_0^{\theta_{i}}\frac{d\sigma_{\text{Mott}}(\theta_{i})}{d\Omega}\cdot 2\pi\cdot \sin\theta_{i}\cdot \Delta \theta_{i}}{\sigma_T}}}^{\text{ForThetaSelect1, line 429}} - \overbrace{\boxed{R}}^{\text{RL(trial5)}} \right]\cdot \frac{\Delta \theta_{i}}{\underbrace{\boxed{\frac{d\sigma_{\text{Mott}}}{d\Omega} \cdot 2\pi \cdot\sin\theta_{i}\cdot \Delta \theta_{i}\frac{1}{\sigma_T}}}_{\text{ForThetaSelect1 - ForThetaSelect0}}}
@@ -1316,27 +1327,25 @@ In the case that the angle begin calculated is not at a boundary $2 \le i \le m 
 
 \textbf{Note that in literature provided by Dr. Shao, the angle interval is incremented by 1 in all terms (i.e. $\bm{\theta_i \rightarrow \theta_{i + 1}}$). This equation reflects what the code is doing.} \par
 
-\vspace{0.5 cm}
-
 In addition, note how $\frac{d\sigma_{\text{Mott}}}{d\Omega} \cdot 2\pi \cdot\sin\theta_{i}\cdot \Delta \theta_{i}\frac{1}{\sigma_T}$ is calculated. It is found by taken the difference between two adjacent calculated partial cross-sections (ForThetaSelect1 - ForThetaSelect0 = $\Delta$ ForThetaSelect): \par
 
 \begin{equation}
     \frac{d\sigma_{\text{Mott}}}{d\Omega} \cdot 2\pi \cdot\sin\theta_{i}\cdot \Delta \theta_{i}\frac{1}{\sigma_T}  = \frac{\sum_0^{\theta_{i}}\frac{d\sigma_{\text{Mott}}(\theta_{i})}{d\Omega}\cdot 2\pi\cdot \sin\theta_{i}\cdot \Delta \theta_{i}}{\sigma_T} - \frac{\sum_0^{\theta_{i-1}}\frac{d\sigma_{\text{Mott}}(\theta_{i-1})}{d\Omega}\cdot 2\pi\cdot \sin\theta_{i-1}\cdot \Delta \theta_{i-1}}{\sigma_T}
 \end{equation}
 
-If the angle is at the left-hand boundary ($i = 1$) (Line 435):
+If the angle is at the left-hand boundary ($i = 1$) (Line 456): \par
 
 \begin{equation}
     \theta = \frac{\theta_2 + \theta_1}{2} - \left[ \overbrace{\boxed{\frac{\frac{d\sigma_{\text{Mott}}(\theta_1)}{d\Omega}\cdot 2\pi\cdot \sin\theta_1\cdot \Delta \theta_ 1}{\sigma_T}}}^{\text{ForThetaSelect1, line 428}} - \overbrace{\boxed{R}}^{\text{RL(trail5)}}\right]\cdot \frac{\Delta\theta_1}{\underbrace{\boxed{\frac{d\sigma_{\text{Mott}}(\theta_1)}{d\Omega}\cdot 2\pi\cdot \sin\theta_{1}\cdot \Delta \theta_1\cdot \frac{1}{\sigma_T}}}_{\text{ForThetaSelect1 - ForThetaSelect0}}}
 \end{equation}
 
-Finally, if the angle is at the right-hand boundary where $i = m - 1$ (line 436):
+Finally, if the angle is at the right-hand boundary where $i = m - 1$ (line 457): \par
 
 \begin{equation}
     \theta = \pi - \left[ \overbrace{\boxed{\frac{\sum_0^{\theta_{m-1}}\frac{d\theta_{\text{Mott}}(\theta_{m -1})}{d\Omega}\cdot 2\pi\cdot \sin\theta_{m - 1}\cdot \Delta \theta_{m-1}}{\sigma_T}}}^{\text{ForThetaSelect1, line 430}} - \overbrace{\boxed{R}}^{\text{RL(trial5)}} \right] \cdot \frac{\Delta \theta_{m-1}}{\underbrace{\boxed{\frac{d\sigma_{\text{Mott}}(\theta_{m-1})}{d\Omega}\cdot 2\pi \cdot \sin\theta_{m - 1}\cdot \Delta \theta_{m-1}\cdot \frac{1}{\sigma_T}}}_{\text{ForThetaSelect1 - ForThetaSelect0}}}
 \end{equation}
 
-To terminate this process, a large value is chosen for the last random number (line 423). \textbf{Note that the code comments call this value an "angle", however it instead represents a partial Mott scattering cross section}. This is important, as if the last random number is smaller than the partial Mott scattering cross section, lines 432 and 439 would result in an infinite loop, hanging the program. Finally, ForThetaSelect0 is set to ForThetaSelect1 (line 443) to store the previous calculated Mott scattering angle. 
+To terminate this process, a large value is chosen for the last random number (line 444). \textbf{Note that the code comments call this value an "angle", however it instead represents a partial Mott scattering cross section}. This is important, as if the last random number is smaller than the partial Mott scattering cross section, lines 453 and 460 would result in an infinite loop, hanging the program. Finally, ForThetaSelect0 is set to ForThetaSelect1 (line 464) to store the previous calculated Mott scattering angle.  \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=438]{quickbasic.py:QuickBASICLexer -x}
 
@@ -1370,7 +1379,7 @@ To terminate this process, a large value is chosen for the last random number (l
             NEXT ANGLE2
 \end{minted}
 
-This portion of the code randomly arranges the scattering angles found previously. This is needed to ensure that the scattering angle doesn't strictly increase for each flying distance. The code steps back from the last element in the scattering angles array "RA", and swaps it with a random element in RA. It does this for every element, randomly shuffling the array. This is an implementation of the Fisher-Yates shuffle, or the Knuth shuffle. More on this algorithm: \href{https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle}{Fisher--Yates Shuffle}
+This portion of the code (lines 469-474) randomly arranges the scattering angles found previously. This is needed to ensure that the scattering angle doesn't strictly increase for each flying distance. The code steps back from the last element in the scattering angles array "RA" (line 469), and swaps it with a random element in RA (lines 470-473). It does this for every element, randomly shuffling the array. This is an implementation of the Fisher-Yates shuffle, or the Knuth shuffle. More on this algorithm: \href{https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle}{Fisher--Yates Shuffle}. \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=467]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1385,13 +1394,14 @@ This portion of the code randomly arranges the scattering angles found previousl
 
 \subsubsection{Energy loss calculations}
 
-The energy transfer from Mott scattering is calculated using the following equation:
+The energy transfer from Mott scattering is calculated using Equation \ref{eq:mott energy loss}: \par
 
 \begin{equation}
     E_t = \frac{[(E_k + m_ec^2) \sin^2\theta + Mc^2 (1 - \cos\theta)]E_k(E_k + 2m_ec^2)}{(E_k + Mc^2)^2 - E_k(E_k + 2m_ec^2)\cos^2\theta}
+    \label{eq:mott energy loss}
 \end{equation}
 
-where $E_t$ is the recoil energy in J (totalRE, in keV), $E_k$ is the electon energy in J (EP(rum) in keV), $m_e$ is the mass of an electron in kg, $c$ is the speed of light in \si{m/s}, and $M$ is the substrate mass (MASSSUB, in amu). In the code, the constants are simplified into numerical values, and converted to units so that the value of totalRE is in keV. The final energy loss is stored at index "rum" in the "RE" array. This is used later to determine if subtrate atoms are displaced. \par
+where $E_t$ is the recoil energy in J (totalRE, in keV, lines 377 and 481-484), $E_k$ is the electon energy in J (EP(rum) in keV), $m_e$ is the mass of an electron in kg, $c$ is the speed of light in \si{m/s}, and $M$ is the substrate mass (MASSSUB, in amu). In the code, the constants are simplified into numerical values, and converted to units so that the value of totalRE is in keV. The final energy loss is stored at index "rum" in the "RE" array, and the energy loss for  each flying distance is calculated individually (line 479). This is used in Section \ref{sec:substrate displacement} to determine if subtrate atoms are displaced. \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=475]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1407,9 +1417,9 @@ where $E_t$ is the recoil energy in J (totalRE, in keV), $E_k$ is the electon en
             NEXT trial6  ‘go through the whole free flying distance group 
 \end{minted}
 
-The total distance that the projectile has traveled is calculated by adding the distance traveled by the current flying distance group to the total distance traveled (Ltotal) in line 467. \par
+The total distance that the projectile has traveled is calculated by adding the distance traveled by the current flying distance group to the total distance traveled (Ltotal) in line 488. \par
 
-The energy loss due to ionization is then found using the "IoniElecLoss" subroutine, which sets the value of the "IoniEloss2" variable to the amount of energy lost, given the substrate atomic charge, density (in \si{atoms/cm^3}), and corrected projectile energy (in keV). These are represented by ZSUB, SUBDENSITY * 1E24, and EP(rum) * correctFactor, respectively. A check is then performed on line 470 to ensure that this energy loss is always positive. The result is energy lost per unit distance (\si{keV/cm}).\par
+The energy loss due to ionization is then found using the "IoniElecLoss" subroutine (line 389), which sets the value of the "IoniEloss2" variable to the amount of energy lost, given the substrate atomic charge, density (in \si{atoms/cm^3}), and corrected projectile energy (in keV). These are represented by ZSUB, SUBDENSITY * 1E24, and EP(rum) * correctFactor, respectively. A check is then performed on line 491 to ensure that this energy loss is always positive. The result is energy lost per unit distance (\si{keV/cm}).\par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=486]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1420,7 +1430,7 @@ The energy loss due to ionization is then found using the "IoniElecLoss" subrout
             IoniEloss2 = (IoniEloss2 + ABS(IoniEloss2)) / 2.0  ‘make sure the value is positive 
 \end{minted}
 
-The Bremsstrahlung is calculated using the "BremsELoss" subroutine, which sets the BEloss variable as the lost energy in (\si{keV/cm}). It takes the same arguments as "IoniElecLoss. Again, a check ensures that the returned value is always positive. \par
+The Bremsstrahlung is calculated using the "BremsELoss" subroutine (line 494), which sets the BEloss variable as the lost energy in (\si{keV/cm}). It takes the same arguments as "IoniElecLoss. Again, a check ensures that the returned value is always positive (line 395). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=492]{quickbasic.py:QuickBASICLexer -x}
 
@@ -1450,6 +1460,7 @@ Note that the energy loss due to ionization and Bremsstrahlung are multiplied by
 \end{minted}
 
 \subsubsection{Midpoint approximation}
+\label{sec:midpoint}
 
 At this point in the code, some adjustments need to be made for the "same electron energy" assumption. Since some energy is lost in each flying distance group due to Mott scattering, a correction factor "correctFactor" must be set to predict the midpoint energy of the electron. The "switch" variable is used to determine what type of method is used for energy prediction. "0" simply uses the starting electron energy, before energy losses to calculated scattering and energy losses. "1" is used to predict the mid-point energy, which is between the starting and final electron energy, and "2" is an implicit method, using the final electron energy to calulate the energy losses. \par
 
@@ -1640,6 +1651,7 @@ The position and velocity vector direction of the current electron is updated to
 \end{minted}
 
 \subsubsection{Substrate electron bombardment atom displacement}
+\label{sec:substrate displacement}
 
 In this portion of the code, each target atom along the flying group is checked to determine if the energy lost to elastic scattering from the electron was enough to cause a displacement (line 578). The "mmmm" counter is used to track each of these target atoms within the flying distance group. \par
 
