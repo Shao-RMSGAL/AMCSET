@@ -79,6 +79,7 @@
 \pagebreak
 
 \section{Notes on Syntax}
+\label{sec:syntax}
 
 This section will quickly explain the most important syntax to be aware of in QuickBASIC. This language is unlike many other languages and requires some additional familiarization before you can fully understand how this program works. \par
 
@@ -361,7 +362,7 @@ Table \ref{tbl:reserved characters} most of the reserved characters in QuickBASI
 \subsubsection{Function Declarations}
 \label{sec:function declarations}
 
-A number of functions and subroutines are declared at the start of the program. This is a feature of quickBASIC, where functions and subroutines must be declared first and then defined. The behavior of each of these functions and subroutines will be described in detail later on.
+A number of functions and subroutines are declared at the start of the program (lines 1-9). This is a feature of quickBASIC, where functions and subroutines must be declared first and then defined. The behavior of each of these functions and subroutines will be described in detail later on. \par
 
 \begin{minted}[fontsize=\tiny,mathescape=false,linenos]{quickbasic.py:QuickBASICLexer -x}
     DECLARE SUB EMAGIC (X!)
@@ -375,9 +376,8 @@ A number of functions and subroutines are declared at the start of the program. 
     DECLARE SUB IMAGE(Scan(),NewDeltaZ, NewDeltaX, NewDeltaY, NewTheta, NewAlpha, NewEP, Resolution,size)
 \end{minted}
 \subsubsection{Constants and Variables} 
-A number of constants and variables are defined in this portion of the code. They are shown in Table \ref{tbl:constants_and_variables}
+A number of constants and variables are defined in this portion of the code (lines 13-30). They are shown in Table \ref{tbl:constants_and_variables}. \par
 \pagebreak
-
 
 {    
     \scriptsize
@@ -447,8 +447,14 @@ A number of constants and variables are defined in this portion of the code. The
     \end{longtable}
 }
 \pagebreak
-Here some of the values shown in Table \ref{tbl:constants_and_variables} are assigned. Note that these are variables that are not first declared.
+
+Here some of the values shown in Table \ref{tbl:constants_and_variables} are assigned. Note that these are variables that are not first declared. \par
+
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=10]{quickbasic.py:QuickBASICLexer -x}
+    
+    
+    
+
     e_range = 80000000 '7000000 'interested region depth in unit of Angsrom
     e_interval = 30 'interval number for the interest region
     e_ave_range = 1 'range to averageing neighboring data
@@ -470,9 +476,9 @@ Here some of the values shown in Table \ref{tbl:constants_and_variables} are ass
 \end{minted}
 \subsubsection{Arrays}
 
-The "RANDOMIZE TIMER" command sets the seed for the random number generator to the current system time. Dividing by three divides the seed (the system time) by three. \textbf{It is not clear why this value is divided by 3.} \par
+The "RANDOMIZE TIMER" command (line 28) sets the seed for the random number generator to the current system time. Dividing by three divides the seed (the system time) by three. \textbf{It is not clear why this value is divided by 3.} \par
 
-Following that, several different arrays are declared using the DIM command. For example, "DIM RN(flyC) AS DOUBLE" declares an array called "RN" with a size that is the same as the value of "flyC". The data type of the array entries are "DOUBLE", which is a 64-bit (generally) floating point number. Table \ref{tbl:arrays} lists the different arrays present in the program, as well as their purposes. Note that any lines missing the "AS <Datatype>" expression is automatically established as an array of SINGLEs, or single-precision floating point numbers, which are usually represented with 32 bits. \par
+Following that, several different arrays are declared using the DIM command (lines 30-53). For example, "DIM RN(flyC) AS DOUBLE" declares an array called "RN" with a size that is the same as the value of "flyC". The data type of the array entries are "DOUBLE", which is a 64-bit (generally) floating point number. Table \ref{tbl:arrays} lists the different arrays present in the program, as well as their purposes. Note that any lines missing the "AS <Datatype>" expression is automatically established as an array of SINGLEs, or single-precision floating point numbers, which are usually represented with 32 bits. Further syntax will not be explained in such detail. Please reference \ref{sec:syntax} for additional information on QuickBASIC syntax. \par
 
 \begin{table}[h]
     \centering
@@ -507,7 +513,11 @@ Following that, several different arrays are declared using the DIM command. For
     \label{tbl:arrays} \\
 \end{table}
 {
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=28]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=32]{quickbasic.py:QuickBASICLexer -x}
+
+
+
+
     RANDOMIZE TIMER / 3
     
     DIM RN(flyC) AS DOUBLE
@@ -542,7 +552,7 @@ Following that, several different arrays are declared using the DIM command. For
 \end{minted}
 \subsubsection{Reading in Mott Scattering Parameters}
 
-This portion of the code reads the Mott Scattering Parameters in from literature, up to element 96. \par
+This portion of the code (lines 59-73) reads the Mott Scattering Parameters in from literature, up to element 96. \par
 
 \vspace{0.5 cm}
 
@@ -553,7 +563,7 @@ OPEN "C:\Users\lshao.AUTH\Downloads\Mott.txt" FOR INPUT AS #1
 opens a file as the file handle "\#1" from the directory "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash Downloads\textbackslash Mott.txt". Note that this should be changed to the relevant directory on other machines. The file handle is closed once reading is done.
 
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=54]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=67]{quickbasic.py:QuickBASICLexer -x}
     ROW = 1   ‘starting row number for data reading
     OPEN "C:\Users\lshao.AUTH\Downloads\Mott.txt" FOR INPUT AS #1 ‘Reading the input file for Mott scattering
     DO WHILE NOT EOF(1)   ‘Continue to read until the end of the input file
@@ -568,7 +578,6 @@ opens a file as the file handle "\#1" from the directory "C:\textbackslash Users
     CLOSE #1 ' Close the file after reading the last input line
 
     PRINT "mott(26,1,1)="; mott(26, 1, 1) ‘print on the screen to check if the reading is accurate
-    PRINT "mott(26,1,1)="; mott(26, 1, 1) ‘print on the screen to check if the reading is accurate
 \end{minted}
 \subsubsection{Reading in Electron Screening Parameters}
 
@@ -582,7 +591,7 @@ This portion of the code reads the Electron Screening Scattering Parameters in f
 
 opens a file as the file handle "\#2" from the directory "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash Downloads\textbackslash screen factor.txt". Note that this should be changed to the relevant directory on other machines. The file handle is closed once the reading is done.
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=69]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=81]{quickbasic.py:QuickBASICLexer -x}
 
     DIM SHARED scr(92, 6) ‘Creating a matrix of size 96x6 to save parameters for charge screening effect. 96 is the number of elements (from Z=1 to Z=96)
     ROW = 1 ‘starting row number for data reading
@@ -632,7 +641,7 @@ In this section of the code, a number of files are opened for output files. Tabl
 
 Note that the directories used here are all inside of "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash ". To run this code on other machines, these lines must be changed to the correct directory.
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=82]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=94]{quickbasic.py:QuickBASICLexer -x}
     ‘Lines 108 to 120 are for creating various output files to save data calculated. 
     OPEN "C:\Users\lshao.AUTH\Downloads\PRANGEEd40.DAT" FOR OUTPUT AS #1
     OPEN "C:\Users\lshao.AUTH\Downloads\simulEd40.DAT" FOR OUTPUT AS #2
@@ -653,7 +662,7 @@ Note that the directories used here are all inside of "C:\textbackslash Users\te
 
 At this point in the code, the user is prompted for a number of important parameters, such as whether this is an electron bombardment, the ion/electron energy, and substrate information, along with other important details. All of the variables assigned here are described in Table \ref{tbl:constants_and_variables}.
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=96]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=108]{quickbasic.py:QuickBASICLexer -x}
     
     
     INPUT "Is this an electron bombardment (1=yes, 0=no)", iontype  ‘iontype decides whether it is an electron bombardment or ion bombardment. Default without typing = 0
@@ -699,7 +708,7 @@ At this point in the code, the user is prompted for a number of important parame
 
 More arrays are declared here, mostly for storing particle collision information        . The details are listed in Table \ref{tbl:arrays}. Several arrays are of size 2000. This is an arbitrary choice which is representative of the maximum collision recursion depth (number of generations of knock-on particles.). 
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=136]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=148]{quickbasic.py:QuickBASICLexer -x}
 
     
     DIM XP(2000) AS DOUBLE 'saving X POSTION of ion/electron projectiles and target atoms, up to 2000 in a single bombardment
@@ -720,7 +729,7 @@ More arrays are declared here, mostly for storing particle collision information
 
 This portion of the code runs through the matrices initialized for storing particle information and zeros all of the elements in each array. Some other variables are set or zerod as well.
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=151]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=163]{quickbasic.py:QuickBASICLexer -x}
 
     ‘lines 187 to 199 for setting initial values of matrix as zero
     FOR rum = 1 TO 2000
@@ -772,7 +781,7 @@ Before explaining the bombardment calculations in detail, it will be useful to u
 
 Here, a number of initialization steps are taken to prepare for the bombardment simulation. First, the random number generator is initialized to the system time divded by three. This only happens once for every 200 simulations. \par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=181]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=194]{quickbasic.py:QuickBASICLexer -x}
 
 
     FOR SIMUL = 1 TO SIMULS    ‘starting the bombardment 
@@ -780,8 +789,9 @@ Here, a number of initialization steps are taken to prepare for the bombardment 
         IF SIMUL - 200 * INT(SIMUL / 200) = 0 THEN RANDOMIZE TIMER / 3  ‘change random number seed every 200 particles
 \end{minted}
 Then, depending on whether the bombardment projectile is an ion or an electron, a number of particle collision data arrays are initialized with the energy, mass, and charge (for ions only) specified by the user, as well as the particle type. All particles are started at x,y,z = 0. \par
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=186]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=199]{quickbasic.py:QuickBASICLexer -x}
     
+
         IF iontype = 1 THEN 'iontype=1 means electron irradiation, lines 225 to 236 are for initial projectile conditions
             XP(1) = 0 ‘projectile starting location is at the original point with X=0
             YP(1) = 0 ‘projectile starting location is at the original point with Y=0
@@ -811,7 +821,7 @@ Then, depending on whether the bombardment projectile is an ion or an electron, 
         END IF
 \end{minted}
 \textbf{Finally, the Scan array is populated with some information. The exact purpose of this is not known.}
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=213]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=228]{quickbasic.py:QuickBASICLexer -x}
         'scanning ===============================
     
         FOR i = 0 TO sizeScan 'scanning
@@ -845,8 +855,9 @@ Some bounds checking statements are then run to ensure that the particle has not
     \item Scattered off the surface: If the Z-position of the particle is less than 0, then the particle bounced off the surface of the substrate. This is considered a back-scattered particle, which no longer needs to be simulated. A counter tracking the number of backscattered particles (SPUTTER) is incremented to account for the particle, and the simulation continues to the parent particle.
 \end{enumerate}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=233]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=246]{quickbasic.py:QuickBASICLexer -x}
     
+
         rum = 1        ‘the first simulation of a new bombardment event 
         MASS2 = MASSSUB  ‘substrate atomic mass
         Z2 = ZSUB  ‘substrate atomic number (charge)
@@ -879,7 +890,7 @@ In all other cases, the number of groupings is set to fly1. \par
 
 \textbf{There are a number of issues with this portion of the code however. Contrary to the comments, the value of fly0 and fly1 are equal (1000) and are not changed at any point in the code. Also, the value of flyjudge is also not changed, and is set to 1 at the start of the code. The result is that the value of flyC is always 1000 regardless of the energy of the projectile.}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=255]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=269]{quickbasic.py:QuickBASICLexer -x}
 
     
         IF Ptype(rum) = 1 AND EP(rum) < flyjudge * e_stopping THEN flyC = fly0   ‘if the projectile is an electron and if the electron energy is smaller than a value, the number of flying distances to be combined for evaluation is set to be fly0.  The critical value is flyjudge X e_stopping.  Flyjudge is a number defined in the input. e_stopping is the value simulations stop when electron energy is reduced to this value.  This command is used to avoid the situation that final electron energy become negative when the flying distance combination overestimates the energy loss. 
@@ -899,7 +910,7 @@ The radial stopping distance from the z-axis is calculated using Equation \ref{e
 
 A check is performed to ensure that the electron is inside of the plotting area. Once that is confirmed, the location of the stopped electron is recorded in the "e\_output" array. This array has dimensions "e\_interval $\times$ e\_interval $\times$ 4", where e\_interval is a constant with a value of 30. The third dimension corresponds to different data type, where \textbf{"1" is the number of stopped electrons, "2" is the location where energy was lost from an electron, "3" is the location where elastic occursed, and "4" is the location of vanacies caused by electron bombardment.} This essentially divides an area of interest, defined by the "e\_range" constant (Currently set to \SI{80000000}{\angstrom}) into 30 slices along the z-axis. In each of these slices are 30 concentric rings that expand out from the z-axis. The slice that an electron stops in is determined by INT(1 + E1 / e\_deltaDep), while the ring that it stops in is found using INT(1 + E0 / e\_deltaLat). e\_deltaDep is defined as e\_range/e\_interval, or approximately \SI{2666666}{\angstrom} This is the width of each slice, and the radial separation of each ring. When, for example, an electron stops in a particular slice, the code below increments the element in the array to record the fact that an electron stopped in that slice. This information can later be used for analysis. \par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=260]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=274]{quickbasic.py:QuickBASICLexer -x}
 
     
         ''    IF mp(rum) = MASS2 THEN PRINT #4, USING "##.###^^^^^ ##.###^^^^^ ##.###^^^^^"; XP(rum); YP(rum); ZP(rum) 'modified 01/12/01
@@ -923,7 +934,7 @@ A check is performed to ensure that the electron is inside of the plotting area.
         END IF
 \end{minted}
 Notably, the code performs an identical action even if the projectile type is an ion. \textbf{It seems that, contrary to the comments and naming schemes of the variables, e\_output is used to store information on ions as well.}
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=281  ]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=295]{quickbasic.py:QuickBASICLexer -x}
 
         IF Ptype(rum) = 0 AND EP(rum) < ion_stopping THEN    ‘check if the new particle is an atom and the energy is below the threshold value
     
@@ -972,7 +983,7 @@ is a collision parameter $R$ is a random number between 0,1, including 0 and exc
 
 \textbf{A significant potential problem is the fact that the CP variable overrides the CP array. Whether this effects the behavior of the code is not clear.}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=296]{quickbasic.py:QuickBASICLexer -x}   
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=310]{quickbasic.py:QuickBASICLexer -x}   
 
     
         '================== BEGIN A NEW COLLISION
@@ -993,7 +1004,7 @@ The energy after electron energy loss is found using:
 
 where $E_{P0}$ is the pre-collision energy. 
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=306]{quickbasic.py:QuickBASICLexer -x}   
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=320]{quickbasic.py:QuickBASICLexer -x}   
 
     
             '================== COLLISON PARAMETER
@@ -1003,7 +1014,7 @@ where $E_{P0}$ is the pre-collision energy.
 
 Once the electronic energy loss is calculated, a check is performed to determine if the ion has stopped. If the energy of the particle is less than the "ion\_stopping" variable, then the ion is considered stopped. The "rum" counter is decremented to indicate a finished collision, and the code jumps up to the "100" label on line 239 (Section \ref{sec:bounds checking}) to continue calculations on another projectile.
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=311]{quickbasic.py:QuickBASICLexer -x}   
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=325]{quickbasic.py:QuickBASICLexer -x}   
 
             IF EP(rum) < ion_stopping THEN ‘check again if adding electronic stopping leads to  ion stopping. Ion_stopping is the energy criteria to stop. The stopping criteria is not necessary to be threshold displacement energy
                 rum = rum – 1 ‘after the stopped atom finishes the position counting, move to the previously saved not-yet-finished collision, by pointing the index number to rum-1. 
@@ -1024,7 +1035,7 @@ The results of TMAGIC are then passed to a function called "AMAGIC" to convert t
     \label{fig:relative angles explanation}
 \end{figure}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=311]{quickbasic.py:QuickBASICLexer -x}   
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=332]{quickbasic.py:QuickBASICLexer -x}   
             CALL TMAGIC(mp(rum), CP(rum), MASS2, Z2, EP(rum), P)  
             'TO get recoil energy RE, deviation angle from the incident direction for the projectile THETA1RELATIVE, , recoil direction of target atom with respect to the incident direction THETA2RELATIVE
             CALL AMAGIC(THETAP(rum), ALPHAP(rum), THETA1RELATIVE, THETA2RELATIVE)  ‘obtain the new directions with respect to the original xyz coordinate for the projectile and target atom (THETAP is the angle away from the z axis, ALPHAP is the angle away from the x axis on YZ plane); THETAP(RUM), ALPHA(RUM) are angles before collision; THETA1 and THETA2 are new angles relative to the direction before the collision
@@ -1032,7 +1043,7 @@ The results of TMAGIC are then passed to a function called "AMAGIC" to convert t
 
 This portion of the code saves information regarding the collision to the target atom (rum + 1). The position of the target is stored as the position of the incident ion, offset by the atomic separation in the direction of the ion's velocity vector. The target charge is then set to the value for the substrate. The target mass is set to the mass of the substrate. This is logical, as the target atom will naturally be one of the substrate atoms. The target velocity angle (THETA2, ALPHA2), as well as the energy (RE) are assigned to the target.
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=314]{quickbasic.py:QuickBASICLexer -x}   
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=335]{quickbasic.py:QuickBASICLexer -x}   
             
             '=====TEMPERARY SAVE INFORMATION.  Using matrix at index rum+1 to save everything about the target. Note the information about project is save with index rum
     
@@ -1055,7 +1066,7 @@ Following that, a line is drawn in the window (which is a 630 $\times$ 330 pixel
 
 If the mass of the particle is equal to that of the incident ion, the line is drawn in red. In the case that the mass of the projectile is equal to that of the substrate, the line is drawn white (color code "1"). \textbf{Note that for self-bombardment, where the ion and the substrate are the same atom, both lines will be drawn. Since the "white line" command comes later, it will likely draw over the red line.}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=325]{quickbasic.py:QuickBASICLexer -x}   
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=346]{quickbasic.py:QuickBASICLexer -x}   
 
     
             WINDOW SCREEN(0, 0)-(WINDOWX, WINDOWY)  ‘define/draw a window
@@ -1074,7 +1085,7 @@ In the case that the transferred energy (RE) is not enought to displace the targ
 
 The simulation will continue calculating the collision information for current particle, and will jump back to the "100" label on line 239 (Section \ref{sec:bounds checking}). 
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=335]{quickbasic.py:QuickBASICLexer -x}   
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=356]{quickbasic.py:QuickBASICLexer -x}   
 
     
     
@@ -1096,7 +1107,7 @@ The simulation will continue calculating the collision information for current p
 
 In the case that RE was large enough to cause a displacement, the same assignments as before are made for the current particle. \textbf{This is not necessary, since the same assignments are done whether a cascade happens or not.}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=350]{quickbasic.py:QuickBASICLexer -x}   
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=371]{quickbasic.py:QuickBASICLexer -x}   
 
             '====IF RE>0.02  A target displacement is created. The new atom needs to be assigned with rum+1.  From lines 411 to 420, the information transfer for rum+1 already happened. So, only the projectile needs to be updated for rum
     
@@ -1114,7 +1125,7 @@ Here, since the target atom is displaced, the vanacy created must be accounted f
 
 Following that, rum is then incremented to focus the simulation calculations on the target particle that was displaced. The program then jumps to the "100" label on line 239 (Section \ref{sec:bounds checking}) to continue calculations for the cascaded particle.
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=361]{quickbasic.py:QuickBASICLexer -x}   
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=382]{quickbasic.py:QuickBASICLexer -x}   
 
             IF ZP(rum + 1) > 0 AND ZP(rum + 1) < SUBWINDOW THEN  ‘Since one displacement occurs, vacancy information needs to be saved, if the displacement position is within two boundaries: surface and backside.
                 '            V(INT(ZP(rum + 1))) = V(INT(ZP(rum + 1))) + 1  ‘optional for vacancy counting 
@@ -1138,7 +1149,7 @@ All of the code in Section \ref{sec:ion bombardment} was for ion bombardment. Th
 
 A single group of flying distances is generated using random numbers. An array "RL" with a size corresponding to the variable "flyC" is used to store random numbers to be used to calculate the flying distances.
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=374]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=395]{quickbasic.py:QuickBASICLexer -x}
     
         'Below is for electron irradiation
     
@@ -1152,7 +1163,7 @@ A single group of flying distances is generated using random numbers. An array "
 
 The randomly generated numbers are then sorted in acending order. The following is an implementation of the bubble sort algorithm. More on the bubble sort algorithm: \href{https://en.wikipedia.org/wiki/Bubble_sort}{Bubble Sort Wikipedia Page}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=383]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=404]{quickbasic.py:QuickBASICLexer -x}
 
             FOR trial3 = 1 TO flyC – 1   ‘first step to rank random number from low to high. Here is to pick from the original order.
                 FOR trial4 = trial3 + 1 TO flyC  ‘compare with the rest after the one being picked 
@@ -1207,7 +1218,7 @@ and for all other angles,
 
 where $\sigma_{t}$ is the total Mott scattering cross section, and $\frac{d\sigma}{d\theta}$ is the differential cross section. Note that the electron energy is multiplied by a variable called "correctFactor". This variable is important, as it is used to correct the electron energy to a more accurate value than the value before scattering begins. This is part of the "mid-point approximation method" used to increase the accuracy of scattering calculations. This method will be discussed in greater detail later on.
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=393]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=414]{quickbasic.py:QuickBASICLexer -x}
 
             
             TotalCross = 0      ‘preparing to calculate integrated cross section 
@@ -1231,7 +1242,7 @@ The flying distances for the current group of electrons is calculated here. For 
 
 where $L$ is the flying distance in \si{\angstrom}, $R$ is a random number between 0 (inclusive) and 1 (exclusive), [0,1), $N$ is the atomic density of the substrate in \si{atoms/\angstrom^3}, and $\sigma_T$ is the total Mott scattering cross section. The values for these flying distances are stored in the "RN" array. There is a check that assings the random number to a variable called "ForLSelect", which checks if the random number is 0. It is important that the number is not zero, as this would result in an error, as the natural logarithm in Equation \ref{eq:flying distance} of 0 is undefined. In addition, the total flying distance of the entire group is calculated by calculating the sum of all the individual flying distances and storing them in a variable called "Lselected".
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=405]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=426]{quickbasic.py:QuickBASICLexer -x}
     
     
     
@@ -1294,7 +1305,7 @@ Finally, if the angle is at the right-hand boundary where $i = m - 1$ (line 436)
 
 To terminate this process, a large value is chosen for the last random number (line 423). \textbf{Note that the code comments call this value an "angle", however it instead represents a partial Mott scattering cross section}. This is important, as if the last random number is smaller than the partial Mott scattering cross section, lines 432 and 439 would result in an infinite loop, hanging the program. Finally, ForThetaSelect0 is set to ForThetaSelect1 (line 443) to store the previous calculated Mott scattering angle. 
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=417]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=438]{quickbasic.py:QuickBASICLexer -x}
 
     
             ForThetaSelect0 = 0  ‘prepare to identify scattering angle. ThetaSelect0 is the integrated cross section. It is zero before the integration starts 
@@ -1328,7 +1339,7 @@ To terminate this process, a large value is chosen for the last random number (l
 
 This portion of the code randomly arranges the scattering angles found previously. This is needed to ensure that the scattering angle doesn't strictly increase for each flying distance. The code steps back from the last element in the scattering angles array "RA", and swaps it with a random element in RA. It does this for every element, randomly shuffling the array. This is an implementation of the Fisher-Yates shuffle, or the Knuth shuffle. More on this algorithm: \href{https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle}{Fisher--Yates Shuffle}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=446]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=467]{quickbasic.py:QuickBASICLexer -x}
     
     ‘lines 615 to 622 is to go through the flying distance group, from the last one to the first one, randomly pick one before the current one and switch the value. This is used to disorder the ordered scattering angle and randomly assign it them to different free flying distances. 
             FOR trial99 = flyC TO 2 STEP -1   ‘go through all distances from the last one to the first one
@@ -1349,7 +1360,7 @@ The energy transfer from Mott scattering is calculated using the following equat
 
 where $E_t$ is the recoil energy in J (totalRE, in keV), $E_k$ is the electon energy in J (EP(rum) in keV), $m_e$ is the mass of an electron in kg, $c$ is the speed of light in \si{m/s}, and $M$ is the substrate mass (MASSSUB, in amu). In the code, the constants are simplified into numerical values, and converted to units so that the value of totalRE is in keV. The final energy loss is stored at index "rum" in the "RE" array. This is used later to determine if subtrate atoms are displaced. \par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=454]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=475]{quickbasic.py:QuickBASICLexer -x}
     
     
             totalRE = 0   ‘prepare for the energy loss calculation 
@@ -1367,7 +1378,7 @@ The total distance that the projectile has traveled is calculated by adding the 
 
 The energy loss due to ionization is then found using the "IoniElecLoss" subroutine, which sets the value of the "IoniEloss2" variable to the amount of energy lost, given the substrate atomic charge, density (in \si{atoms/cm^3}), and corrected projectile energy (in keV). These are represented by ZSUB, SUBDENSITY * 1E24, and EP(rum) * correctFactor, respectively. A check is then performed on line 470 to ensure that this energy loss is always positive. The result is energy lost per unit distance (\si{keV/cm}).\par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=465]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=486]{quickbasic.py:QuickBASICLexer -x}
     
             ''''''''''''''''''''''''''''''''''''''''''''''
             Ltotal = Ltotal + Lselected    ‘adding all free flying distances to get total flying distance for the whole group 
@@ -1378,7 +1389,7 @@ The energy loss due to ionization is then found using the "IoniElecLoss" subrout
 
 The Bremsstrahlung is calculated using the "BremsELoss" subroutine, which sets the BEloss variable as the lost energy in (\si{keV/cm}). It takes the same arguments as "IoniElecLoss. Again, a check ensures that the returned value is always positive. \par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=465]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=492]{quickbasic.py:QuickBASICLexer -x}
 
     
             CALL BremsELoss(ZSUB, SUBDENSITY * 1E24, EP(rum) * correctFactor) ‘calculate energy loss due to braking irradiation 
@@ -1397,7 +1408,7 @@ Now that all sources of energy loss are known, the total energy loss is calculat
 
 Note that the energy loss due to ionization and Bremsstrahlung are multiplied by the total flying group distance "Lselected" to get the total energy loss. \par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=473]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=500]{quickbasic.py:QuickBASICLexer -x}
 
             DIM Energy1 AS DOUBLE
             DIM Energy2 AS DOUBLE
@@ -1409,7 +1420,7 @@ Note that the energy loss due to ionization and Bremsstrahlung are multiplied by
 
 At this point in the code, some adjustments need to be made for the "same electron energy" assumption. Since some energy is lost in each flying distance group due to Mott scattering, a correction factor "correctFactor" must be set to predict the midpoint energy of the electron. The "switch" variable is used to determine what type of method is used for energy prediction. "0" simply uses the starting electron energy, before energy losses to calculated scattering and energy losses. "1" is used to predict the mid-point energy, which is between the starting and final electron energy, and "2" is an implicit method, using the final electron energy to calulate the energy losses. \par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=473]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=505]{quickbasic.py:QuickBASICLexer -x}
 
     
     
@@ -1430,7 +1441,7 @@ where $\lambda_i$ is a correction factor applied to the starting energy to get t
     E_{\text{middle, i}} = \lambda_i E_{i - 1}
 \end{equation}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=482]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=512]{quickbasic.py:QuickBASICLexer -x}
 
     
     
@@ -1449,7 +1460,7 @@ where $\lambda_i$ is a correction factor applied to the starting energy to get t
 
 This section of the code is used if the implicit method is used (the final energy after energy losses is used to calculate energy losses). A correction factor is similarly used, but the factor is instead used to predict the final energy, instead of the mid-point energy. This is not used in the current version of the code, but can be enabled by setting the "switch" variable to 2. \par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=496]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=526]{quickbasic.py:QuickBASICLexer -x}
 
     
             
@@ -1475,7 +1486,7 @@ This section of the code is used if the implicit method is used (the final energ
 
 Once all the calculations are complete, the position of the electron before positional updates are stored, similar to what is done in Section \ref{sec:stopped particle}.
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=532]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=547]{quickbasic.py:QuickBASICLexer -x}
     
     
             E0 = (XP(rum) ^ 2 + YP(rum) ^ 2) ^ 0.5    ‘lateral distance from z axis
@@ -1501,7 +1512,7 @@ For each flying distance, the motion of the electron should be calculated. This 
 
 Note that "rum" is used to index the positional arrays for subsequnt electron flying distances. This is a deviation from the normal use of rum (target atom displacement tracking). Note also that each subsequent position is calculated using the previous position, using the index "rum + trial9 - 1" to add on to the previous value. The value at "rum" remains unchanged. \par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=517]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=562]{quickbasic.py:QuickBASICLexer -x}
     
     
             FOR trial9 = 1 TO flyC  ‘for each collision after each flying distance, calculate the direction 
@@ -1514,7 +1525,7 @@ Once the flying distance positions are calculated, the relative scattering angle
 
 The absolute angles are then appled in the "THETAP" and "ALPHAP" arrays for the electron, as well as the "THETA2" and "ALPHA2" arrays for the target atoms (lines 532 - 535). \par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=523]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=568]{quickbasic.py:QuickBASICLexer -x}
     
     
     
@@ -1536,7 +1547,7 @@ The absolute angles are then appled in the "THETAP" and "ALPHAP" arrays for the 
 
 The code for plotting the electron path is similar to that done in Section \ref{sec:ion plotting}. An option to plot target atoms is commented out. Because the individual flying distances are short, only the whole flying group is plotted (ZP(rum + flyC) and XP(rum + flyC) on line 546).
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=538]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=583]{quickbasic.py:QuickBASICLexer -x}
     
     
     ‘print on the screen, number of electrons simulated out of the total to be calculated 
@@ -1553,7 +1564,7 @@ The code for plotting the electron path is similar to that done in Section \ref{
 
 The new position of the electron is calculated, as the previous one is no longer needed for plotting purposes. First the deltas in X, Y, and Z are calculated and stored in "NewDeltaX", "NewDeltaY", and "NewDeltaZ". The new velocity vecotr angles are also calculated and stored in "NewTheta" and "NewAlpha", and the new energy is set to "NewEP" (lines 540-545).
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=538]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=593]{quickbasic.py:QuickBASICLexer -x}
     
     
             NewDeltaZ = ZP(rum + flyC) - ZP(rum)
@@ -1581,7 +1592,7 @@ The new position of the electron is calculated, as the previous one is no longer
 
 The position and velocity vector direction of the current electron is updated to the position following the flying distance group. \textbf{In addition, some other values are redundantly set to the same value, indicating no change in charge, mass, or particle type. The energy was updated on line 512.} (Lines 563 - 571). 
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=561]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=616]{quickbasic.py:QuickBASICLexer -x}
             
     ‘lines 797 to 805, update position after each flying distance group, transfer other information needed.  
             ZP(rum) = ZP(rum + flyC)
@@ -1603,7 +1614,7 @@ In this portion of the code, each target atom along the flying group is checked 
 
 If the threshold energy is met, then the target atom's position, charge, mass, velocity vector, type, and energy are set at index "rum + mmmm" (lines 579 - 587). \par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=572]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=627]{quickbasic.py:QuickBASICLexer -x}
     
     
     
@@ -1630,7 +1641,7 @@ This portion of the code records the vacancy created by the electron. It follows
 
 The simulation then goes on to calculate the cascaded particles from the electron bombardment. This is done up to "mmmm" times, or for however many cascaded particles are created (line 513). The energy of the electron causing the vacancy is then written to the "VancancyEd40.txt" (See Table \ref{tbl:output files}).
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=590]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=645]{quickbasic.py:QuickBASICLexer -x}
 
                     E0 = (XP(rum + mmmm) ^ 2 + YP(rum + mmmm) ^ 2) ^ 0.5
                     E1 = ZP(rum + mmmm)
@@ -1687,7 +1698,7 @@ The main simulation has ended by this point. The code will now focus on outputti
 
 First, all of the data in the e\_output array is copied to the "Backup\_e\_output" file. \par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=638]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=693]{quickbasic.py:QuickBASICLexer -x}
     
     
     '''''''FOR m = 0 TO sizeScan
@@ -1731,7 +1742,7 @@ This is accomplished by adding the datapoints together in the "combine\#" variab
 
 where $d_{\text{smooth,i}}$ is the $i$\textsuperscript{th} smoothed datapoint,$d_{\text{raw}, i}$ is the $i$\textsuperscript{th} raw datapoint, and $n$ is the number of adjacent datapoints to smooth with.
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=669]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=724]{quickbasic.py:QuickBASICLexer -x}
     
     
     FOR R0 = 1 + e_ave_range TO e_interval - e_ave_range
@@ -1766,7 +1777,7 @@ This code counts up all of the electrons to stop within various slices of the re
 
 The summation of electrons in a slice at a certain depth is stored in the "accum" variable, and is output to file \#9, which corresponds to the "Projected\_e\_erangeImageEd40.txt" file (See Table \ref{tbl:output files}). The depth is converted from \si{\angstrom} to \si{\micro \meter} on line 700, and the number of electrons found in a slice is divided by the total number of electrons simulated. This is then divided by the slice length (converted to \si{\micro\meter}), to result in a final unit of \si{fraction\ of\ total\ electrons/\micro\meter}. 
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=693]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=748]{quickbasic.py:QuickBASICLexer -x}
     
     
     FOR W0 = 1 TO e_interval
@@ -1780,7 +1791,7 @@ The summation of electrons in a slice at a certain depth is stored in the "accum
 
 This extracts and stores more information from the e\_output array in the form of "Metric of interest/electron/unit of volume". For each data type stored in the e\_output array, the value is divided by the total number of electons, \textbf{as well as the volume of the annular slice (line, 711, it is not clear how this formula works)}. The results are written to the "e-outimageEd40" file (See Table \ref{tbl:output files}). The total integrated number of electrons, ionization energy loss, elastic energy loss, and displacements are printed to the output.
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=702]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=757]{quickbasic.py:QuickBASICLexer -x}
     
     
     test_e = 0
@@ -1822,7 +1833,7 @@ The input arguments "THETA0" and "ALPHA0" correspond to the current velocity vec
 
 The output of this subroutine is returned in the "THETA1" and "ALPHA1" variables for absolute velocity vector of the projcetile relative to the simulation coordinate system, while "THETA2" and "ALPHA2" correspond to the target atom's velocity direction. \par
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=702]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=779]{quickbasic.py:QuickBASICLexer -x}
     
     SUB AMAGIC (THETAO, ALPHAO, THETA1RELATIVE, THETA2RELATIVE)
         SHARED PI
@@ -1889,7 +1900,7 @@ The output of this subroutine is returned in the "THETA1" and "ALPHA1" variables
 
 \subsubsection{DF Function}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=768]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=841]{quickbasic.py:QuickBASICLexer -x}
 
     FUNCTION DF (X, COLUMBIAVK, Z1, Z2, AU)
         DF = F(X, COLUMBIAVK, Z1, Z2, AU) / X + COLUMBIAVK / X * (.35 * EXP(-.3 / X / AU) * .3 / AU + .55 * EXP(-1.2 / X / AU) * 1.2 / AU + .1 * EXP(-6 / X / AU) * 6 / AU)
@@ -1898,7 +1909,7 @@ The output of this subroutine is returned in the "THETA1" and "ALPHA1" variables
 
 \subsubsection{EG MAGIC Subroutine}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=764]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=845]{quickbasic.py:QuickBASICLexer -x}
 
     SUB EMAGIC (X)
         SHARED ATOMD
@@ -1915,7 +1926,7 @@ The output of this subroutine is returned in the "THETA1" and "ALPHA1" variables
 
 \subsubsection{F Function}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=780]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=857]{quickbasic.py:QuickBASICLexer -x}
     
     FUNCTION F (X, COLUMBIAVK, Z1, Z2, AU)
         '===========================UNIVERAIAL SCREENING POTENTIAL=================
@@ -1933,7 +1944,7 @@ The output of this subroutine is returned in the "THETA1" and "ALPHA1" variables
 
 \subsubsection{TMAGIC Subroutine}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=793]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=870]{quickbasic.py:QuickBASICLexer -x}
     
     SUB TMAGIC (MASS1, Z1, MASS2, Z2, INELAB, P)
     
@@ -2019,7 +2030,7 @@ The output of this subroutine is returned in the "THETA1" and "ALPHA1" variables
 
 \subsubsection{DSCMOTT Subroutine}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=874]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=951]{quickbasic.py:QuickBASICLexer -x}
     
     SUB DSCMOTT (mott(), scr(), ElectronEnergy, SubstrateZ, Theta)
     
@@ -2065,7 +2076,7 @@ The output of this subroutine is returned in the "THETA1" and "ALPHA1" variables
 
 \subsubsection{IoniElecLoss Subroutine}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=915]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=992]{quickbasic.py:QuickBASICLexer -x}
     
     SUB IoniElecLoss (ZSUB, DENSITY, ElecE)
         ' SHARED IoniEloss2 AS DOUBLE
@@ -2091,7 +2102,7 @@ The output of this subroutine is returned in the "THETA1" and "ALPHA1" variables
 
 \subsubsection{BremsELoss Subroutine}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=936]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=1013]{quickbasic.py:QuickBASICLexer -x}
     
     SUB BremsELoss (ZSUB, DENSITY, ElecE)
         '   SHARED BEloss AS DOUBLE
@@ -2104,7 +2115,7 @@ The output of this subroutine is returned in the "THETA1" and "ALPHA1" variables
 
 \subsubsection{IMAGE Subroutine}
 
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=944]{quickbasic.py:QuickBASICLexer -x}
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=1021]{quickbasic.py:QuickBASICLexer -x}
     
     
     SUB IMAGE (Scan(), DeltaZima, DeltaXima, DeltaYima, Thetaima, Alphaima, Eima, Resolution, size)
@@ -2182,6 +2193,9 @@ The output of this subroutine is returned in the "THETA1" and "ALPHA1" variables
     
     ' FOR i = 0 TO sizeScan 'scanning
     '    FOR j = 0 TO sizeScan 'scanning
+
+
+    
 \end{minted}
 
 \section{Code Conversion}
