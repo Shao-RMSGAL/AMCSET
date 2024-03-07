@@ -35,6 +35,7 @@
 \usepackage{longtable}
 \usepackage{graphics}
 \usepackage[colorlinks=true,allcolors=blue]{hyperref}
+\usepackage{parskip}
 
 \pgfplotsset{compat=1.18}
 
@@ -78,18 +79,32 @@
 
 \pagebreak
 
+\section{Introduction}
+
+This document contains a walkthrough of the eSRIM code written by Dr. Lin Shao. In addition, it also contains notes on QuickBASIC, the language that the original code is written in, as well as a plan for conversion of the code to a more performant language, C++. \par
+
+
+
+This document goes through the QuickBASIC code (dubbed eSRIM) written by Dr. Shao in line-by-line detail, explaining the purpose of each line of code in as much detail as possible. While some familiarization with code is required, Section \ref{sec:syntax} contains tables with the important keywords and reserved characters in QuickBASIC, allowing one to rapidly search for syntax that they are unfamiliar with in QuickBASIC, should they be unable to acertain the purpose of the code through context. \par
+
+QuickBASIC is a very readable language that is reasonably performant, due to the conversion of the code directly to machine code (the fastest form of code). Other programming languages (such as Python) instead use an "\href{https://en.wikipedia.org/wiki/Interpreter_(computing)}{interpreter}", which is a program that reads one line of code at a time and executes. Due to the nature of this type of programming language, Python is often not very performant. On the other hand, QuickBASIC is a compiled language, meaning that it uses a "\href{https://en.wikipedia.org/wiki/Compiler}{compiler}" to convert the source code directly to machine language for the comptuer's Central Processing Unit (CPU) to execute directly. This is the most performant type of programming language. \par
+
+Despite the performance benefit of being a compiled language, QuickBASIC is still far from being the most performant programming language. Several techniques can be used to further optimize eSRIM. For example, "\href{https://en.wikipedia.org/wiki/Multithreading_(computer_architecture)}{multi-threading}" can be used to simulate many particle collisions simultaneously. Compilers can also be used to optimize code directly using several advanced techniques. Some of these techniques include "\href{https://en.wikipedia.org/wiki/Loop_unrolling}{loop-unrolling}" or "\href{https://en.wikipedia.org/wiki/Inline_expansion}{function in-lining}". The art of low-level program optimization is a very complex and extensive field that can lead to order-of-magnitude improvements in code execution speed. However, these techniques are not utilized in QuickBASIC compilers to the same extent as they are in compilers for C++ such as \href{https://en.wikipedia.org/wiki/GNU_Compiler_Collection}{g++} or \href{https://en.wikipedia.org/wiki/Clang}{clang}. \par
+
+Maximizing performance in this type of simulation is important, as this type of simulation (\href{https://en.wikipedia.org/wiki/Monte_Carlo_method}{Monte-Carlo Method}) requires extensive generation of data. In the case of eSRIM, as many as 1000 simulations or more are needed to generate useful data. While the QuickBASIC eSRIM code can simulate several electron collisions (which is more computationally intensive than ion collisions) per second using the flying distance grouping optimization method (discussed later), this can still result in simulations taking several minutes to complete. By rewriting the code in a more optimized form, it is projected that the same simulations can take mere seconds. \par
+
+\clearpage
+
 \section{Notes on Syntax}
 \label{sec:syntax}
 
-This section will quickly explain the most important syntax to be aware of in QuickBASIC. This language is unlike many other languages and requires some additional familiarization before you can fully understand how this program works. \par
+This section contains two tables which can be used to understand how QuickBASIC syntax works. Table \ref{tbl:keywords} contains all of the keywords used in QuickBASIC in alphabetical order. This table can be used to understand how each keyword is used in QuickBASIC. \par
 
-\subsection{Comments}
-
-All comments in QuickBASIC are indicated using a single quote, "'". Any text following this symbol is treated as a comment, and does not affect the functionality of the code. 
+Table \ref{tbl:reserved characters} contains all of the reserved characters in QuickBASIC. These are special characters that QuickBASIC recognizes and performs special actions when it encounters them. For example, a single quote "'" is treated as a comment, and any text following a single quote on the same line is treated as a comment, meaning that the content of the comment is not considered code, and therefore the contents of a comment does not affect the functionality of the code. This is useful in describing the functionality of code. \par
 
 \subsection{Keywords}
 
-There are several reserved "keywords" in QuickBASIC which carry special meaning to the QuickBASIC compiler. Table \ref{tbl:keywords} contains a largely comprehensive list of all of these keywords, as well as their purpose:
+There are several reserved "keywords" in QuickBASIC which carry special meaning to the QuickBASIC compiler. Table \ref{tbl:keywords} contains a largely comprehensive list of all of these keywords, as well as their purpose: \par
 
 % Generated using ChatGPT 3.5, prompt: 
 % I am tabulating all of the keywords in QuickBASIC, along with their type (Function, Operator, etc.), use ( varA AND varB, for example), and purpose. This is a template with the ABS keyword.
@@ -321,7 +336,7 @@ There are several reserved "keywords" in QuickBASIC which carry special meaning 
 
 \subsection{Reserved characters}
 
-Table \ref{tbl:reserved characters} most of the reserved characters in QuickBASIC.
+Table \ref{tbl:reserved characters} contains most of the reserved characters in QuickBASIC. \par
 
 \begin{table}[h]
     \centering
@@ -357,8 +372,12 @@ Table \ref{tbl:reserved characters} most of the reserved characters in QuickBASI
     \end{tabular}
 \end{table}
 \section{The Code}
-\textbf{Note that any bolded text indicates an unknown value or an unanswered question.}
+\textbf{Note that any bolded text indicates an unknown value or an unanswered question.} This section contains a detailed walkthrough of all the code in the original eSRIM program written by Dr. Shao. The code totals 1100 lines. The code itself is contained in this section, along with line numbers. Different sections explaining the purpose of each section of code is placed in-line with the code. The purpose of every line is explained (except for comments and blank lines). In addition, there are several tables which contain constants, variables, arrays, functions, and output files, along with important properties and purposes. These tables can be referenced while reading the code to gain an understanding of how each variable/array/function/output file is used in context. \par
+
 \subsection{Initialization}
+
+This is the first portion of the eSRIM code, before any simulation is done. Here, various functions, variables and arrays are declared and initialized. In addition, output files are opened for use later in the simulation. \par
+
 \subsubsection{Function Declarations}
 \label{sec:function declarations}
 
@@ -375,9 +394,11 @@ A number of functions and subroutines are declared at the start of the program (
     DECLARE SUB BremsEloss (ZSUB, DENSITY, ElecE)
     DECLARE SUB IMAGE(Scan(),NewDeltaZ, NewDeltaX, NewDeltaY, NewTheta, NewAlpha, NewEP, Resolution,size)
 \end{minted}
+
+\clearpage
+
 \subsubsection{Constants and Variables} 
 A number of constants and variables are defined in this portion of the code (lines 13-30). They are shown in Table \ref{tbl:constants_and_variables}. \par
-\pagebreak
 
 {    
     \scriptsize
@@ -448,7 +469,7 @@ A number of constants and variables are defined in this portion of the code (lin
 }
 \pagebreak
 
-Here some of the values shown in Table \ref{tbl:constants_and_variables} are assigned. Note that these are variables that are not first declared. \par
+Here some of the values shown in Table \ref{tbl:constants_and_variables} are assigned (lines 14-31). Note that these are variables that are not first declared. \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=10]{quickbasic.py:QuickBASICLexer -x}
     
@@ -476,9 +497,9 @@ Here some of the values shown in Table \ref{tbl:constants_and_variables} are ass
 \end{minted}
 \subsubsection{Arrays}
 
-The "RANDOMIZE TIMER" command (line 28) sets the seed for the random number generator to the current system time. Dividing by three divides the seed (the system time) by three. \textbf{It is not clear why this value is divided by 3.} \par
+The "RANDOMIZE TIMER" command (line 36) sets the seed for the random number generator to the current system time. Dividing by three divides the seed (the system time) by three. \textbf{It is not clear why this value is divided by 3.} \par
 
-Following that, several different arrays are declared using the DIM command (lines 30-53). For example, "DIM RN(flyC) AS DOUBLE" declares an array called "RN" with a size that is the same as the value of "flyC". The data type of the array entries are "DOUBLE", which is a 64-bit (generally) floating point number. Table \ref{tbl:arrays} lists the different arrays present in the program, as well as their purposes. Note that any lines missing the "AS <Datatype>" expression is automatically established as an array of SINGLEs, or single-precision floating point numbers, which are usually represented with 32 bits. Further syntax will not be explained in such detail. Please reference \ref{sec:syntax} for additional information on QuickBASIC syntax. \par
+Following that, several different arrays are declared (lines 38-61) using the DIM command (lines 30-53). For example, "DIM RN(flyC) AS DOUBLE" declares an array called "RN" with a size that is the same as the value of "flyC". The data type of the array entries are "DOUBLE", which is a 64-bit (generally) floating point number. Table \ref{tbl:arrays} lists the different arrays present in the program, as well as their purposes. Note that any lines missing the "AS <Datatype>" expression is automatically established as an array of SINGLEs, or single-precision floating point numbers, which are usually represented with 32 bits. Further syntax will not be explained in such detail. Please reference \ref{sec:syntax} for additional information on QuickBASIC syntax. \par
 
 \begin{table}[h]
     \centering
@@ -552,15 +573,13 @@ Following that, several different arrays are declared using the DIM command (lin
 \end{minted}
 \subsubsection{Reading in Mott Scattering Parameters}
 
-This portion of the code (lines 59-73) reads the Mott Scattering Parameters in from literature, up to element 96. \par
-
-\vspace{0.5 cm}
+This portion of the code (lines 66-80) reads the Mott Scattering Parameters in from literature, up to element 96. \par
 
 \begin{minted}[mathescape=false]{quickbasic.py:QuickBASICLexer -x}
 OPEN "C:\Users\lshao.AUTH\Downloads\Mott.txt" FOR INPUT AS #1
 \end{minted}
 
-opens a file as the file handle "\#1" from the directory "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash Downloads\textbackslash Mott.txt". Note that this should be changed to the relevant directory on other machines. The file handle is closed once reading is done.
+opens a file as the file handle "\#1" from the directory "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash Downloads\textbackslash Mott.txt". Note that this should be changed to the relevant directory on other machines. The file handle is closed once reading is done. \par
 
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=67]{quickbasic.py:QuickBASICLexer -x}
@@ -581,7 +600,7 @@ opens a file as the file handle "\#1" from the directory "C:\textbackslash Users
 \end{minted}
 \subsubsection{Reading in Electron Screening Parameters}
 
-This portion of the code reads the Electron Screening Scattering Parameters in from literature, up to element 92. \par
+This portion of the code reads the Electron Screening Scattering Parameters in from literature (lines 82-92), up to element 92. \par
 
 \vspace{0.5 cm}
 
@@ -589,7 +608,7 @@ This portion of the code reads the Electron Screening Scattering Parameters in f
     OPEN "C:\Users\lshao.AUTH\Downloads\screen factor.txt" FOR INPUT AS #2
 \end{minted}
 
-opens a file as the file handle "\#2" from the directory "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash Downloads\textbackslash screen factor.txt". Note that this should be changed to the relevant directory on other machines. The file handle is closed once the reading is done.
+opens a file as the file handle "\#2" from the directory "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash Downloads\textbackslash screen factor.txt". Note that this should be changed to the relevant directory on other machines. The file handle is closed once the reading is done. \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=81]{quickbasic.py:QuickBASICLexer -x}
 
@@ -608,9 +627,29 @@ opens a file as the file handle "\#2" from the directory "C:\textbackslash Users
 \end{minted}
 \subsubsection{Output file opening}
 
-In this section of the code, a number of files are opened for output files. Table \ref{tbl:output files} shows all of the output files that are created for the program, as well as their purpose.
+In this section of the code (lines 94-107), a number of files are opened as output files. Table \ref{tbl:output files} shows all of the output files that are created for the program, as well as their purpose. Note that the comment on line 94 refers to lines 108 to 120, but this is not accurate. The line numbers here reflect the same line numbers in the original source code, so this is an error present in the original source code. \par
 
-\begin{table}[h]
+Note that the directories used here are all inside of "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash ". To run this code on other machines, these lines must be changed to the correct directory. \par
+
+\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=94]{quickbasic.py:QuickBASICLexer -x}
+    ‘Lines 108 to 120 are for creating various output files to save data calculated. 
+    OPEN "C:\Users\lshao.AUTH\Downloads\PRANGEEd40.DAT" FOR OUTPUT AS #1
+    OPEN "C:\Users\lshao.AUTH\Downloads\simulEd40.DAT" FOR OUTPUT AS #2
+    OPEN "C:\Users\lshao.AUTH\Downloads\simulvimageEd40" FOR OUTPUT AS #3
+    OPEN "C:\Users\lshao.AUTH\Downloads\3DINTLimageEd40.DAT" FOR OUTPUT AS #4
+    OPEN "C:\Users\lshao.AUTH\Downloads\eRangeimageEd40.dat" FOR OUTPUT AS #5
+    OPEN "C:\Users\lshao.AUTH\Downloads\ProjectedeRangeimageEd40" FOR OUTPUT AS #6
+    OPEN "C:\Users\lshao.AUTH\Downloads\e-outimageEd40.dat" FOR OUTPUT AS #7
+    OPEN "C:\Users\lshao.AUTH\Downloads\Projected_e_rangeImageEd40.txt" FOR OUTPUT AS #9 '
+    OPEN "C:\Users\lshao.AUTH\Downloads\20imageEd40.txt" FOR OUTPUT AS #10
+    OPEN "C:\Users\lshao.AUTH\Downloads\crossimageEd40.txt" FOR OUTPUT AS #11
+    OPEN "C:\Users\lshao.AUTH\Downloads\imageEd40.txt" FOR OUTPUT AS #12
+    OPEN "C:\Users\lshao.AUTH\Downloads\VancancyEd40.txt" FOR OUTPUT AS #13
+    OPEN "C:\Users\lshao.AUTH\Downloads\dedx.txt" FOR OUTPUT AS #14 '''''''''''''''''
+\end{minted}
+}
+
+\begin{table}[t]
     \footnotesize
     \centering
     \caption{Output files produced by the program, as well as their file handles and purposes}
@@ -639,28 +678,13 @@ In this section of the code, a number of files are opened for output files. Tabl
     \end{tabular}
 \end{table}
 
-Note that the directories used here are all inside of "C:\textbackslash Users\textbackslash lshao.AUTH\textbackslash ". To run this code on other machines, these lines must be changed to the correct directory.
-
-\begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=94]{quickbasic.py:QuickBASICLexer -x}
-    ‘Lines 108 to 120 are for creating various output files to save data calculated. 
-    OPEN "C:\Users\lshao.AUTH\Downloads\PRANGEEd40.DAT" FOR OUTPUT AS #1
-    OPEN "C:\Users\lshao.AUTH\Downloads\simulEd40.DAT" FOR OUTPUT AS #2
-    OPEN "C:\Users\lshao.AUTH\Downloads\simulvimageEd40" FOR OUTPUT AS #3
-    OPEN "C:\Users\lshao.AUTH\Downloads\3DINTLimageEd40.DAT" FOR OUTPUT AS #4
-    OPEN "C:\Users\lshao.AUTH\Downloads\eRangeimageEd40.dat" FOR OUTPUT AS #5
-    OPEN "C:\Users\lshao.AUTH\Downloads\ProjectedeRangeimageEd40" FOR OUTPUT AS #6
-    OPEN "C:\Users\lshao.AUTH\Downloads\e-outimageEd40.dat" FOR OUTPUT AS #7
-    OPEN "C:\Users\lshao.AUTH\Downloads\Projected_e_rangeImageEd40.txt" FOR OUTPUT AS #9 '
-    OPEN "C:\Users\lshao.AUTH\Downloads\20imageEd40.txt" FOR OUTPUT AS #10
-    OPEN "C:\Users\lshao.AUTH\Downloads\crossimageEd40.txt" FOR OUTPUT AS #11
-    OPEN "C:\Users\lshao.AUTH\Downloads\imageEd40.txt" FOR OUTPUT AS #12
-    OPEN "C:\Users\lshao.AUTH\Downloads\VancancyEd40.txt" FOR OUTPUT AS #13
-    OPEN "C:\Users\lshao.AUTH\Downloads\dedx.txt" FOR OUTPUT AS #14 '''''''''''''''''
-\end{minted}
-}
 \subsubsection{User prompting}
 
-At this point in the code, the user is prompted for a number of important parameters, such as whether this is an electron bombardment, the ion/electron energy, and substrate information, along with other important details. All of the variables assigned here are described in Table \ref{tbl:constants_and_variables}.
+At this point in the code, the user is prompted for a number of important parameters, such as whether this is an electron bombardment, the ion/electron energy (line 110), and substrate information (lines 132-143), along with other important details. All of the variables assigned here are described in Table \ref{tbl:constants_and_variables}. \par
+
+Note that certain variables are only prompted if the user specifies electron bombardment (lines 111-116) or ion bombardment (lines 121-127). \par
+
+Finally, the user is prompted for the number of simulations they wish to run (line 146). By default, this value is 1000 (line 147). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=108]{quickbasic.py:QuickBASICLexer -x}
     
@@ -706,7 +730,7 @@ At this point in the code, the user is prompted for a number of important parame
 \end{minted}
 \subsubsection{Additional Array Declarations}
 
-More arrays are declared here, mostly for storing particle collision information        . The details are listed in Table \ref{tbl:arrays}. Several arrays are of size 2000. This is an arbitrary choice which is representative of the maximum collision recursion depth (number of generations of knock-on particles.). 
+More arrays are declared here (lines 150-162), mostly for storing particle collision information. The details are listed in Table \ref{tbl:arrays}. Several arrays are of size 2000. This is an arbitrary choice which is representative of the maximum collision recursion depth (number of generations of knock-on particles). This mechanism is core to the SRIM technique and will be described in more detail later on. \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=148]{quickbasic.py:QuickBASICLexer -x}
 
@@ -727,7 +751,13 @@ More arrays are declared here, mostly for storing particle collision information
 \end{minted}
 \subsubsection{Matrix zeroing}  
 
-This portion of the code runs through the matrices initialized for storing particle information and zeros all of the elements in each array. Some other variables are set or zerod as well.
+This portion of the code runs through the matrices initialized for storing particle information and zeros all of the elements in each array. Some other variables are set or zerod as well. \par
+
+The matricies are zeroed by running through each element one-by-one (line 165) and setting the values at each index up to 2000 to zero (lines 166-175). \par
+
+A constant for PI is also initialized (line 182) and two variables for tracking dose and sputtered particles are set (lines 184-185). \par
+
+Finally, the 8th index of the Scan  array is zeroed. Because the array is three-dimensional, and one index in the third dimenion is being zerod, two levels of iteration are required to zero all the values (lines 188 and 189). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=163]{quickbasic.py:QuickBASICLexer -x}
 
@@ -771,15 +801,17 @@ Before explaining the bombardment calculations in detail, it will be useful to u
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width = 0.5\textwidth]{figures/coordinate_system_explanation.png}
+    \includegraphics[width = 0.4\textwidth]{figures/coordinate_system_explanation.png}
     \caption{Illustration showing the coordinate and velocity system used in the program.}
     \label{fig:coordinate system}
 \end{figure}
 
+\clearpage
+
 \subsubsection{Bombardment Initialization}
 \label{sec:bombardment initialization}
 
-Here, a number of initialization steps are taken to prepare for the bombardment simulation. First, the random number generator is initialized to the system time divded by three. This only happens once for every 200 simulations. \par
+Here, a number of initialization steps are taken to prepare for the bombardment simulation. First, the random number generator is initialized to the system time divded by three (line 198). \textbf{It is not clear why this value is divided by three}. This only happens once for every 200 simulations. \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=194]{quickbasic.py:QuickBASICLexer -x}
 
@@ -788,7 +820,8 @@ Here, a number of initialization steps are taken to prepare for the bombardment 
     
         IF SIMUL - 200 * INT(SIMUL / 200) = 0 THEN RANDOMIZE TIMER / 3  ‘change random number seed every 200 particles
 \end{minted}
-Then, depending on whether the bombardment projectile is an ion or an electron, a number of particle collision data arrays are initialized with the energy, mass, and charge (for ions only) specified by the user, as well as the particle type. All particles are started at x,y,z = 0. \par
+
+Then, depending on whether the bombardment projectile is an ion or an electron (line 201 and 216), a number of particle collision data arrays are initialized with the energy, mass, and charge (lines 202-211 and lines 217-225 for electrons and ions, respectively) specified by the user, as well as the particle type. All particles are started at x,y,z = 0. \par
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=199]{quickbasic.py:QuickBASICLexer -x}
     
 
