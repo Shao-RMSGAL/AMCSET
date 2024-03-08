@@ -80,6 +80,7 @@
 \pagebreak
 
 \section{Introduction}
+\label{sec:introduction}
 
 This document contains a walkthrough of the eSRIM code written by Dr. Lin Shao. In addition, it also contains notes on QuickBASIC, the language that the original code is written in, as well as a plan for conversion of the code to a more performant language, C++. \par
 
@@ -2244,11 +2245,29 @@ Now that the review of the QuickBASIC Code is complete, the next objective is to
 
 \subsection{Python}
 
+\href{https://en.wikipedia.org/wiki/Python_(programming_language)}{Python} is a very simple language, with wide applicabiltiy. It is easy to program functionality with readable and fool-proof code. It is very user-friendly and can run on a wide variety of systems. \par
+
+There is also a large number of libraries for Python that are available for a wide range of programming applications. \par
+
+However, it is not well suited for high-performance programming. As was mentioned in Section \ref{sec:introcution}, python is an interpreted language. Because of this, the amount of performance that can be extracted from it is limited by the nature of Python. \par
+
 \subsection{C++}
+
+\href{https://en.wikipedia.org/wiki/C%2B%2B}{C++} is one of the most widely utilized programming languages used today. It is used in an extremely wide range of applications, and there are many powerful and performant libraries available in C++ (such as the \href{https://en.cppreference.com/w/cpp/header}{C++ Standard Library}). \par
+
+However, C++ is a very difficult programming language to learn, and there are several non-intuitive programming issues that one may encounter if they are not intimately familiar with C++ (for example, the expression "float x = 5/2;" results in a value for x of 2, instead of 2.5, while "float x = 5.0/s.0" will result in a value for x of 2.5) \par
 
 \subsection{Fortran}
 
+\href{https://en.wikipedia.org/wiki/Fortran}{Fortran} (or FORmula TRANslator) is something of a balance between Python and C++. It is a very readable programming language, yet it is also very performant. \par
+
+It is also one of the very first programming languages, originally developed in 1958. Despite it's age, Fortran is still very widely used, and it has been modernized, with a recent 2023 release. \par
+
+However, Fortran is not as widely used as Python and C++. While it is performant, it is not as fleixble as C++ or Python. This can limit the amount it can be extended (for example, only a limited amount of graphics programming support is available for Fortran. Graphics programming is one of the best ways to improve program performance.) \par
+
 \subsection{Hybrid}
+
+Another option is to use multiple programming languages. This can enable each portion of the program to be written in the language best suited for the purpose the program requires. Python is very good for input/output., while C++ and Fortran is great for performance-oriented code. \par
 
 \subsection{Code structure}
 
