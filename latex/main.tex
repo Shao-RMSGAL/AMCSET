@@ -1430,7 +1430,7 @@ The energy loss due to ionization is then found using the "IoniElecLoss" subrout
             IoniEloss2 = (IoniEloss2 + ABS(IoniEloss2)) / 2.0  ‘make sure the value is positive 
 \end{minted}
 
-The Bremsstrahlung is calculated using the "BremsELoss" subroutine (line 494), which sets the BEloss variable as the lost energy in (\si{keV/cm}). It takes the same arguments as "IoniElecLoss. Again, a check ensures that the returned value is always positive (line 395). \par
+The Bremsstrahlung is calculated using the "BremsELoss" subroutine (line 494), which sets the BEloss variable as the lost energy in (\si{keV/cm}). It takes the same arguments as "IoniElecLoss. Again, a check ensures that the returned value is always positive (line 495). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=492]{quickbasic.py:QuickBASICLexer -x}
 
@@ -1443,7 +1443,7 @@ The Bremsstrahlung is calculated using the "BremsELoss" subroutine (line 494), w
             ''  PRINT #14, USING "##.###^^^^^ ##.###^^^^^"; w11; w10 'optional to get non-Mott energy loss as a function of energy
 \end{minted}
 
-Now that all sources of energy loss are known, the total energy loss is calculated and stored in the "Energy1" variable. The following equation is used to find this value: \par
+Now that all sources of energy loss are known, the total energy loss is calculated and stored in the "Energy1" variable (line 504). The following equation is used to find this value: \par
 
 \begin{equation}
     \Delta E_{\text{total}} = \Delta E_{\text{mott}} + \Delta E_{\text{Bremsstrahlung}} + \Delta E_{\text{ionization}}
@@ -1462,7 +1462,7 @@ Note that the energy loss due to ionization and Bremsstrahlung are multiplied by
 \subsubsection{Midpoint approximation}
 \label{sec:midpoint}
 
-At this point in the code, some adjustments need to be made for the "same electron energy" assumption. Since some energy is lost in each flying distance group due to Mott scattering, a correction factor "correctFactor" must be set to predict the midpoint energy of the electron. The "switch" variable is used to determine what type of method is used for energy prediction. "0" simply uses the starting electron energy, before energy losses to calculated scattering and energy losses. "1" is used to predict the mid-point energy, which is between the starting and final electron energy, and "2" is an implicit method, using the final electron energy to calulate the energy losses. \par
+At this point in the code, some adjustments need to be made for the "same electron energy" assumption. Since some energy is lost in each flying distance group due to Mott scattering, a correction factor "correctFactor" must be set to predict the midpoint energy of the electron. The "switch" variable is used to determine what type of method is used for energy prediction. "0" simply uses the starting electron energy (line 509), before energy losses to calculated scattering and energy losses. "1" is used to predict the mid-point energy, which is between the starting and final electron energy (line 515), and "2" is an implicit method, using the final electron energy to calulate the energy losses (line 531). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=505]{quickbasic.py:QuickBASICLexer -x}
 
@@ -1473,7 +1473,7 @@ At this point in the code, some adjustments need to be made for the "same electr
             ELSE
             END IF
 \end{minted}
-For the middle point method, the correction factor is set to 1 at the beginning of the simulation (Section \ref{sec:bombardment initialization}, line 197), meaning that the final energy loss due to the first scattering event was calculated using the starting energy. Because this could lead to some inaccuracy, a new correction factor is found using the first initial guess, and the energy loss is recalculated using the new value (lines 485 and 486). The final correction factor is then found using the ratio of the midpoint energy and the final energy (line 493). The following equation is used to do so: \par
+For the middle point method, the correction factor is set to 1 at the beginning of the simulation (Section \ref{sec:bombardment initialization}, line 31), meaning that the final energy loss due to the first scattering event was calculated using the starting energy. Because this could lead to some inaccuracy, a new correction factor is found using the first initial guess (line 517), and the energy loss is recalculated using the new value (lines 504). The final correction factor is then found using the ratio of the midpoint energy and the final energy (line 523). The following equation is used to do so: \par
 
 \begin{equation}
     \lambda_i = \frac{E_{i - 2} + E_{i - 1}}{2E_{i-2}}
@@ -1502,7 +1502,7 @@ where $\lambda_i$ is a correction factor applied to the starting energy to get t
             END IF
 \end{minted}
 
-This section of the code is used if the implicit method is used (the final energy after energy losses is used to calculate energy losses). A correction factor is similarly used, but the factor is instead used to predict the final energy, instead of the mid-point energy. This is not used in the current version of the code, but can be enabled by setting the "switch" variable to 2. \par
+This section of the code is used if the implicit method is used (the final energy after energy losses is used to calculate energy losses). A correction factor is similarly used, but the factor is instead used to predict the final energy (line 533 and 537), instead of the mid-point energy. This is not used in the current version of the code, but can be enabled by setting the "switch" variable to 2. \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=526]{quickbasic.py:QuickBASICLexer -x}
 
@@ -1528,7 +1528,7 @@ This section of the code is used if the implicit method is used (the final energ
             '  PRINT #10, USING "##.###^^^^^"; correctFactor ‘optional for saving correctFactor
 \end{minted}
 
-Once all the calculations are complete, the position of the electron before positional updates are stored, similar to what is done in Section \ref{sec:stopped particle}.
+Once all the calculations are complete, the position of the electron before positional updates are stored, similar to what is done in Section \ref{sec:stopped particle} (lines 529-552 and lines 556-557). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=547]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1550,11 +1550,9 @@ Once all the calculations are complete, the position of the electron before posi
 
 \subsubsection{Flying distances positional calculations}
 
-For each flying distance, the motion of the electron should be calculated. This is done by using the electrons current velocity vector direction, stored in the "THETAP" and "ALPHAP" arrays, multiplying it by the relevant flying distance in the "RN" array. Note that RN is in units of cm, while ZP, XP, and YP are in \si{\angstrom}. A conversion factor is applied to keep units consistent. \par
+For each flying distance (line 564), the motion of the electron should be calculated. This is done by using the electron's current velocity vector direction, stored in the "THETAP" and "ALPHAP" arrays, and multiplying it by the relevant flying distance in the "RN" array (lines 565-567). Note that RN is in units of cm, while ZP, XP, and YP are in \si{\angstrom}. A conversion factor is applied to keep units consistent. \par
 
-\vspace{0.5 cm}
-
-Note that "rum" is used to index the positional arrays for subsequnt electron flying distances. This is a deviation from the normal use of rum (target atom displacement tracking). Note also that each subsequent position is calculated using the previous position, using the index "rum + trial9 - 1" to add on to the previous value. The value at "rum" remains unchanged. \par
+% Note that "rum" is used to index the positional arrays for subsequnt electron flying distances. This is a deviation from the normal use of rum (target atom displacement tracking). Note also that each subsequent position is calculated using the previous position, using the index "rum + trial9 - 1" to add on to the previous value. The value at "rum" remains unchanged. \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=562]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1565,9 +1563,9 @@ Note that "rum" is used to index the positional arrays for subsequnt electron fl
                 YP(rum + trial9) = YP(rum + trial9 - 1) + RN(trial9) * 10 ^ 8 * SIN(THETAP(rum + trial9 - 1)) * SIN(ALPHAP(rum + trial9 - 1))
 \end{minted}
 
-Once the flying distance positions are calculated, the relative scattering angles stored in the "RA" array are converted to absolute angles using the "AMAGIC" funtion (line 529). The way this function works is described in Section \ref{sec:electronic stopping}. \par
+Once the flying distance positions are calculated, the relative scattering angles stored in the "RA" array are converted to absolute angles using the "AMAGIC" funtion (line 574). The way this function works is described in Section \ref{sec:electronic stopping}. \par
 
-The absolute angles are then appled in the "THETAP" and "ALPHAP" arrays for the electron, as well as the "THETA2" and "ALPHA2" arrays for the target atoms (lines 532 - 535). \par
+The absolute angles are then appled in the "THETAP" and "ALPHAP" arrays for the electron (lines 577 - 578), as well as the "THETA2" and "ALPHA2" arrays for the target atoms (lines 579 - 580). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=568]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1589,7 +1587,7 @@ The absolute angles are then appled in the "THETAP" and "ALPHAP" arrays for the 
 
 \subsubsection{Electron plotting}
 
-The code for plotting the electron path is similar to that done in Section \ref{sec:ion plotting}. An option to plot target atoms is commented out. Because the individual flying distances are short, only the whole flying group is plotted (ZP(rum + flyC) and XP(rum + flyC) on line 546).
+The code for plotting the electron path is similar to that done in Section \ref{sec:ion plotting}. An option to plot target atoms is commented out (line 592). Because the individual flying distances are short, only the whole flying group is plotted (ZP(rum + flyC) and XP(rum + flyC) on line 546). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=583]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1606,7 +1604,7 @@ The code for plotting the electron path is similar to that done in Section \ref{
 
 \subsubsection{Electron positional update}
 
-The new position of the electron is calculated, as the previous one is no longer needed for plotting purposes. First the deltas in X, Y, and Z are calculated and stored in "NewDeltaX", "NewDeltaY", and "NewDeltaZ". The new velocity vecotr angles are also calculated and stored in "NewTheta" and "NewAlpha", and the new energy is set to "NewEP" (lines 540-545).
+The new position of the electron is calculated, as the previous one is no longer needed for plotting purposes. First the deltas in X, Y, and Z are calculated and stored in "NewDeltaX", "NewDeltaY", and "NewDeltaZ" (lines 595-597). The new velocity vecotr angles are also calculated and stored in "NewTheta" and "NewAlpha" (lines 598-599), and the new energy is set to "NewEP" (line 600). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=593]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1634,7 +1632,7 @@ The new position of the electron is calculated, as the previous one is no longer
     
 \end{minted}
 
-The position and velocity vector direction of the current electron is updated to the position following the flying distance group. \textbf{In addition, some other values are redundantly set to the same value, indicating no change in charge, mass, or particle type. The energy was updated on line 512.} (Lines 563 - 571). 
+The position and velocity vector direction of the current electron is updated to the position following the flying distance group (lines 618-626). \textbf{In addition, some other values are redundantly set to the same value, indicating no change in charge, mass, or particle type.} 
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=616]{quickbasic.py:QuickBASICLexer -x}
             
@@ -1653,11 +1651,9 @@ The position and velocity vector direction of the current electron is updated to
 \subsubsection{Substrate electron bombardment atom displacement}
 \label{sec:substrate displacement}
 
-In this portion of the code, each target atom along the flying group is checked to determine if the energy lost to elastic scattering from the electron was enough to cause a displacement (line 578). The "mmmm" counter is used to track each of these target atoms within the flying distance group. \par
+In this portion of the code, each target atom along the flying group is checked to determine if the energy lost to elastic scattering from the electron was enough to cause a displacement (line 633). The "mmmm" counter is used to track each of these target atoms within the flying distance group. \par
 
-\vspace{0.5 cm}
-
-If the threshold energy is met, then the target atom's position, charge, mass, velocity vector, type, and energy are set at index "rum + mmmm" (lines 579 - 587). \par
+If the threshold energy is met, then the target atom's position, charge, mass, velocity vector, type, and energy are set at index "rum + mmmm" (lines 634 - 642). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=627]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1684,7 +1680,7 @@ If the threshold energy is met, then the target atom's position, charge, mass, v
 
 This portion of the code records the vacancy created by the electron. It follows the same procedure as in Section \ref{sec:stopped particle}. \par
 
-The simulation then goes on to calculate the cascaded particles from the electron bombardment. This is done up to "mmmm" times, or for however many cascaded particles are created (line 513). The energy of the electron causing the vacancy is then written to the "VancancyEd40.txt" (See Table \ref{tbl:output files}).
+The simulation then goes on to calculate the cascaded particles from the electron bombardment (line 668 and 681). This is done up to "mmmm" times, or for however many cascaded particles are created. The energy of the electron causing the vacancy is then written to the "VancancyEd40.txt" (See Table \ref{tbl:output files}). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=645]{quickbasic.py:QuickBASICLexer -x}
 
@@ -1741,7 +1737,7 @@ The simulation then goes on to calculate the cascaded particles from the electro
 
 The main simulation has ended by this point. The code will now focus on outputting the results of each function to output files. \par
 
-First, all of the data in the e\_output array is copied to the "Backup\_e\_output" file. \par
+First, all of the data in the e\_output array is copied to the "Backup\_e\_output" file (lines 717 -723). \par
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=693]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1777,15 +1773,15 @@ First, all of the data in the e\_output array is copied to the "Backup\_e\_outpu
     NEXT N0
 \end{minted}
 
-This portion of the code smooths the data present in the e\_output array. The variable "e\_ave\_range" is used to track how many neighboring datapoints should be used in the averageing. Then all data are smoothed with adjacent data (both along the z-axis and radially). \par
+This portion of the code smooths the data present in the e\_output array. The variable "e\_ave\_range" (line 16) is used to track how many neighboring datapoints should be used in the averageing. Then all data are smoothed with adjacent data (both along the z-axis and radially). \par
 
-This is accomplished by adding the datapoints together in the "combine\#" variable, where "\#" is 1, 2, 3, or 4, representing electron stopping location, ionization energy loss, elastic scattering loss, and vacancy information. The following equation is then applied to smooth the data:
+This is accomplished by adding the datapoints together in the "combine\#" variable, where "\#" is 1, 2, 3, or 4, representing electron stopping location, ionization energy loss, elastic scattering loss, and vacancy information (lines 736-739). The following equation is then applied to smooth the data: \par
 
 \begin{equation}
     d_{\text{smooth, i}} = \frac{\sum_1^{n}d_{\text{raw, i}}}{(2n + 1)^2}
 \end{equation}
 
-where $d_{\text{smooth,i}}$ is the $i$\textsuperscript{th} smoothed datapoint,$d_{\text{raw}, i}$ is the $i$\textsuperscript{th} raw datapoint, and $n$ is the number of adjacent datapoints to smooth with.
+where $d_{\text{smooth,i}}$ is the $i$\textsuperscript{th} smoothed datapoint (lines 742-745),$d_{\text{raw}, i}$ is the $i$\textsuperscript{th} raw datapoint, and $n$ is the number of adjacent datapoints to smooth with.
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=724]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1816,11 +1812,9 @@ where $d_{\text{smooth,i}}$ is the $i$\textsuperscript{th} smoothed datapoint,$d
 
 \pagebreak
 
-This code counts up all of the electrons to stop within various slices of the region of interest. The first index of e\_output is the radial distance from the z-axis, while the second index is the depth along the z-axis. By counting all of the stopped projectiles along a cross-sectional slice along the z-axis, the penetration depth of the electrons can be visiualized, \par
+This code counts up all of the electrons to stop within various slices of the region of interest. The first index of e\_output is the radial distance from the z-axis, while the second index is the depth along the z-axis. By counting all of the stopped projectiles along a cross-sectional slice along the z-axis, the penetration depth of the electrons can be visiualized. \par
 
-\vspace{0.5 cm}
-
-The summation of electrons in a slice at a certain depth is stored in the "accum" variable, and is output to file \#9, which corresponds to the "Projected\_e\_erangeImageEd40.txt" file (See Table \ref{tbl:output files}). The depth is converted from \si{\angstrom} to \si{\micro \meter} on line 700, and the number of electrons found in a slice is divided by the total number of electrons simulated. This is then divided by the slice length (converted to \si{\micro\meter}), to result in a final unit of \si{fraction\ of\ total\ electrons/\micro\meter}. 
+The summation of electrons in a slice at a certain depth is stored in the "accum" variable (line 753), and is output to file \#9 (line 755), which corresponds to the "Projected\_e\_erangeImageEd40.txt" file (See Table \ref{tbl:output files}). The depth is converted from \si{\angstrom} to \si{\micro \meter} on line 700, and the number of electrons found in a slice is divided by the total number of electrons simulated. This is then divided by the slice length (converted to \si{\micro\meter}), to result in a final unit of \si{fraction\ of\ total\ electrons/\micro\meter}. 
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=748]{quickbasic.py:QuickBASICLexer -x}
     
@@ -1834,7 +1828,7 @@ The summation of electrons in a slice at a certain depth is stored in the "accum
     NEXT W0
 \end{minted}
 
-This extracts and stores more information from the e\_output array in the form of "Metric of interest/electron/unit of volume". For each data type stored in the e\_output array, the value is divided by the total number of electons, \textbf{as well as the volume of the annular slice (line, 711, it is not clear how this formula works)}. The results are written to the "e-outimageEd40" file (See Table \ref{tbl:output files}). The total integrated number of electrons, ionization energy loss, elastic energy loss, and displacements are printed to the output.
+This extracts and stores more information from the e\_output array in the form of "Metric of interest/electron/unit of volume". For each data type stored in the e\_output array, the value is divided by the total number of electons, \textbf{as well as the volume of the annular slice (line, 766, it is not clear how this formula works)}. The results are written (line 767) to the "e-outimageEd40" file (See Table \ref{tbl:output files}). The total integrated number of electrons, ionization energy loss, elastic energy loss, and displacements are printed to the output.
 
 \begin{minted}[breaklines,fontsize=\tiny,mathescape=false,linenos,firstnumber=757]{quickbasic.py:QuickBASICLexer -x}
     
