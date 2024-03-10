@@ -18,7 +18,6 @@
  *****************************************************************************/
 
 // Header files
-#include <iostream> 
 #include <cmath>
 
 
@@ -26,18 +25,19 @@
 #include "eSRIM_classes.h"
 
 
-// Debug compiler directives 
-#ifdef DEBUG_MODE
-#define DEBUG_PRINT(x) std::cout << x << std::endl;
-#else
-#define DEBUG_PRINT(x)
-#endif
-
 // Main program  start
 int main() {
-    DEBUG_PRINT("Test");
+    DEBUG_PRINT("Run starting...");
 
-    Bombardment sim;
+    InputFields input;
+
+    DEBUG_PRINT("Initializing simulation using default values...");
+    Simulation simulation(input);
+    Particle::seedRandomGenerator();
+
+    simulation.initiate();
+
+    simulation.writeCoordinateData();
 
     return 0;
 }

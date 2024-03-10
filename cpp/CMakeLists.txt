@@ -10,11 +10,11 @@ set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 # Set the path to the source directory
 set(SOURCE_DIR ${CMAKE_SOURCE_DIR}/src)
 
+# Add all source files in the 'src' directory to the project
+file(GLOB SOURCE_FILES ${SOURCE_DIR}/*.cpp)
+
 # Add the source files to the project
-add_executable(main ${SOURCE_DIR}/main.cpp
-                    ${SOURCE_DIR}/constants.h
-                    ${SOURCE_DIR}/eSRIM_classes.h
-                    ${SOURCE_DIR}/eSRIM_classes.cpp)
+add_executable(eSRIM ${SOURCE_FILES})
 
 # Include the header files directory
 include_directories(${SOURCE_DIR})
@@ -31,4 +31,7 @@ option(DEBUG_MODE "Enable debug mode" OFF)
 # Add compile definitions based on the DEBUG_MODE option
 if(DEBUG_MODE)
     add_compile_definitions(DEBUG_MODE)
+
+    # Add compiler flags for debugging with gdb
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
 endif()
