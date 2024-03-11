@@ -34,9 +34,13 @@ enum ParticleType{
 namespace Constants {
     constexpr double avogadrosNumber = 6.02214076e23; // atoms/mol
     constexpr double cmPerAngstrom = 1e-8; // cm/Angstrom
+    constexpr double electronStoppingEnergy = 1; // keV
     constexpr double ionDisplacementEnergy = 0.04; // keV
     constexpr double electronMass = 9.1093837015; // kg
     constexpr double electronCharge = -1; // e
+    constexpr size_t numMottjParam = 5; 
+    constexpr size_t numMottkParam = 6; 
+    constexpr size_t numMottElements = 118; 
     constexpr double plancksConstant = 6.62607015e-34; // J·s
     constexpr double speedOfLight = 299792458; // m/s
     constexpr double ionStoppingEnergy = 0.04; // keV
@@ -53,6 +57,7 @@ namespace Defaults {
     constexpr const char* outputFileExtension = ".csv";
     constexpr const char* outputFileEnd = "End of file";
     constexpr double range = 80000000; // angstrom
+    constexpr bool logSingleDisplacement = false; // Disable to shrink output file size
     constexpr double substrateCharge = 26; // e, iron
     constexpr double substrateMass = 55.9349363; // amu, iron 56
     constexpr double substrateDensity = 7.874

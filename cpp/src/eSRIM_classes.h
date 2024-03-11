@@ -20,6 +20,7 @@
 
 
 // Includes
+#include <array>
 #include <filesystem>
 #include <iostream> 
 #include <memory>
@@ -49,9 +50,7 @@ struct Coordinate {
     double x;
     double y;
     double z;
-    size_t id;
     size_t depth;
-    size_t collisionNumber;
 };
 
 struct Velocity{
@@ -129,10 +128,12 @@ class Particle {
         virtual void addCoordinate(Coordinate coordinate);
 
         // Accessors
+        virtual const Coordinate& getCoordinate() const;
         virtual const std::vector<Coordinate>& getCoordinates() const;
         static double random();
 
         // Member functions
+        size_t getNumParticles();
         virtual void fire();
         double atomicSpacing() const;
         std::tuple<Velocity, Velocity> relativeToAbsoluteVelocity(double angle,
@@ -161,30 +162,40 @@ class Ion : public Particle {
         double DF(double X, double COLUMBIAVK, double AU);
         std::tuple<Velocity,Velocity> recoilEnergyAndVelocity();
         double electronicStoppingEnergy();
-        virtual size_t getDepth();
+        virtual const size_t& getDepth() const;
 };
 
 
 class Substrate : public Ion {
     private:
-        size_t id;
-        size_t depth;
+        size_t &depth = coordinate.depth;
 
     public:
         // Constructors
         Substrate(Coordinate coordinate, Velocity velocity, double charge,
             double mass, double density, double range,
-            std::weak_ptr<Bombardment> bombardment, size_t id, size_t depth);
+            std::weak_ptr<Bombardment> bombardment);
         // Functions
-        virtual size_t getDepth() override;
+        virtual const size_t& getDepth() const override;
 };
 
 
 class Electron : public Particle {
     private:
-        static constexpr double mass = Constants::electronMass;
-
+        const static std::array<std::array<std::array<double,
+            Constants::numMottkParam>,Constants::numMottjParam>,
+            Constants::numMottElements> mottScatteringParams;
+        
     public:
+        // Constructor
+        Electron(Coordinate initialCoordinate, Velocity initialVelocity, InputFields input,
+            std::weak_ptr<Bombardment> bombardment);
+        
+        // Initializer
+        static void readParameters();
+
+        // Functions
+        void fire();
 };
 
 class Simulation;
@@ -207,6 +218,7 @@ class Bombardment : public std::enable_shared_from_this<Bombardment> {
 
         void initiate(InputFields& inputFields);
         void addParticle(std::unique_ptr<Particle> particle);
+        void popParticle();
 };
 
 class Simulation : public std::enable_shared_from_this<Simulation> {

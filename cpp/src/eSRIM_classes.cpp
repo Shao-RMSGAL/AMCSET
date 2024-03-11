@@ -59,8 +59,12 @@ Particle::Particle(Coordinate coordinate, Velocity velocity, double charge,
 Particle::~Particle() {};
 
 void Particle::addCoordinate(Coordinate coordinate) {
-    // DEBUG_PRINT("Pushing back coordinate...");
-    coordinate_vector.push_back(coordinate);
+    // DEBUG_PRINT("Pushing back coordinate");
+    coordinate_vector.emplace_back(coordinate);
+};
+
+const Coordinate& Particle::getCoordinate() const {
+    return coordinate;
 };
 
 const std::vector<Coordinate>& Particle::getCoordinates() const {
@@ -70,6 +74,16 @@ const std::vector<Coordinate>& Particle::getCoordinates() const {
 double Particle::random() {
     return randomDistribution(randomGenerator);
 };
+
+size_t Particle::getNumParticles() {
+    if(auto locked = bombardment.lock()) {
+        // DEBUG_PRINT("Bombardment lock");
+        return locked->getParticles().size();
+    } else {
+        DEBUG_PRINT("Could not get bombardment size");
+        return 0;
+    }
+}
 
 void Particle::fire() {
     throw std::logic_error("Particle base class fire() function called.");
@@ -196,82 +210,64 @@ Ion::Ion(Coordinate coordinate, Velocity velocity, double charge,
     // DEBUG_PRINT("Ion made");
 }; 
 
-size_t Ion::getDepth() { 
+const size_t& Ion::getDepth() const { 
     DEBUG_PRINT("Ion depth function called");
-    return 0;
+    return coordinate.depth;
 };
 
 void Ion::fire() {
-    // DEBUG_PRINT("Firing particle");
-    size_t numParticles = 0;
-    if(auto locked = bombardment.lock()) {
-        // DEBUG_PRINT("Bombardment lock");
-        numParticles = locked->getParticles().size();
+    if(velocity.energy <= Constants::ionStoppingEnergy) {
+        // DEBUG_PRINT("Particle " << id  << " does not have enough energy");
+        // addCoordinate(coordinate);
+        return;
     } else {
-        DEBUG_PRINT("Could not get bombardment size");
-    }
-    size_t fireCount = 0;
-    while(velocity.energy > Constants::ionStoppingEnergy) {
-        // DEBUG_PRINT("Energy " << fireCount << ":\t" << velocity.energy);
-        velocity.energy -= electronicStoppingEnergy();
-        
-        if(velocity.energy < Constants::ionStoppingEnergy) {
-            return;
-        }
+        // DEBUG_PRINT("Firing particle " << coordinate.id);
+        while(velocity.energy > Constants::ionStoppingEnergy) {
+            // DEBUG_PRINT("Energy " << fireCount << ":\t" << velocity.energy);
+            velocity.energy -= electronicStoppingEnergy();
 
-        Velocity newVelocity;
-        Velocity targetVelocity;
+            Velocity newVelocity;
+            Velocity targetVelocity;
 
-        std::tie(newVelocity, targetVelocity) = recoilEnergyAndVelocity();
+            std::tie(newVelocity, targetVelocity) = recoilEnergyAndVelocity();
 
-        // DEBUG_PRINT("New velocity zAngle: " << newVelocity.zAngle);
-        // DEBUG_PRINT("New velocity xAngle: " << newVelocity.xAngle);
-        // DEBUG_PRINT("New velocity energy: " << newVelocity.energy);
-        // DEBUG_PRINT("Target velocity zAngle: " << targetVelocity.zAngle);
-        // DEBUG_PRINT("Target velocity xAngle: " << targetVelocity.xAngle);
-        // DEBUG_PRINT("Target velocity energy: " << targetVelocity.energy);
-        // DEBUG_PRINT("Random number: " << random());
+            Coordinate newCoordinate = {
+                    coordinate.x + atomicSpacing()*std::sin(velocity.zAngle)
+                                    *std::cos(velocity.xAngle),
+                    coordinate.y + atomicSpacing()*std::sin(velocity.zAngle)
+                                    *std::sin(velocity.xAngle),
+                    coordinate.z + atomicSpacing()*std::cos(velocity.zAngle),
+                    coordinate.depth
+                };
 
-        Coordinate newCoordinate = {
-                coordinate.x + atomicSpacing()*std::sin(velocity.zAngle)
-                                *std::cos(velocity.xAngle),
-                coordinate.y + atomicSpacing()*std::sin(velocity.zAngle)
-                                *std::sin(velocity.xAngle),
-                coordinate.z + atomicSpacing()*std::cos(velocity.zAngle),
-                numParticles, (type == ION) ? 0 : getDepth(), fireCount 
-            };
-
-        // TODO: Uncomment this code to enable damage cascades
-        if(Defaults::enableDamageCascade) {
-            if(energy - targetVelocity.energy > Constants::ionDisplacementEnergy) {
-                // DEBUG_PRINT("Attemtping lock...");
-                if(auto locked = bombardment.lock()) {    
-                    std::unique_ptr<Substrate> targetParticle;
-                    if(type == SUBSTRATE) {
-                        targetParticle = std::make_unique<Substrate>(newCoordinate,
-                            targetVelocity, substrateCharge, substrateMass, 
-                            substrateDensity, range, bombardment, numParticles, 
-                            getDepth() + 1);
-                    } else {
-                        // DEBUG_PRINT("Number: " << numParticles);
-                        targetParticle = std::make_unique<Substrate>(newCoordinate,
-                            targetVelocity, substrateCharge, substrateMass, 
-                            substrateDensity, range, bombardment, numParticles, 
-                            0);
-                    }
-                    locked->addParticle(std::move(targetParticle));
-                } else {
-                    DEBUG_PRINT("Failed to create knock-on particle");
-                }
-                // DEBUG_PRINT("Knock-off substrate ion created");
+            if(newCoordinate.z < 0) {
+                DEBUG_PRINT("Sputter")
+                return;
             }
-        }
 
-        // DEBUG_PRINT("x, y, z: " << newCoordinate.x << ", "<< newCoordinate.y << ", "<< newCoordinate.z );
-        addCoordinate(coordinate);
-        coordinate = newCoordinate;
-        velocity = newVelocity;
-        fireCount++;
+            if(Defaults::enableDamageCascade) {
+                if(energy - targetVelocity.energy > Constants::ionDisplacementEnergy) {
+                    // DEBUG_PRINT("Attempting lock...");
+                    Coordinate targetCoordinate = newCoordinate;
+                    targetCoordinate.depth++;
+                    if(auto locked = bombardment.lock()) {    
+                        std::unique_ptr<Substrate> targetParticle;
+                        targetParticle = std::make_unique<Substrate>(targetCoordinate,
+                            targetVelocity, substrateCharge, substrateMass, 
+                            substrateDensity, range, bombardment);
+                        locked->addParticle(std::move(targetParticle));
+                    } else {
+                        DEBUG_PRINT("Failed to create knock-on particle");
+                    }
+                    // DEBUG_PRINT("Knock-off substrate ion created");
+                }
+            }
+
+            // DEBUG_PRINT("x, y, z: " << newCoordinate.x << ", "<< newCoordinate.y << ", "<< newCoordinate.z );
+            addCoordinate(coordinate);
+            coordinate = newCoordinate;
+            velocity = newVelocity;
+        }
     }
 };
 
@@ -390,14 +386,35 @@ double Ion::electronicStoppingEnergy() {
 // Substrate functions
 Substrate::Substrate(Coordinate coordinate, Velocity velocity, double charge,
     double mass, double density, double range,
-    std::weak_ptr<Bombardment> bombardment, size_t id, size_t depth) :
+    std::weak_ptr<Bombardment> bombardment) :
     Ion(coordinate, velocity, charge, mass, mass, density, mass, SUBSTRATE, range,
-        bombardment), id(id), depth(depth) {};
+        bombardment) {};
 
-size_t Substrate::getDepth() { return depth; };
+const size_t& Substrate::getDepth() const { return depth; };
 
 //  Electron functions
+Electron::Electron(Coordinate initialCoordinate, Velocity initialVelocity, InputFields input,
+        std::weak_ptr<Bombardment> bombardment)
+        : Particle(initialCoordinate, initialVelocity,
+        Constants::electronCharge, Constants::electronMass,
+        input.getSubstrateCharge(), input.getSubstrateDensity(),
+        input.getSubstrateMass(), ELECTRON, input.getRange(),
+        bombardment) {
+    DEBUG_PRINT("Electron made");
+};
 
+void Electron::readParameters() {
+    DEBUG_PRINT("Reading Mott scattering values");
+};
+
+void Electron::fire() {
+    DEBUG_PRINT("Firing electron!");
+    // size_t numParticles = getNumParticles();
+    while(velocity.energy > Constants::electronStoppingEnergy) {
+        DEBUG_PRINT("Energy: " << energy << " keV");
+        
+    }   
+};
 
 // Input fields functions
 InputFields::InputFields() : charge(Defaults::ionCharge),
@@ -433,7 +450,7 @@ Bombardment::Bombardment(std::weak_ptr<Simulation> simulation, size_t id)
 };
 
 Bombardment::~Bombardment() {
-    DEBUG_PRINT("Bombardment " << id << "Destroyed")
+    DEBUG_PRINT("Bombardment " << id << " Destroyed")
 };
 
 const std::vector<std::unique_ptr<Particle>>& Bombardment::getParticles() const {
@@ -443,12 +460,15 @@ const std::vector<std::unique_ptr<Particle>>& Bombardment::getParticles() const 
 void Bombardment::initiate(InputFields& inputFields) {
     DEBUG_PRINT("Initiating bombardment " << id);
     std::unique_ptr<Particle> initialParticle;
-    Coordinate initialCoordinate = {0.0, 0.0, 0.0, 0, 0, 0};
+    Coordinate initialCoordinate = {0.0, 0.0, 0.0, 0};
     Velocity initialVelocity = {0.0, 0.0, inputFields.getEnergy()};
 
     if(inputFields.getType() == ION) {
         // DEBUG_PRINT("Making Ion...");
         initialParticle = std::make_unique<Ion>(initialCoordinate, initialVelocity,
+            inputFields, shared_from_this());
+    } else {
+        initialParticle = std::make_unique<Electron>(initialCoordinate, initialVelocity, 
             inputFields, shared_from_this());
     }
 
@@ -463,8 +483,8 @@ void Bombardment::initiate(InputFields& inputFields) {
 
 void Bombardment::addParticle(std::unique_ptr<Particle> particle) {
     // DEBUG_PRINT("Pushing back particle...");
-    particle->fire();
-    particles.push_back(std::move(particle));
+    particles.emplace_back(std::move(particle));
+    particles.back()->fire();
 }
 
 // Simulation functions
@@ -475,6 +495,10 @@ void Bombardment::addParticle(std::unique_ptr<Particle> particle) {
 //         bombardment = std::make_shared<Bombardment>();
 //     }
 // };
+
+void Bombardment::popParticle() {
+    particles.pop_back();
+};
 
 Simulation::Simulation(InputFields inputs)
 : inputs(inputs), bombardments(inputs.getSimulationCount()),
@@ -496,7 +520,7 @@ void Simulation::initiate() {
     checkOutputFiles();
 
     for(size_t i = 0; i < inputs.getSimulationCount(); i++) {
-        DEBUG_PRINT("Allocating bombardment");
+        // DEBUG_PRINT("Allocating bombardment");
         bombardments.at(i) = std::make_shared<Bombardment>(shared_from_this(), i);
     }
 
@@ -548,21 +572,39 @@ void Simulation::writeData(OutputType outputType,
 
     // Write headers if the file is empty
     if (outputFile.tellp() == 0) {
-        outputFile << "simulationID,particleID,depth,collision,x,y,z\n";
+        outputFile << "simulationID,particleID,depth,x,y,z\n";
     }
+
+    size_t particleID = 0;
 
     // Write data to file
     switch (outputType) {
         case OutputType::COORDINATE:
             for (const auto& particle : particles){
-                for (const auto& coordinate : particle->getCoordinates()) {
-                    outputFile << simulationID << ','
-                                << coordinate.id << ','
-                                << coordinate.depth << ','
-                                << coordinate.collisionNumber << ','
-                                << coordinate.x << ','
-                                << coordinate.y << ','
-                                << coordinate.z << '\n';
+                if(particle->getCoordinates().empty()) {
+                    if(Defaults::logSingleDisplacement)
+                    {
+                        outputFile << simulationID << ','
+                                << particleID << ','
+                                << particle->getCoordinate().depth << ','
+                                << particle->getCoordinate().x << ','
+                                << particle->getCoordinate().y << ','
+                                << particle->getCoordinate().z << '\n';
+                        particleID++;
+                    } else {
+                        continue;
+                    }
+                } else {
+                    for (const auto& coordinate : particle->getCoordinates()) {
+                        // DEBUG_PRINT("Writing coordinate " << coordinate.id);
+                        outputFile << simulationID << ','
+                                    << particleID << ','
+                                    << coordinate.depth << ','
+                                    << coordinate.x << ','
+                                    << coordinate.y << ','
+                                    << coordinate.z << '\n';
+                    }
+                    particleID++;
                 }
             }
             break;

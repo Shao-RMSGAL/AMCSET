@@ -44,11 +44,20 @@ int main(int argc, char* argv[]) {
                       Defaults::substrateCharge, Defaults::substrateDensity,
                       Defaults::substrateMass, Defaults::type, Defaults::range);
 
-    DEBUG_PRINT("Initializing simulation using default values...");
+    const char* mode = (input.getType() == ION) ? "Ion" : "Electron";
+
+    DEBUG_PRINT("Initializing simulation in " << mode << " mode..");
+
+    if(input.getType() == ELECTRON) {
+        Electron::readParameters();
+    }
+
     std::shared_ptr<Simulation> simulation = std::make_shared<Simulation>(input);
     Particle::seedRandomGenerator();
 
     simulation->initiate();
+
+    simulation.reset();
 
     auto end = std::chrono::high_resolution_clock::now();
 
