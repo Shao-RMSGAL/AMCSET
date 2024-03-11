@@ -20,10 +20,15 @@
 
 #pragma once
 
+enum OutputType{
+    COORDINATE,
+    ENDOFFILE
+};
 
 enum ParticleType{
     ION,
-    ELECTRON
+    ELECTRON,
+    SUBSTRATE
 };
 
 namespace Constants {
@@ -38,11 +43,15 @@ namespace Constants {
 }
 
 namespace Defaults {
-    constexpr bool enableDamageCascade = false;
+    constexpr bool enableDamageCascade = true;
     constexpr double electronEnergy = 10000; // keV, default electron energy
     constexpr double ionEnergy = 50; // keV, default ion energy
     constexpr double ionCharge = 14; // e, silicon
     constexpr double ionMass = 27.97692653442; // amu, silicon 29
+    constexpr const char* outputDirectory =  "output";
+    constexpr const char* outputCoordinateFilename =  "coordinateOutput";
+    constexpr const char* outputFileExtension = ".csv";
+    constexpr const char* outputFileEnd = "End of file";
     constexpr double range = 80000000; // angstrom
     constexpr double substrateCharge = 26; // e, iron
     constexpr double substrateMass = 55.9349363; // amu, iron 56
@@ -55,5 +64,5 @@ namespace Defaults {
                                         ); // g/cm^3 -> atoms/angstrom^3
     constexpr ParticleType type = ION;
     constexpr double windowRange = Defaults::range;
-    constexpr size_t simulationCount = 1; // Temporarily set to 1 for ease of development
+    constexpr size_t simulationCount = 100; // Temporarily set to 1 for ease of development
 }

@@ -22,18 +22,14 @@
 // Header files
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <fstream>
-#include <filesystem>
 #include <stdexcept>
-#include <string>
 #include <typeinfo>
 
 
 // Local includes
 #include "eSRIM_classes.h"
-
-// Namespaces
-namespace fs = std::filesystem;
 
 // Particle functions and static member initializers
 std::mt19937 Particle::randomGenerator;
@@ -108,20 +104,20 @@ std::tuple<Velocity, Velocity> Particle::relativeToAbsoluteVelocity(
     double THETA1;
     if (Z < 0.0) {
         THETA1 = M_PI+std::atan(std::sqrt(X*X + Y*Y)/Z);
-    } else if (Z == 0.0) {
-        THETA1 = M_PI/2.0;
-    } else {
+    } else if (Z > 0.0) {
         THETA1 = std::atan(std::sqrt(X*X+Y*Y)/Z);
+    } else {
+        THETA1 = M_PI/2.0;
     } 
 
     double ALPHA1;
     if(std::sin(THETA1)!= 0.0) {
         if(X < 0.0) {
             ALPHA1 = M_PI+std::atan(Y/X); 
-        } else if(X == 0.0) {
-            ALPHA1 = M_PI - sign(Y)*M_PI/2.0; 
-        } else {
+        } else if(X > 0.0) {
             ALPHA1 = std::atan(Y/X); 
+        } else {
+            ALPHA1 = M_PI - sign(Y)*M_PI/2.0; 
         }
     } else {
         ALPHA1 = 0.0;
@@ -144,28 +140,32 @@ std::tuple<Velocity, Velocity> Particle::relativeToAbsoluteVelocity(
     double THETA2;
     if(Z < 0.0) {
         THETA2 = M_PI+std::atan(std::sqrt(X*X+Y*Y)/Z);
-    } else if(Z == 0.0) {
-        THETA2 = M_PI/2;
-    } else {
+    } else if(Z > 0.0) {
         THETA2 = std::atan(std::sqrt(X*X+Y*Y)/Z);
+    } else {
+        THETA2 = M_PI/2;
+        
     }
 
     double ALPHA2;
     if(std::sin(THETA2) != 0.0) {
         if(X < 0.0) {
             ALPHA2 = M_PI+std::atan(Y/X);
-        }
-        if(X == 0.0) {
-             ALPHA2 = M_PI - 0.5*sign(Y)*M_PI;
-            }
-        if(X > 0.0) {
+        } else  if(X > 0.0) {
             ALPHA2 = std::atan(Y/X);
+        } else {
+            ALPHA2 = M_PI - 0.5*sign(Y)*M_PI;
         }
     } else {
         ALPHA2 = 0.0;
     }
     Velocity newVelocity = {THETA1, ALPHA1, energy};
     Velocity targetVelocity = {THETA2, ALPHA2, targetEnergy};
+
+    // if(std::isnan(THETA1) || std::isnan(THETA2) || std::isnan(ALPHA1) || std::isnan(ALPHA2)) {
+    //     DEBUG_PRINT("zAngle: " << THETA2
+    //                 << ", xAngle: " << ALPHA2);
+    // }
 
     return std::make_tuple(newVelocity, targetVelocity);
 };
@@ -184,7 +184,7 @@ double Particle::sign(double x) {
 Ion::Ion(Coordinate coordinate, Velocity velocity, InputFields& input,
     std::weak_ptr<Bombardment> bombardment)
     : Particle(coordinate, velocity, input, bombardment) {
-    DEBUG_PRINT("Ion made");
+    // DEBUG_PRINT("Ion made");
 };
 
 Ion::Ion(Coordinate coordinate, Velocity velocity, double charge,
@@ -193,15 +193,26 @@ Ion::Ion(Coordinate coordinate, Velocity velocity, double charge,
     std::weak_ptr<Bombardment> bombardment)
     : Particle(coordinate, velocity, charge, mass, substrateCharge, 
     substrateDensity, substrateMass, type, range, bombardment) {
-    DEBUG_PRINT("Ion made");
+    // DEBUG_PRINT("Ion made");
 }; 
 
+size_t Ion::getDepth() { 
+    DEBUG_PRINT("Ion depth function called");
+    return 0;
+};
 
 void Ion::fire() {
-    DEBUG_PRINT("Mass: " << mass);
+    // DEBUG_PRINT("Firing particle");
+    size_t numParticles = 0;
+    if(auto locked = bombardment.lock()) {
+        // DEBUG_PRINT("Bombardment lock");
+        numParticles = locked->getParticles().size();
+    } else {
+        DEBUG_PRINT("Could not get bombardment size");
+    }
     size_t fireCount = 0;
     while(velocity.energy > Constants::ionStoppingEnergy) {
-        DEBUG_PRINT("Energy " << fireCount << ":\t" << velocity.energy);
+        // DEBUG_PRINT("Energy " << fireCount << ":\t" << velocity.energy);
         velocity.energy -= electronicStoppingEnergy();
         
         if(velocity.energy < Constants::ionStoppingEnergy) {
@@ -226,25 +237,37 @@ void Ion::fire() {
                                 *std::cos(velocity.xAngle),
                 coordinate.y + atomicSpacing()*std::sin(velocity.zAngle)
                                 *std::sin(velocity.xAngle),
-                coordinate.z + atomicSpacing()*std::cos(velocity.zAngle)
+                coordinate.z + atomicSpacing()*std::cos(velocity.zAngle),
+                numParticles, (type == ION) ? 0 : getDepth(), fireCount 
             };
 
         // TODO: Uncomment this code to enable damage cascades
-        // if(energy - targetVelocity.energy > Constants::ionDisplacementEnergy) {
-        //     std::unique_ptr<Substrate> targetParticle(new Substrate(newCoordinate,
-        //         targetVelocity, substrateCharge, substrateMass, 
-        //         substrateDensity, range, bombardment));
+        if(Defaults::enableDamageCascade) {
+            if(energy - targetVelocity.energy > Constants::ionDisplacementEnergy) {
+                // DEBUG_PRINT("Attemtping lock...");
+                if(auto locked = bombardment.lock()) {    
+                    std::unique_ptr<Substrate> targetParticle;
+                    if(type == SUBSTRATE) {
+                        targetParticle = std::make_unique<Substrate>(newCoordinate,
+                            targetVelocity, substrateCharge, substrateMass, 
+                            substrateDensity, range, bombardment, numParticles, 
+                            getDepth() + 1);
+                    } else {
+                        // DEBUG_PRINT("Number: " << numParticles);
+                        targetParticle = std::make_unique<Substrate>(newCoordinate,
+                            targetVelocity, substrateCharge, substrateMass, 
+                            substrateDensity, range, bombardment, numParticles, 
+                            0);
+                    }
+                    locked->addParticle(std::move(targetParticle));
+                } else {
+                    DEBUG_PRINT("Failed to create knock-on particle");
+                }
+                // DEBUG_PRINT("Knock-off substrate ion created");
+            }
+        }
 
-        //     DEBUG_PRINT("Attemtping lock...");
-        //     if(auto locked = bombardment.lock()) {    
-        //         locked->addParticle(std::move(targetParticle));
-        //     } else {
-        //         std::cerr << "Failed to create knock-on particle" << std::endl;
-        //     }
-        //     DEBUG_PRINT("Knock-off substrate ion created");
-        // }
-
-        DEBUG_PRINT("x, y, z: " << newCoordinate.x << ", "<< newCoordinate.y << ", "<< newCoordinate.z );
+        // DEBUG_PRINT("x, y, z: " << newCoordinate.x << ", "<< newCoordinate.y << ", "<< newCoordinate.z );
         addCoordinate(coordinate);
         coordinate = newCoordinate;
         velocity = newVelocity;
@@ -323,22 +346,22 @@ std::tuple<Velocity,Velocity> Ion::recoilEnergyAndVelocity() {
         /(std::sqrt((1.0+ABIERSACK*ABIERSACK))-ABIERSACK);
     double DELTABIERSACK = ABIERSACK*(ROBIERSACK-BBIERSACK)/(1.0+GBIERSACK);
     double CALPHA1;
-    if(P == 0.0) {
-        CALPHA1 = M_PI;
-    } else {
+    if(P != 0.0) {
         CALPHA1 = 2.0*std::atan(std::sqrt((ROBIERSACK+RCBIERSACK)
             *(ROBIERSACK+RCBIERSACK)/((BBIERSACK+RCBIERSACK+DELTABIERSACK)
             *(BBIERSACK+RCBIERSACK+DELTABIERSACK))-1.0));
+    } else {
+        CALPHA1 = M_PI;
     }
     // Defelction angle in lab coordinator
     double COSPLUSMASS = std::cos(CALPHA1)+mass/substrateMass;
     double THETA1RELATIVE;
-    if(COSPLUSMASS < 0.0) {
-        THETA1RELATIVE = M_PI+std::atan(std::sin(CALPHA1)/COSPLUSMASS);
-    } else if (COSPLUSMASS == 0.0) {
-        THETA1RELATIVE = M_PI/2.0;
-    } else {
+    if(COSPLUSMASS > 0.0) {
         THETA1RELATIVE = std::atan(std::sin(CALPHA1)/COSPLUSMASS);
+    } else if (COSPLUSMASS < 0.0) {
+        THETA1RELATIVE = M_PI+std::atan(std::sin(CALPHA1)/COSPLUSMASS);
+    } else {
+        THETA1RELATIVE = M_PI/2.0;
     }
 
     // Calculate target direction and energy
@@ -366,9 +389,12 @@ double Ion::electronicStoppingEnergy() {
 
 // Substrate functions
 Substrate::Substrate(Coordinate coordinate, Velocity velocity, double charge,
-    double mass, double density, double range, std::weak_ptr<Bombardment> bombardment) :
-    Ion(coordinate, velocity, charge, mass, mass, density, mass, ION, range,
-        bombardment) {};
+    double mass, double density, double range,
+    std::weak_ptr<Bombardment> bombardment, size_t id, size_t depth) :
+    Ion(coordinate, velocity, charge, mass, mass, density, mass, SUBSTRATE, range,
+        bombardment), id(id), depth(depth) {};
+
+size_t Substrate::getDepth() { return depth; };
 
 //  Electron functions
 
@@ -401,12 +427,13 @@ ParticleType InputFields::getType() const { return type; };
 double InputFields::getRange() const { return range; };
 
 // Bombardment functions
-Bombardment::Bombardment() : particles(0) {
+Bombardment::Bombardment(std::weak_ptr<Simulation> simulation, size_t id)
+    : particles(0), simulation(simulation), id(id) {
     DEBUG_PRINT("Bombardment created");
 };
 
 Bombardment::~Bombardment() {
-    DEBUG_PRINT("Destructing bombardment...");
+    DEBUG_PRINT("Bombardment " << id << "Destroyed")
 };
 
 const std::vector<std::unique_ptr<Particle>>& Bombardment::getParticles() const {
@@ -414,43 +441,46 @@ const std::vector<std::unique_ptr<Particle>>& Bombardment::getParticles() const 
 };
 
 void Bombardment::initiate(InputFields& inputFields) {
-    DEBUG_PRINT("Initiating bombardment...");
+    DEBUG_PRINT("Initiating bombardment " << id);
     std::unique_ptr<Particle> initialParticle;
-    Coordinate initialCoordinate = {0.0, 0.0, 0.0};
+    Coordinate initialCoordinate = {0.0, 0.0, 0.0, 0, 0, 0};
     Velocity initialVelocity = {0.0, 0.0, inputFields.getEnergy()};
 
     if(inputFields.getType() == ION) {
-        DEBUG_PRINT("Making Ion...");
+        // DEBUG_PRINT("Making Ion...");
         initialParticle = std::make_unique<Ion>(initialCoordinate, initialVelocity,
             inputFields, shared_from_this());
     }
 
-    DEBUG_PRINT("Call addParticle()");
     addParticle(std::move(initialParticle));
+
+    if(auto locked = simulation.lock()) {
+        locked->writeData(COORDINATE, getParticles(), id);
+    } else {
+        std::cerr << "Failed to initiate write" << std::endl;
+    }
 };
 
 void Bombardment::addParticle(std::unique_ptr<Particle> particle) {
-    DEBUG_PRINT("Pushing back particle...");
+    // DEBUG_PRINT("Pushing back particle...");
     particle->fire();
     particles.push_back(std::move(particle));
 }
 
 // Simulation functions
-Simulation::Simulation() : inputs(InputFields()), 
-    bombardments(Defaults::simulationCount) {
-    DEBUG_PRINT("Creating simulation (Default)");
-    for(std::shared_ptr<Bombardment> bombardment : bombardments) {
-        bombardment = std::make_shared<Bombardment>();
-    }
-};
+// Simulation::Simulation() : inputs(InputFields()), 
+//     bombardments(Defaults::simulationCount) {
+//     DEBUG_PRINT("Creating simulation (Default)");
+//     for(std::shared_ptr<Bombardment> bombardment : bombardments) {
+//         bombardment = std::make_shared<Bombardment>();
+//     }
+// };
 
 Simulation::Simulation(InputFields inputs)
-: inputs(inputs), bombardments(inputs.getSimulationCount()) {
+: inputs(inputs), bombardments(inputs.getSimulationCount()),
+  outputPath(fs::path(".") / Defaults::outputDirectory) {
     DEBUG_PRINT("Creating simulation");
-    for(std::shared_ptr<Bombardment>& bombardment : bombardments) {
-        DEBUG_PRINT("Allocating bombardment");
-        bombardment = std::make_shared<Bombardment>();
-    }
+    // for(std::shared_ptr<Bombardment>& bombardment : bombardments) {
 };
 
 Simulation::~Simulation() {
@@ -462,47 +492,151 @@ size_t Simulation::getBombardmentSize() { return bombardments.capacity(); };
 size_t Simulation::getBombardmentCapacity() { return bombardments.capacity(); };
 
 void Simulation::initiate() {
+
+    checkOutputFiles();
+
+    for(size_t i = 0; i < inputs.getSimulationCount(); i++) {
+        DEBUG_PRINT("Allocating bombardment");
+        bombardments.at(i) = std::make_shared<Bombardment>(shared_from_this(), i);
+    }
+
+    const size_t simulation_count = inputs.getSimulationCount();
+    threads.reserve(simulation_count); // Reserve space to avoid unnecessary reallocations
+
     DEBUG_PRINT("Initiating simulation");
-    for(std::shared_ptr<Bombardment> bombardment : bombardments) {
-        DEBUG_PRINT("Initializing bombardment...");
-        bombardment->initiate(inputs);
-    };
+    for(size_t i = 0; i < simulation_count; i++) {
+        // DEBUG_PRINT("Initializing bombardment...");
+        threads.emplace_back([this, i]() {
+            bombardments.at(i)->initiate(inputs);
+            // std::cout << "Use before: " << bombardments.at(i).use_count() << std::endl;
+            bombardments.at(i).reset();
+            // std::cout << "Use after: " << bombardments.at(i).use_count() << std::endl;
+        });
+    }
+
+    for(auto& thread : threads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+
+    writeData(ENDOFFILE, {}, 0);
+}
+
+void Simulation::writeData(OutputType outputType,
+    const std::vector<std::unique_ptr<Particle>>& particles = {},
+    size_t simulationID = 0) {
+    
+    // Acquire lock
+    std::lock_guard<std::mutex> lock(fileLock);
+
+    DEBUG_PRINT("Simulation " << simulationID << " Writing");
+
+    // Check if output directory exists, create it if not
+    if (!fs::exists(outputPath)) {
+        fs::create_directories(outputPath);
+    }
+
+    // Open output file
+    std::string filename = std::string(Defaults::outputCoordinateFilename);
+    filename = filename + std::string(Defaults::outputFileExtension);
+    std::ofstream outputFile(outputPath / filename, std::ios_base::app);
+    if (!outputFile.is_open()) {
+        std::cerr << "Failed to open output file." << std::endl;
+        return;
+    }
+
+    // Write headers if the file is empty
+    if (outputFile.tellp() == 0) {
+        outputFile << "simulationID,particleID,depth,collision,x,y,z\n";
+    }
+
+    // Write data to file
+    switch (outputType) {
+        case OutputType::COORDINATE:
+            for (const auto& particle : particles){
+                for (const auto& coordinate : particle->getCoordinates()) {
+                    outputFile << simulationID << ','
+                                << coordinate.id << ','
+                                << coordinate.depth << ','
+                                << coordinate.collisionNumber << ','
+                                << coordinate.x << ','
+                                << coordinate.y << ','
+                                << coordinate.z << '\n';
+                }
+            }
+            break;
+        
+        // Add cases for other OutputType values as needed
+        case OutputType::ENDOFFILE:
+            outputFile << Defaults::outputFileEnd;
+            break; 
+        default:
+            std::cerr << "Unsupported output type." << std::endl;
+            break;
+    }
+
+    // Close output file
+    outputFile.close();
 };
 
-void Simulation::writeCoordinateData() {
-    DEBUG_PRINT("Writing coordinate data...");
-    std::filesystem::path outputPath = fs::path(".") / "output";
-    fs::create_directories(outputPath);
-    std::string coordinateOutputFilename = "coordinateOutput.csv";
+bool Simulation::fileIsWritten(const fs::path filename) {
+    
+    const int bufferSize = strlen(Defaults::outputFileEnd);
 
-    std::ofstream coordinateOutputFile(outputPath / coordinateOutputFilename);
-    if(coordinateOutputFile.is_open()) {
-        coordinateOutputFile << "Bombardment,Particle,x,y,z" << std::endl;
+    std::ifstream file(filename, std::ios::ate);
+    if (!file.is_open()) {
+        return false;
+    }
+    // Check if file size is smaller than the phrase length
+    if (file.tellg() < bufferSize) {
+        return false;
+    }
+    
+    // Move file pointer to bufferSize characters before the end
+    file.seekg(-bufferSize, std::ios::end);
+    // Read the last bufferSize characters
+    std::string lastChars(bufferSize, '\0');
+    file.read(&lastChars[0], bufferSize);
+    return lastChars == std::string(Defaults::outputFileEnd);
+};
 
-        size_t bombardmentIndex = 0;
-        size_t particleIndex = 0;
+void Simulation::renameFileWithTimestamp(const std::string& filename) {
+    std::string timestamp = getCurrentDateTime();
+    std::string newFilename = filename + "_" + timestamp
+        + Defaults::outputFileExtension;
+    fs::path newFilePath = outputPath/newFilename;
+    std::string oldFilename = filename + Defaults::outputFileExtension;
+    fs::path filePath = outputPath/oldFilename;
+    fs::rename(filePath, newFilePath);
+}
 
-        for(std::shared_ptr<Bombardment>& bombardment : bombardments) {
-            DEBUG_PRINT("Bombardment " << bombardmentIndex);
-            for(const std::unique_ptr<Particle>& particle : bombardment->getParticles()) {
-                DEBUG_PRINT("Particle " << particleIndex);
-                DEBUG_PRINT("Size:\t" << particle->getCoordinates().size());
-                for(const Coordinate coordinate : particle->getCoordinates()) {
-                    coordinateOutputFile << bombardmentIndex << ","
-                                         << particleIndex << ","
-                                         << coordinate.x << ","
-                                         << coordinate.y << ","
-                                         << coordinate.z << std::endl;
+std::string Simulation::getCurrentDateTime() {
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+    std::string timestamp = std::ctime(&now_c);
+    timestamp.pop_back();
+    std::replace(timestamp.begin(), timestamp.end(), ' ', '_');
+    std::replace(timestamp.begin(), timestamp.end(), ':', '-');
+    return timestamp;
+};
+
+void Simulation::checkOutputFiles() {
+    fs::path filepath;
+    std::string filename;
+    for(int i = COORDINATE; i  < ENDOFFILE; i++) {
+        switch(i) {
+            case COORDINATE:
+                filename = std::string(Defaults::outputCoordinateFilename);
+                filename = filename + std::string(Defaults::outputFileExtension);
+                filepath = outputPath/filename;
+                if(fileIsWritten(filepath)) {
+                    filename = std::string(Defaults::outputCoordinateFilename);
+                    renameFileWithTimestamp(filename);
                 }
-                particleIndex++;
-            }
-            particleIndex = 0;
-            bombardmentIndex++;
+                break;
+            default:
+                break;
         }
-
-        coordinateOutputFile.close();
-    } else {
-        std::cerr << "Error: Unable to open " << coordinateOutputFilename 
-                  << std::endl;
-    };
+    }
 };

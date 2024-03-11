@@ -20,9 +20,12 @@
 
 
 // Includes
+#include <filesystem>
 #include <iostream> 
 #include <memory>
+#include <mutex>
 #include <random>
+#include <thread>
 #include <tuple>
 #include <vector>
 
@@ -37,6 +40,8 @@
 #define DEBUG_PRINT(x)
 #endif
 
+// Namespaces
+namespace fs = std::filesystem;
 
 // Class and function declarations (to be moved to a header file in a later 
 // version)
@@ -44,6 +49,9 @@ struct Coordinate {
     double x;
     double y;
     double z;
+    size_t id;
+    size_t depth;
+    size_t collisionNumber;
 };
 
 struct Velocity{
@@ -153,16 +161,22 @@ class Ion : public Particle {
         double DF(double X, double COLUMBIAVK, double AU);
         std::tuple<Velocity,Velocity> recoilEnergyAndVelocity();
         double electronicStoppingEnergy();
+        virtual size_t getDepth();
 };
 
 
 class Substrate : public Ion {
+    private:
+        size_t id;
+        size_t depth;
 
     public:
         // Constructors
         Substrate(Coordinate coordinate, Velocity velocity, double charge,
             double mass, double density, double range,
-            std::weak_ptr<Bombardment> bombardment);
+            std::weak_ptr<Bombardment> bombardment, size_t id, size_t depth);
+        // Functions
+        virtual size_t getDepth() override;
 };
 
 
@@ -173,13 +187,17 @@ class Electron : public Particle {
     public:
 };
 
+class Simulation;
+
 class Bombardment : public std::enable_shared_from_this<Bombardment> {
     private:
         std::vector<std::unique_ptr<Particle>> particles;
+        std::weak_ptr<Simulation> simulation;
+        size_t id;
     
     public:
         // Constructors
-        Bombardment();
+        Bombardment(std::weak_ptr<Simulation> simulation, size_t id);
 
         // Destructor
         ~Bombardment();
@@ -191,13 +209,16 @@ class Bombardment : public std::enable_shared_from_this<Bombardment> {
         void addParticle(std::unique_ptr<Particle> particle);
 };
 
-class Simulation {
+class Simulation : public std::enable_shared_from_this<Simulation> {
     private:
         InputFields inputs;
         std::vector<std::shared_ptr<Bombardment>> bombardments;
+        fs::path outputPath;
+        std::mutex fileLock;
+        std::vector<std::thread> threads;
     public:
         // Constructors
-        Simulation();
+        // Simulation();
         Simulation(InputFields input);
 
         // Destructors
@@ -213,5 +234,11 @@ class Simulation {
 
         // Functions
         void initiate();
-        void writeCoordinateData();
+
+        void writeData( OutputType outputType,
+            const std::vector<std::unique_ptr<Particle>>& particles, size_t simulationID);
+        bool fileIsWritten(const fs::path filename);
+        void renameFileWithTimestamp(const std::string& filename);
+        std::string getCurrentDateTime();
+        void checkOutputFiles();
 };
