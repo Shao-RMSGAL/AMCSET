@@ -38,8 +38,9 @@ namespace Constants {
     constexpr double ionDisplacementEnergy = 0.04; // keV
     constexpr double electronMass = 9.1093837015; // kg
     constexpr double electronCharge = -1; // e
+    constexpr size_t numElecScreeningPotentialParams = 6;
     constexpr size_t numMottjParam = 5; 
-    constexpr size_t numMottkParam = 6; 
+    constexpr size_t numMottkParam = 6;
     constexpr size_t numMottElements = 118; 
     constexpr double plancksConstant = 6.62607015e-34; // J·s
     constexpr double speedOfLight = 299792458; // m/s
@@ -49,9 +50,15 @@ namespace Constants {
 namespace Defaults {
     constexpr bool enableDamageCascade = true;
     constexpr double electronEnergy = 10000; // keV, default electron energy
+    constexpr const char* electronScreeningParametersFilename = "electron_screeening_potentials.csv";
+    constexpr const char* inputDirectory =  "input";
     constexpr double ionEnergy = 50; // keV, default ion energy
     constexpr double ionCharge = 14; // e, silicon
     constexpr double ionMass = 27.97692653442; // amu, silicon 29
+    constexpr const char* mottScatteringParametersFilename = "mott_scattering_parameters.csv";
+    constexpr size_t numElecScreeningPotentialElements = 92;
+    constexpr size_t numFlyingDistances = 1000;
+    constexpr size_t numAngleDivisors = 1000;
     constexpr const char* outputDirectory =  "output";
     constexpr const char* outputCoordinateFilename =  "coordinateOutput";
     constexpr const char* outputFileExtension = ".csv";
@@ -67,7 +74,7 @@ namespace Defaults {
                                             *Constants::cmPerAngstrom
                                             *Constants::cmPerAngstrom
                                         ); // g/cm^3 -> atoms/angstrom^3
-    constexpr ParticleType type = ION;
+    constexpr ParticleType type = ELECTRON;
     constexpr double windowRange = Defaults::range;
-    constexpr size_t simulationCount = 100; // Temporarily set to 1 for ease of development
+    constexpr size_t simulationCount = 100;
 }

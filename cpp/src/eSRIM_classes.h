@@ -135,10 +135,12 @@ class Particle {
         // Member functions
         size_t getNumParticles();
         virtual void fire();
-        double atomicSpacing() const;
+        inline double atomicSpacing() const;
         std::tuple<Velocity, Velocity> relativeToAbsoluteVelocity(double angle,
             double targetAngle, double targetEnergy);
         double sign(double x);
+        virtual inline Coordinate calculateNewCoordinate();
+        void createSubstrateKnockon(Coordinate& newCoordinate, Velocity& targetVelocity);
 
         // Static functions
         static void seedRandomGenerator();
@@ -163,6 +165,7 @@ class Ion : public Particle {
         std::tuple<Velocity,Velocity> recoilEnergyAndVelocity();
         double electronicStoppingEnergy();
         virtual const size_t& getDepth() const;
+        inline Coordinate calculateNewCoordinate() override;
 };
 
 
@@ -182,9 +185,23 @@ class Substrate : public Ion {
 
 class Electron : public Particle {
     private:
-        const static std::array<std::array<std::array<double,
+        static std::array<std::array<std::array<double,
             Constants::numMottkParam>,Constants::numMottjParam>,
             Constants::numMottElements> mottScatteringParams;
+        
+        static std::array<std::array<double,
+            Constants::numElecScreeningPotentialParams>,
+            Defaults::numElecScreeningPotentialElements> elecScreeningParams;
+
+        static std::vector<double> divisionAngles;
+
+        std::vector<double> randomCrossSections;
+        std::vector<double> flyingDistances;
+        std::vector<double> scatteringAngles;
+        std::vector<double> partialCrossSections;
+        std::vector<double> elasticEnergyLoss;
+
+        double correctionFactor;
         
     public:
         // Constructor
@@ -192,10 +209,20 @@ class Electron : public Particle {
             std::weak_ptr<Bombardment> bombardment);
         
         // Initializer
-        static void readParameters();
+        static inline double findAngle(size_t i);
+        static void readParametersAndInitialize();
 
         // Functions
         void fire();
+        double getMottDifferentialCrossSection(double Theta);
+        void generateRandomCrossSections();
+        double generateFlyingDistances(double totalMottCrossSection);
+        double getMottTotalCrossSection();
+        void generateIntegratedCrossSections(double totalMottCrossSection);
+        double getElasticEnergyLoss();
+        double getIonizationEnergyLoss();
+        inline double getBremsstrahlung();
+        inline Coordinate calculateNewCoordinate(size_t i);
 };
 
 class Simulation;

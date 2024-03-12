@@ -20,10 +20,12 @@
 
 
 // Header files
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <typeinfo>
 
@@ -33,7 +35,9 @@
 
 // Particle functions and static member initializers
 std::mt19937 Particle::randomGenerator;
-std::uniform_real_distribution<double> Particle::randomDistribution(0,1);
+std::uniform_real_distribution<double> Particle::randomDistribution(
+    0+std::numeric_limits<double>::epsilon(),
+    1-std::numeric_limits<double>::epsilon());
 
 void Particle::seedRandomGenerator() {
     randomGenerator.seed(std::chrono::system_clock::now().time_since_epoch().count());
@@ -90,7 +94,7 @@ void Particle::fire() {
     return;
 };
 
-double Particle::atomicSpacing() const {
+inline double Particle::atomicSpacing() const {
     return std::pow(substrateDensity, -1.0/3.0);
 };
 
@@ -194,6 +198,12 @@ double Particle::sign(double x) {
     }
 };
 
+inline Coordinate Particle::calculateNewCoordinate() {
+    throw std::logic_error("Base class Particle::calculateNewCoordinate() called");
+    Coordinate dummy;
+    return dummy;
+}
+
 //  Ion functions
 Ion::Ion(Coordinate coordinate, Velocity velocity, InputFields& input,
     std::weak_ptr<Bombardment> bombardment)
@@ -215,7 +225,28 @@ const size_t& Ion::getDepth() const {
     return coordinate.depth;
 };
 
+void Particle::createSubstrateKnockon(Coordinate& newCoordinate, Velocity& targetVelocity) {
+    if(energy - targetVelocity.energy > Constants::ionDisplacementEnergy) {
+        // DEBUG_PRINT("Attempting lock...");
+        Coordinate targetCoordinate = newCoordinate;
+        targetCoordinate.depth++;
+        if(auto locked = bombardment.lock()) {    
+            std::unique_ptr<Substrate> targetParticle;
+            targetParticle = std::make_unique<Substrate>(targetCoordinate,
+                targetVelocity, substrateCharge, substrateMass, 
+                substrateDensity, range, bombardment);
+            locked->addParticle(std::move(targetParticle));
+        } else {
+            DEBUG_PRINT("Failed to create knock-on particle");
+        }
+        // DEBUG_PRINT("Knock-off substrate ion created");
+    }
+};
+
 void Ion::fire() {
+    Velocity newVelocity;
+    Velocity targetVelocity;
+    Coordinate newCoordinate;
     if(velocity.energy <= Constants::ionStoppingEnergy) {
         // DEBUG_PRINT("Particle " << id  << " does not have enough energy");
         // addCoordinate(coordinate);
@@ -226,41 +257,17 @@ void Ion::fire() {
             // DEBUG_PRINT("Energy " << fireCount << ":\t" << velocity.energy);
             velocity.energy -= electronicStoppingEnergy();
 
-            Velocity newVelocity;
-            Velocity targetVelocity;
-
             std::tie(newVelocity, targetVelocity) = recoilEnergyAndVelocity();
 
-            Coordinate newCoordinate = {
-                    coordinate.x + atomicSpacing()*std::sin(velocity.zAngle)
-                                    *std::cos(velocity.xAngle),
-                    coordinate.y + atomicSpacing()*std::sin(velocity.zAngle)
-                                    *std::sin(velocity.xAngle),
-                    coordinate.z + atomicSpacing()*std::cos(velocity.zAngle),
-                    coordinate.depth
-                };
+            newCoordinate = calculateNewCoordinate();
 
-            if(newCoordinate.z < 0) {
-                DEBUG_PRINT("Sputter")
+            if(newCoordinate.z < 0.0) {
+                DEBUG_PRINT("Ion Sputter");
                 return;
             }
 
             if(Defaults::enableDamageCascade) {
-                if(energy - targetVelocity.energy > Constants::ionDisplacementEnergy) {
-                    // DEBUG_PRINT("Attempting lock...");
-                    Coordinate targetCoordinate = newCoordinate;
-                    targetCoordinate.depth++;
-                    if(auto locked = bombardment.lock()) {    
-                        std::unique_ptr<Substrate> targetParticle;
-                        targetParticle = std::make_unique<Substrate>(targetCoordinate,
-                            targetVelocity, substrateCharge, substrateMass, 
-                            substrateDensity, range, bombardment);
-                        locked->addParticle(std::move(targetParticle));
-                    } else {
-                        DEBUG_PRINT("Failed to create knock-on particle");
-                    }
-                    // DEBUG_PRINT("Knock-off substrate ion created");
-                }
+                createSubstrateKnockon(newCoordinate, targetVelocity);
             }
 
             // DEBUG_PRINT("x, y, z: " << newCoordinate.x << ", "<< newCoordinate.y << ", "<< newCoordinate.z );
@@ -382,6 +389,16 @@ double Ion::electronicStoppingEnergy() {
     return energyLoss;
 };
 
+inline Coordinate Ion::calculateNewCoordinate() {
+    return {
+        coordinate.x + atomicSpacing()*std::sin(velocity.zAngle)
+                        *std::cos(velocity.xAngle),
+        coordinate.y + atomicSpacing()*std::sin(velocity.zAngle)
+                        *std::sin(velocity.xAngle),
+        coordinate.z + atomicSpacing()*std::cos(velocity.zAngle),
+        coordinate.depth
+    };
+};
 
 // Substrate functions
 Substrate::Substrate(Coordinate coordinate, Velocity velocity, double charge,
@@ -392,6 +409,16 @@ Substrate::Substrate(Coordinate coordinate, Velocity velocity, double charge,
 
 const size_t& Substrate::getDepth() const { return depth; };
 
+std::array<std::array<std::array<double,
+            Constants::numMottkParam>,Constants::numMottjParam>,
+            Constants::numMottElements> Electron::mottScatteringParams;
+
+std::array<std::array<double,
+            Constants::numElecScreeningPotentialParams>,
+            Defaults::numElecScreeningPotentialElements> Electron::elecScreeningParams;
+
+std::vector<double> Electron::divisionAngles;
+
 //  Electron functions
 Electron::Electron(Coordinate initialCoordinate, Velocity initialVelocity, InputFields input,
         std::weak_ptr<Bombardment> bombardment)
@@ -399,21 +426,356 @@ Electron::Electron(Coordinate initialCoordinate, Velocity initialVelocity, Input
         Constants::electronCharge, Constants::electronMass,
         input.getSubstrateCharge(), input.getSubstrateDensity(),
         input.getSubstrateMass(), ELECTRON, input.getRange(),
-        bombardment) {
+        bombardment), randomCrossSections(Defaults::numFlyingDistances),
+        flyingDistances(Defaults::numFlyingDistances),
+        scatteringAngles(Defaults::numFlyingDistances),
+        partialCrossSections(Defaults::numAngleDivisors),
+        elasticEnergyLoss(Defaults::numFlyingDistances),
+        correctionFactor(1.0) {;
     DEBUG_PRINT("Electron made");
 };
 
-void Electron::readParameters() {
+inline double Electron::findAngle(size_t i) {
+    // Value is offset from 1 to avoid checking a zero-angle
+    return -M_PI/(9.0)*(1-std::pow(10.0,(static_cast<double>(i+1)
+        /Defaults::numAngleDivisors)));
+};
+
+void Electron::readParametersAndInitialize() {
     DEBUG_PRINT("Reading Mott scattering values");
+    fs::path mottParametersPath(Defaults::inputDirectory);
+    mottParametersPath = mottParametersPath / Defaults::mottScatteringParametersFilename ;
+
+    std::string input;
+    std::string parameter;
+    std::istringstream stringStream;
+
+    std::ifstream mottParametersFile(mottParametersPath);
+
+    if(!mottParametersFile.is_open()) {
+        throw std::ios_base::failure("Could not open file " + mottParametersPath.string() );
+    }
+
+    for(size_t i = 0; i < Constants::numMottElements; i++) {
+        for(size_t j = 0; j < Constants::numMottjParam; j++) {
+            std::getline(mottParametersFile, input);
+            stringStream.clear();
+            stringStream.str(input);
+
+            for(size_t k = 0; k < Constants::numMottkParam; k++) {
+                std::getline(stringStream, parameter, ',');
+                mottScatteringParams[i][j][k] = std::stod(parameter);
+            }    
+            
+        }
+    }
+
+    mottParametersFile.close();
+
+    DEBUG_PRINT("Electron screening parameters");
+    fs::path elecParametersPath(Defaults::inputDirectory);
+    elecParametersPath = elecParametersPath / Defaults::electronScreeningParametersFilename;
+
+    std::ifstream elecParametersFile(elecParametersPath);
+
+    if(!elecParametersFile.is_open()) {
+        throw std::ios_base::failure("Could not open file " + elecParametersPath.string() );
+    }
+
+    for(size_t i = 0; i < Defaults::numElecScreeningPotentialElements; i++) {
+        std::getline(elecParametersFile, input);
+        stringStream.clear();
+        stringStream.str(input);
+        for(size_t j = 0; j < Constants::numElecScreeningPotentialParams; j++) {
+            std::getline(stringStream, parameter, ',');
+            elecScreeningParams[i][j] = std::stod(parameter);
+        }
+    }
+
+    elecParametersFile.close();
+
+    DEBUG_PRINT("Calculating division angles");
+
+    divisionAngles.reserve(Defaults::numAngleDivisors);
+
+    for(size_t i = 0; i < Defaults::numAngleDivisors; i++) {
+        divisionAngles.push_back(findAngle(i));
+    }
+    
 };
 
 void Electron::fire() {
     DEBUG_PRINT("Firing electron!");
     // size_t numParticles = getNumParticles();
+    double totalMottCrossSection;
+    double totalElasticEnergyLoss;
+    double ionizationEnergyLoss;
+    double bremsstrahlung;
+    double newEnergy;
+    bool firstIteration = true;
+    double flightGroupLength;
+    Velocity newVelocity;
+    Velocity targetVelocity;
+    Coordinate newCoordinate;
     while(velocity.energy > Constants::electronStoppingEnergy) {
         DEBUG_PRINT("Energy: " << energy << " keV");
+
+        totalMottCrossSection = getMottTotalCrossSection();
+        
+        DEBUG_PRINT("Total Mott: " << totalMottCrossSection);
+
+        flightGroupLength = generateFlyingDistances(totalMottCrossSection);
+
+        generateRandomCrossSections();
+        generateIntegratedCrossSections(totalMottCrossSection);
+
+        
+
+        // for(auto& i : scatteringAngles) DEBUG_PRINT("Random angle: " << i*180.0/M_PI << " degrees");
+
+        DEBUG_PRINT("Factor: " << correctionFactor);
+
+        totalElasticEnergyLoss = getElasticEnergyLoss();
+
+        DEBUG_PRINT("Elastic: " << totalElasticEnergyLoss);
+
+        DEBUG_PRINT("Length: " << flightGroupLength);
+
+        ionizationEnergyLoss = flightGroupLength*getIonizationEnergyLoss();
+
+        DEBUG_PRINT("Ionization: " << ionizationEnergyLoss);
+
+        bremsstrahlung = flightGroupLength*getBremsstrahlung();
+
+        DEBUG_PRINT("Bremsstralung: " << bremsstrahlung);
+
+        newEnergy = energy - totalElasticEnergyLoss - ionizationEnergyLoss -
+            bremsstrahlung;
+
+        // TODO: Include logic for explicit and implicit methods
+        if(firstIteration) {
+            DEBUG_PRINT("Preassign: " << correctionFactor);
+            DEBUG_PRINT("Energy: " << energy);
+            DEBUG_PRINT("New Energy: " << newEnergy);
+            correctionFactor = (energy + newEnergy)/2.0/energy;
+            DEBUG_PRINT("Postcorrection: " << correctionFactor);
+            firstIteration = false;
+            continue;
+        } 
+        correctionFactor = (energy + newEnergy)/2.0/energy;
+        energy = newEnergy;
+
+        for(size_t i = 0; i < Defaults::numFlyingDistances; i++) {
+
+            std::tie(newVelocity, targetVelocity) = relativeToAbsoluteVelocity(
+                scatteringAngles[i], (M_PI-scatteringAngles[i])/2.0, elasticEnergyLoss[i]
+            );
+
+            newCoordinate = calculateNewCoordinate(i);
+
+            if(newCoordinate.z < 0.0) {
+                DEBUG_PRINT("Electron Sputter");
+                return;
+            }
+
+            if(Defaults::enableDamageCascade) {
+                createSubstrateKnockon(newCoordinate, targetVelocity);
+            }
+
+            addCoordinate(coordinate);
+            coordinate = newCoordinate;
+            velocity = newVelocity;
+        }
+
         
     }   
+};
+
+double Electron::getMottDifferentialCrossSection(double Theta) {
+    double correctedEnergy = energy*correctionFactor;
+    double beta = std::sqrt(1.0-1.0/((correctedEnergy/511.0 + 1.0)
+        *(correctedEnergy/511.0 + 1.0)));
+    // DEBUG_PRINT("Beta: " << correctionFactor);
+    constexpr double betaAVE = 0.7181287;
+    double gamma = correctedEnergy/511.0+1.0;
+    constexpr double elecmass = 1; // specific for a.u. unit,  only for Feq calcu.
+    constexpr double Vc = 137;  //speed of light for a.u. unit, only for Feq calcu.
+    constexpr double re1 = 2.817938E-13;  // in the unit of cm)
+    double Rmott = 0.0;
+    double alpha1;
+    for(size_t j = 0; j < Constants::numMottjParam; j++) {
+        alpha1 = 0.0;
+        for(size_t k = 0; k < Constants::numMottkParam; k++) {
+            alpha1 = alpha1 +
+                mottScatteringParams[static_cast<size_t>(substrateCharge)][j][k]
+                *std::pow(beta-betaAVE, k);
+            // DEBUG_PRINT("Expr: " << std::pow(beta-betaAVE, k-1.0));
+        }
+        Rmott = Rmott+alpha1*std::pow(1.0-std::cos(Theta), (j)/2.0);
+    }
+    double DSC = (substrateCharge*re1)*(substrateCharge*re1)*(1.0-beta*beta)/
+        std::pow(beta,4.0)*1.0/((1 - std::cos(Theta))*(1 - std::cos(Theta)));
+    double moment = 2.0*beta*gamma*elecmass*Vc*std::sin(Theta/2.0);
+    double Feq = 0;
+    for(size_t i = 0; i < Constants::numElecScreeningPotentialParams/2; i++) {
+        Feq = Feq + elecScreeningParams[substrateCharge][i]*
+            elecScreeningParams[substrateCharge][i + 3]*elecScreeningParams[substrateCharge][i + 3]
+            /(elecScreeningParams[substrateCharge][i + 3]*elecScreeningParams[substrateCharge][i + 3]
+            +moment*moment);
+    }
+    return Rmott*DSC*(1-Feq)*(1-Feq);
+};
+
+void Electron::generateRandomCrossSections() {
+    for(size_t i = 0; i < Defaults::numFlyingDistances; i++) {
+        randomCrossSections[i] = random(); 
+    }
+    std::sort(randomCrossSections.begin(), randomCrossSections.end());
+};
+
+double Electron::generateFlyingDistances(double totalMottCrossSection) {
+    double distance;
+    double flightGroupLength = 0;
+    double crossSectionFlight = 0;
+    double atomicSpacing = std::pow(substrateDensity*1e24, -1.0/3.0);
+
+    // DEBUG_PRINT("Cross section: " << totalMottCrossSection);
+
+    for(size_t i = 0; i < Defaults::numFlyingDistances; i++) {
+        crossSectionFlight = -std::log(random())/(substrateDensity*1e24*totalMottCrossSection);
+        distance = crossSectionFlight+atomicSpacing;
+        flightGroupLength += distance;
+        flyingDistances[i] = distance; 
+    }
+    return flightGroupLength;
+};
+
+double Electron::getMottTotalCrossSection() {
+    double totalCrossSection = 0.0;
+    double differentialCrossSection = getMottDifferentialCrossSection(divisionAngles[0]);
+    totalCrossSection += differentialCrossSection*2.0*M_PI
+        *std::sin(divisionAngles[0])*(divisionAngles[1]-divisionAngles[0])/2.0;
+    partialCrossSections[0] = totalCrossSection;
+    for(size_t i = 1; i < Defaults::numAngleDivisors - 1; i++) {
+        // DEBUG_PRINT("Diff: " << differentialCrossSection << "\tDiff (calc): " << differentialCrossSection*2.0*M_PI*std::sin(divisionAngles[i]) *(divisionAngles[i+1] - divisionAngles[i-1])/2.0 << "\tTotal " << i << ": " << totalCrossSection);
+        differentialCrossSection = getMottDifferentialCrossSection(divisionAngles[i]);
+        totalCrossSection += differentialCrossSection*2.0*M_PI*std::sin(divisionAngles[i])
+            *(divisionAngles[i+1] - divisionAngles[i-1])/2.0;
+        partialCrossSections[i] = totalCrossSection;
+        // DEBUG_PRINT("Diff (calc): " << differentialCrossSection*2.0*M_PI*std::sin(divisionAngles[i])
+        //     *(divisionAngles[i+1] - divisionAngles[i-1])/2.0);
+        
+        // DEBUG_PRINT("Partial cross " << i << ": " << totalCrossSection);
+    }
+    totalCrossSection += differentialCrossSection*2.0*M_PI*
+        std::sin(divisionAngles[Defaults::numAngleDivisors-1])
+        *(M_PI-(divisionAngles[Defaults::numAngleDivisors-3]
+        -divisionAngles[Defaults::numAngleDivisors-2])/2.0);
+    partialCrossSections[Defaults::numAngleDivisors-1] = totalCrossSection;
+    return totalCrossSection;
+};
+
+void Electron::generateIntegratedCrossSections(double totalMottCrossSection) {
+    // DEBUG_PRINT("Beginning integrated cross section");
+    double prevFractionalCrossSection;
+    double fractionalCrossSection;
+    // TODO: Replace Defaults with parameter
+    // DEBUG_PRINT("partialCrossSection Size: " << partialCrossSections.size());
+    for(size_t i = 0; i < Defaults::numFlyingDistances; i++) {
+        prevFractionalCrossSection = 0;
+        // DEBUG_PRINT("Random: " << i << "\tCross: " << randomCrossSections[i]);
+        for(size_t j = 0; j < partialCrossSections.size(); j++) {
+            fractionalCrossSection = partialCrossSections[j]/totalMottCrossSection;
+            if(fractionalCrossSection > randomCrossSections[i]) {
+                // DEBUG_PRINT("Match! " << j);
+                if(j > 0 && j < partialCrossSections.size()-1) {
+                    scatteringAngles[i] = (divisionAngles[j] + divisionAngles[j + 1])/2.0
+                        -(fractionalCrossSection-randomCrossSections[i])
+                        *(divisionAngles[j+1]-divisionAngles[j-1])/2.0
+                        /(fractionalCrossSection - prevFractionalCrossSection);
+                    // DEBUG_PRINT("Between: " << scatteringAngles[i]);
+                } else if (j == 0) {
+                    scatteringAngles[i] = (divisionAngles[j]+divisionAngles[j+1])/2.0
+                        -(fractionalCrossSection-randomCrossSections[i])
+                        *(divisionAngles[j] + divisionAngles[j+1])/2.0
+                        /(fractionalCrossSection - prevFractionalCrossSection);
+                    // DEBUG_PRINT("Start: " << scatteringAngles[i]);
+                } else {
+                    scatteringAngles[i] = M_PI
+                        -(fractionalCrossSection-randomCrossSections[i])
+                        *(M_PI - (divisionAngles[j-2]-divisionAngles[j-3]))
+                        /(fractionalCrossSection - prevFractionalCrossSection);
+                    // DEBUG_PRINT("End: " << scatteringAngles[i]);
+                }
+                prevFractionalCrossSection = fractionalCrossSection;
+                break;
+            } else {
+                continue;
+            }
+        }
+    }
+    std::shuffle(scatteringAngles.begin(), scatteringAngles.end(), randomGenerator);
+};
+
+double Electron::getElasticEnergyLoss() {
+    double totalElasticEnergyLoss = 0;
+    for(size_t i = 0; i < Defaults::numFlyingDistances; i++) {
+        // DEBUG_PRINT("Angle: " << scatteringAngles[i]);
+        double ElecREup = ((energy+511.0)*(std::sin(scatteringAngles[i]))
+            *(std::sin(scatteringAngles[i]))+substrateMass*931.0*1000.0*(1
+            -std::cos(scatteringAngles[i])))*energy*(energy+2.0*511.0);
+        // DEBUG_PRINT("Top: " << ElecREup);
+        double ElecREdown = (energy+substrateMass*931.5*1000.0)
+            *(energy+substrateMass*931.5*1000.0)-energy*(energy+2.0*511.0)
+            *(std::cos(scatteringAngles[i]))*(std::cos(scatteringAngles[i]));
+        // DEBUG_PRINT("Bottom: " << ElecREdown);  
+        elasticEnergyLoss[i] = ElecREup/ElecREdown;
+        totalElasticEnergyLoss += elasticEnergyLoss[i];
+    }
+    // DEBUG_PRINT("Total loss: " << totalElasticEnergyLoss );
+    return totalElasticEnergyLoss;
+};
+
+double Electron::getIonizationEnergyLoss() {
+    // std::sqrt(1 - 1/((ElecE / 511 + 1)*(ElecE / 511 + 1)))
+    double correctedEnergy = energy*correctionFactor;
+    double beta = std::sqrt(1.0-1.0/((correctedEnergy/511.0+1.0)
+        *(correctedEnergy/511.0+1.0)));
+    double KforLoss = 0.734*std::pow(substrateCharge, 0.037);
+    double JforLoss = (substrateCharge < 13) ? 0.0115*substrateCharge :
+                        0.00976*substrateCharge+0.0585
+                        *std::pow(substrateCharge, -0.19);
+
+    JforLoss = JforLoss/(1.0+KforLoss*JforLoss/correctedEnergy);
+    double ionizationEnergy = 153.55*1E24*substrateDensity*substrateCharge
+        /(Constants::avogadrosNumber)/(beta*beta)*(std::log(511.0*beta*beta
+        *correctedEnergy/(2.0*JforLoss*JforLoss*(1.0-beta*beta)))-std::log(2.0)
+        *(2.0*std::sqrt(1.0-beta*beta)-1+beta*beta)+1-beta*beta+1.0/8.0
+        *(1.0-std::sqrt(1.0-beta*beta))*(1.0-std::sqrt(1.0-beta*beta)));
+    DEBUG_PRINT("Ionization energy: " << ionizationEnergy << " keV/cm");
+    // Final expression ensures a positive value
+    return (ionizationEnergy + ::abs(ionizationEnergy))/2.0;
+};
+
+inline double Electron::getBremsstrahlung() {
+    double correctedEnergy = energy*correctionFactor;
+    double bremsstralung = 1.4e-4*1E24*substrateDensity/(Constants::avogadrosNumber)
+        *substrateCharge*(substrateCharge+1.0)*(correctedEnergy+511.0)*(4.0
+        *std::log(2.0*(correctedEnergy+511.0)/511.0)-4.0/3.0);
+    DEBUG_PRINT("Bremsstralung: " << bremsstralung << " keV/cm");
+    // Final expressio ensures a positive value
+    return (bremsstralung + std::abs(bremsstralung))/2.0;
+};
+
+inline Coordinate Electron::calculateNewCoordinate(size_t i) {
+    return {
+        coordinate.x + flyingDistances[i]*10e8*std::sin(velocity.zAngle)
+                        *std::cos(velocity.xAngle),
+        coordinate.y + flyingDistances[i]*10e8*std::sin(velocity.zAngle)
+                        *std::sin(velocity.xAngle),
+        coordinate.z + flyingDistances[i]*10e8*std::cos(velocity.zAngle),
+            coordinate.depth
+    };
 };
 
 // Input fields functions
@@ -521,7 +883,7 @@ void Simulation::initiate() {
 
     for(size_t i = 0; i < inputs.getSimulationCount(); i++) {
         // DEBUG_PRINT("Allocating bombardment");
-        bombardments.at(i) = std::make_shared<Bombardment>(shared_from_this(), i);
+        bombardments[i] = std::make_shared<Bombardment>(shared_from_this(), i);
     }
 
     const size_t simulation_count = inputs.getSimulationCount();
@@ -531,9 +893,9 @@ void Simulation::initiate() {
     for(size_t i = 0; i < simulation_count; i++) {
         // DEBUG_PRINT("Initializing bombardment...");
         threads.emplace_back([this, i]() {
-            bombardments.at(i)->initiate(inputs);
+            bombardments[i]->initiate(inputs);
             // std::cout << "Use before: " << bombardments.at(i).use_count() << std::endl;
-            bombardments.at(i).reset();
+            bombardments[i].reset();
             // std::cout << "Use after: " << bombardments.at(i).use_count() << std::endl;
         });
     }

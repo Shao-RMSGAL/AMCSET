@@ -28,28 +28,40 @@
 // Main program  start
 int main(int argc, char* argv[]) {
 
+    size_t numSimul;;
+
     if(argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " <integer_argument>" << std::endl;
-        return 1;
+        // std::cerr << "Usage: " << argv[0] << " <integer_argument>" << std::endl;
+        // return 1;
+        numSimul = Defaults::simulationCount;
+    } else {
+        numSimul = std::stoi(argv[1]);
     }
 
-    size_t numSimul = std::stoi(argv[1]);
+    // Comment this out if you want ion mode
+    InputFields input(Constants::electronCharge, Defaults::electronEnergy,
+            Constants::electronMass, numSimul,
+            Defaults::substrateCharge, Defaults::substrateDensity,
+            Defaults::substrateMass, ELECTRON, Defaults::range);
 
-    DEBUG_PRINT("Run starting...");
+    // Comment this out if you want electron mode
+    // InputFields input(Defaults::ionCharge, Defaults::ionEnergy,
+    //         Defaults::ionMass, numSimul,
+    //         Defaults::substrateCharge, Defaults::substrateDensity,
+    //         Defaults::substrateMass, ION, Defaults::range);
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    InputFields input(Defaults::ionCharge, Defaults::ionEnergy,
-                      Defaults::ionMass, numSimul,
-                      Defaults::substrateCharge, Defaults::substrateDensity,
-                      Defaults::substrateMass, Defaults::type, Defaults::range);
-
+    #ifdef DEBUG_MODE
     const char* mode = (input.getType() == ION) ? "Ion" : "Electron";
+    #endif
+
+    DEBUG_PRINT("Run starting...");
 
     DEBUG_PRINT("Initializing simulation in " << mode << " mode..");
 
     if(input.getType() == ELECTRON) {
-        Electron::readParameters();
+        Electron::readParametersAndInitialize();
     }
 
     std::shared_ptr<Simulation> simulation = std::make_shared<Simulation>(input);

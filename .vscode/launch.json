@@ -7,7 +7,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/cpp/bin/eSRIM", // Path to your executable
             "args": [], // Command-line arguments
-            "stopAtEntry": false,
+            "stopAtEntry": true,
             "cwd": "${workspaceFolder}/cpp/src",
             "environment": [],
             "externalConsole": true,
@@ -32,7 +32,7 @@
             "program": "${workspaceFolder}/cpp/bin/eSRIM",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/cpp",
             "environment": [],
             "externalConsole": true,
             "MIMode": "gdb",
