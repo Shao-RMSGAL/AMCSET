@@ -17,7 +17,8 @@
  * - File created and class implementations added
  *
  *****************************************************************************/
-
+#ifndef ESRIM_CLASSES_CXX
+#define ESRIM_CLASSES_CXX
 
 // Header files
 #include <algorithm>
@@ -38,32 +39,67 @@ std::mt19937 Particle::randomGenerator;
 std::uniform_real_distribution<double> Particle::randomDistribution(
     0+std::numeric_limits<double>::epsilon(),
     1-std::numeric_limits<double>::epsilon());
+std::mutex Particle::randomGeneratorLock;
 
 void Particle::seedRandomGenerator() {
-    randomGenerator.seed(std::chrono::system_clock::now().time_since_epoch().count());
+    std::lock_guard<std::mutex> lock(randomGeneratorLock);
+    randomGenerator.seed(
+        std::chrono::system_clock::now().time_since_epoch().count());
 };
 
-Particle::Particle(Coordinate coordinate, Velocity velocity, InputFields& input,
+Particle::Particle(
+    const Coordinate& coordinate,
+    const Velocity& velocity,
+    std::shared_ptr<InputFields> input,
     std::weak_ptr<Bombardment> bombardment)
-    : coordinate(coordinate), velocity(velocity), charge(input.getCharge()),
-    mass(input.getMass()), substrateCharge(input.getSubstrateCharge()),
-    substrateDensity(input.getSubstrateDensity()),
-    substrateMass(input.getSubstrateMass()),
-    type(input.getType()), range(input.getRange()), bombardment(bombardment) {};
+    : coordinate(coordinate),
+    velocity(velocity),
+    enableDamageCascade(input->getEnableDamageCascade()),
+    charge(input->getCharge()),
+    mass(input->getMass()),
+    substrateCharge(input->getSubstrateCharge()),
+    substrateDensity(input->getSubstrateDensity()),
+    substrateMass(input->getSubstrateMass()),
+    type(input->getType()),
+    range(input->getRange()),
+    ionDisplacementEnergy(input->getIonDisplacementEnergy()),
+    ionStoppingEnergy(input->getIonStoppingEnergy()),
+    input(input),
+    bombardment(bombardment) {};
 
-Particle::Particle(Coordinate coordinate, Velocity velocity, double charge,
-    double mass, double substrateCharge, double substrateDensity,
-    double substrateMass, ParticleType type, double range,
+Particle::Particle(
+    const Coordinate& coordinate,
+    const Velocity& velocity,
+    bool enableDamageCascade,
+    double charge,
+    double mass,
+    double substrateCharge,
+    double substrateDensity,
+    double substrateMass,
+    ParticleType type,
+    double range,
+    double ionDisplacementEnergy,
+    double ionStoppingEnergy,
+    std::shared_ptr<InputFields> input,
     std::weak_ptr<Bombardment> bombardment)
-    : coordinate(coordinate), velocity(velocity), charge(charge), mass(mass),
-    substrateCharge(substrateCharge), substrateDensity(substrateDensity),
-    substrateMass(substrateMass), type(type), range(range),
+    : coordinate(coordinate),
+    velocity(velocity),
+    enableDamageCascade(enableDamageCascade),
+    charge(charge),
+    mass(mass),
+    substrateCharge(substrateCharge),
+    substrateDensity(substrateDensity),
+    substrateMass(substrateMass),
+    type(type),
+    range(range),
+    ionDisplacementEnergy(ionDisplacementEnergy),
+    ionStoppingEnergy(ionStoppingEnergy),
+    input(input),
     bombardment(bombardment) {};
 
 Particle::~Particle() {};
 
-void Particle::addCoordinate(Coordinate coordinate) {
-    // DEBUG_PRINT("Pushing back coordinate");
+void Particle::addCoordinate(const Coordinate& coordinate) {
     coordinate_vector.emplace_back(coordinate);
 };
 
@@ -76,12 +112,12 @@ const std::vector<Coordinate>& Particle::getCoordinates() const {
 };
 
 double Particle::random() {
+    std::lock_guard<std::mutex> lock(randomGeneratorLock);
     return randomDistribution(randomGenerator);
 };
 
-size_t Particle::getNumParticles() {
+size_t Particle::getNumParticles() const {
     if(auto locked = bombardment.lock()) {
-        // DEBUG_PRINT("Bombardment lock");
         return locked->getParticles().size();
     } else {
         DEBUG_PRINT("Could not get bombardment size");
@@ -98,13 +134,18 @@ inline double Particle::atomicSpacing() const {
     return std::pow(substrateDensity, -1.0/3.0);
 };
 
-std::tuple<Velocity, Velocity> Particle::relativeToAbsoluteVelocity(
-        double THETA1RELATIVE, double THETA2RELATIVE, double targetEnergy) {
-    double ALPHA1RELATIVE = random()*2.0*M_PI;
-    double ALPHA2RELATIVE = ALPHA1RELATIVE + M_PI;
+void Particle::relativeToAbsoluteVelocity(
+        Velocity& newVelocity,
+        Velocity& targetVelocity) {
+    const double& THETA1RELATIVE = newVelocity.zAngle;
+    const double& THETA2RELATIVE = targetVelocity.zAngle;
+   
+    const double& targetEnergy = targetVelocity.energy;
+    const double ALPHA1RELATIVE = random()*2.0*M_PI;
+    const double ALPHA2RELATIVE = ALPHA1RELATIVE + M_PI;
 
-    double& THETAO = velocity.zAngle;
-    double& ALPHAO = velocity.xAngle;
+    const double& THETAO = velocity.zAngle;
+    const double& ALPHAO = velocity.xAngle;
 
     // Angle
     double X1 = std::sin(THETA1RELATIVE) * std::cos(ALPHA1RELATIVE);
@@ -119,30 +160,19 @@ std::tuple<Velocity, Velocity> Particle::relativeToAbsoluteVelocity(
     double X = X0*std::sin(ALPHAO)+Y0*std::cos(ALPHAO);
     double Y = -X0*std::cos(ALPHAO)+Y0*std::sin(ALPHAO);
 
-    double THETA1;
-    if (Z < 0.0) {
-        THETA1 = M_PI+std::atan(std::sqrt(X*X + Y*Y)/Z);
-    } else if (Z > 0.0) {
-        THETA1 = std::atan(std::sqrt(X*X+Y*Y)/Z);
-    } else {
-        THETA1 = M_PI/2.0;
-    } 
+    const double THETA1 = 
+        (Z > 0.0) ? std::atan(std::sqrt(X*X+Y*Y)/Z)
+        : (Z < 0.0) ? M_PI+std::atan(std::sqrt(X*X + Y*Y)/Z) 
+        : M_PI/2.0;
 
-    double ALPHA1;
-    if(std::sin(THETA1)!= 0.0) {
-        if(X < 0.0) {
-            ALPHA1 = M_PI+std::atan(Y/X); 
-        } else if(X > 0.0) {
-            ALPHA1 = std::atan(Y/X); 
-        } else {
-            ALPHA1 = M_PI - sign(Y)*M_PI/2.0; 
-        }
-    } else {
-        ALPHA1 = 0.0;
-    }
+    const double ALPHA1 = 
+        (std::sin(THETA1)!= 0.0) ? 
+            ((X < 0.0) ? M_PI+std::atan(Y/X)
+            : (X > 0.0) ? std::atan(Y/X) 
+            : M_PI - sign(Y)*M_PI/2.0)
+        : 0.0;
 
     // Target
-
     X1 = std::sin(THETA2RELATIVE)*std::cos(ALPHA2RELATIVE);
     Y1 = std::sin(THETA2RELATIVE)*std::sin(ALPHA2RELATIVE);
     Z1 = std::cos(THETA2RELATIVE);
@@ -155,37 +185,19 @@ std::tuple<Velocity, Velocity> Particle::relativeToAbsoluteVelocity(
     X = X0 * std::sin(ALPHAO) + Y0 * std::cos(ALPHAO);
     Y = -X0 * std::cos(ALPHAO) + Y0 * std::sin(ALPHAO);
 
-    double THETA2;
-    if(Z < 0.0) {
-        THETA2 = M_PI+std::atan(std::sqrt(X*X+Y*Y)/Z);
-    } else if(Z > 0.0) {
-        THETA2 = std::atan(std::sqrt(X*X+Y*Y)/Z);
-    } else {
-        THETA2 = M_PI/2;
-        
-    }
+    const double THETA2 = 
+        (Z < 0.0) ? M_PI+std::atan(std::sqrt(X*X+Y*Y)/Z)
+        : (Z > 0.0) ? std::atan(std::sqrt(X*X+Y*Y)/Z)
+        : M_PI/2;
 
-    double ALPHA2;
-    if(std::sin(THETA2) != 0.0) {
-        if(X < 0.0) {
-            ALPHA2 = M_PI+std::atan(Y/X);
-        } else  if(X > 0.0) {
-            ALPHA2 = std::atan(Y/X);
-        } else {
-            ALPHA2 = M_PI - 0.5*sign(Y)*M_PI;
-        }
-    } else {
-        ALPHA2 = 0.0;
-    }
-    Velocity newVelocity = {THETA1, ALPHA1, energy};
-    Velocity targetVelocity = {THETA2, ALPHA2, targetEnergy};
-
-    // if(std::isnan(THETA1) || std::isnan(THETA2) || std::isnan(ALPHA1) || std::isnan(ALPHA2)) {
-    //     DEBUG_PRINT("zAngle: " << THETA2
-    //                 << ", xAngle: " << ALPHA2);
-    // }
-
-    return std::make_tuple(newVelocity, targetVelocity);
+    const double ALPHA2 = 
+        (std::sin(THETA2) != 0.0) ?
+            ((X < 0.0) ? M_PI+std::atan(Y/X)
+            : (X > 0.0) ? std::atan(Y/X)
+            : M_PI - 0.5*sign(Y)*M_PI)
+        : 0.0;
+    newVelocity = {THETA1, ALPHA1, energy};
+    targetVelocity = {THETA2, ALPHA2, targetEnergy};
 };
 
 double Particle::sign(double x) {
@@ -199,82 +211,93 @@ double Particle::sign(double x) {
 };
 
 inline Coordinate Particle::calculateNewCoordinate() {
-    throw std::logic_error("Base class Particle::calculateNewCoordinate() called");
+    throw std::logic_error(
+        "Base class Particle::calculateNewCoordinate() called");
     Coordinate dummy;
     return dummy;
 }
 
 //  Ion functions
-Ion::Ion(Coordinate coordinate, Velocity velocity, InputFields& input,
+Ion::Ion(
+    const Coordinate& coordinate,
+    const Velocity& velocity,
+    std::shared_ptr<InputFields> input,
     std::weak_ptr<Bombardment> bombardment)
-    : Particle(coordinate, velocity, input, bombardment) {
-    // DEBUG_PRINT("Ion made");
-};
+    : Particle(coordinate, velocity, input, bombardment) {};
 
-Ion::Ion(Coordinate coordinate, Velocity velocity, double charge,
-    double mass, double substrateCharge, double substrateDensity,
-    double substrateMass, ParticleType type, double range,
+Ion::Ion(
+    const Coordinate& coordinate,
+    const Velocity& velocity,       
+    bool enableDamageCascade,
+    double charge,
+    double mass,
+    double substrateCharge,
+    double substrateDensity,
+    double substrateMass,
+    ParticleType type,
+    double range,
+    double ionDisplacementEnergy,
+    double ionStoppingEnergy,
+    std::shared_ptr<InputFields> input,
     std::weak_ptr<Bombardment> bombardment)
-    : Particle(coordinate, velocity, charge, mass, substrateCharge, 
-    substrateDensity, substrateMass, type, range, bombardment) {
-    // DEBUG_PRINT("Ion made");
-}; 
+    : Particle(
+        coordinate,
+        velocity,
+        enableDamageCascade,
+        charge,
+        mass,
+        substrateCharge, 
+        substrateDensity,
+        substrateMass,
+        type,
+        range,
+        ionDisplacementEnergy,
+        ionStoppingEnergy,
+        input,
+        bombardment) {}; 
 
 const size_t& Ion::getDepth() const { 
     DEBUG_PRINT("Ion depth function called");
     return coordinate.depth;
 };
 
-void Particle::createSubstrateKnockon(Coordinate& newCoordinate, Velocity& targetVelocity) {
-    if(energy - targetVelocity.energy > Constants::ionDisplacementEnergy) {
-        // DEBUG_PRINT("Attempting lock...");
+void Particle::createSubstrateKnockon(
+        const Coordinate& newCoordinate,
+        const Velocity& targetVelocity) {
+    
         Coordinate targetCoordinate = newCoordinate;
         targetCoordinate.depth++;
         if(auto locked = bombardment.lock()) {    
             std::unique_ptr<Substrate> targetParticle;
-            targetParticle = std::make_unique<Substrate>(targetCoordinate,
-                targetVelocity, substrateCharge, substrateMass, 
-                substrateDensity, range, bombardment);
+            targetParticle = std::make_unique<Substrate>(
+                targetCoordinate,
+                targetVelocity,
+                input,
+                bombardment);
             locked->addParticle(std::move(targetParticle));
         } else {
             DEBUG_PRINT("Failed to create knock-on particle");
         }
-        // DEBUG_PRINT("Knock-off substrate ion created");
-    }
+    
 };
 
 void Ion::fire() {
-    Velocity newVelocity;
     Velocity targetVelocity;
-    Coordinate newCoordinate;
-    if(velocity.energy <= Constants::ionStoppingEnergy) {
-        // DEBUG_PRINT("Particle " << id  << " does not have enough energy");
-        // addCoordinate(coordinate);
-        return;
-    } else {
-        // DEBUG_PRINT("Firing particle " << coordinate.id);
-        while(velocity.energy > Constants::ionStoppingEnergy) {
-            // DEBUG_PRINT("Energy " << fireCount << ":\t" << velocity.energy);
-            velocity.energy -= electronicStoppingEnergy();
-
-            std::tie(newVelocity, targetVelocity) = recoilEnergyAndVelocity();
-
-            newCoordinate = calculateNewCoordinate();
-
-            if(newCoordinate.z < 0.0) {
-                DEBUG_PRINT("Ion Sputter");
-                return;
-            }
-
-            if(Defaults::enableDamageCascade) {
-                createSubstrateKnockon(newCoordinate, targetVelocity);
-            }
-
-            // DEBUG_PRINT("x, y, z: " << newCoordinate.x << ", "<< newCoordinate.y << ", "<< newCoordinate.z );
-            addCoordinate(coordinate);
-            coordinate = newCoordinate;
-            velocity = newVelocity;
+    Velocity newVelocity;
+    while(velocity.energy > ionStoppingEnergy) {
+        velocity.energy -= electronicStoppingEnergy();
+        recoilEnergyAndVelocity(newVelocity, targetVelocity);
+        velocity = newVelocity;
+        coordinate = calculateNewCoordinate();
+        if(coordinate.z < 0.0) {
+            DEBUG_PRINT("Ion Sputter");
+            return;
         }
+        if(enableDamageCascade
+                && energy - targetVelocity.energy > ionDisplacementEnergy) {
+            createSubstrateKnockon(coordinate, targetVelocity);
+        }
+        addCoordinate(coordinate);
     }
 };
 
@@ -293,14 +316,17 @@ double Ion::DF(double X, double COLUMBIAVK, double AU) {
             AU)*6.0/AU);
 };
 
-std::tuple<Velocity,Velocity> Ion::recoilEnergyAndVelocity() {
+void Ion::recoilEnergyAndVelocity(
+        Velocity& newVelocity,
+        Velocity& targetVelocity) {
     // Initial parameter
     double P = std::sqrt(random()/(M_PI*std::pow(substrateDensity, 2.0/3.0)));
     double COLUMBIAVK = 0.0143992*charge*substrateCharge;
     double MC = mass*substrateMass/(mass+substrateMass);
     double INVLAB = std::sqrt(energy*2.0/mass);
     double EC = 0.5*MC*INVLAB*INVLAB;
-    double AU = 0.8854*0.529/std::pow(std::sqrt(mass)+std::sqrt(substrateCharge), 2.0/3.0);
+    double AU = 0.8854*0.529/std::pow(std::sqrt(mass)
+                +std::sqrt(substrateCharge), 2.0/3.0);
     double ELINHARD = EC*AU/COLUMBIAVK;
     // Find RMIN for different energy
     double AA = P*P;
@@ -372,18 +398,18 @@ std::tuple<Velocity,Velocity> Ion::recoilEnergyAndVelocity() {
                 /2.0);
     double THETA2RELATIVE = (M_PI-CALPHA1)/2.0;
 
-    Velocity newVelocity;
-    Velocity targetVelocity;
-
-    std::tie(newVelocity, targetVelocity) = 
-        relativeToAbsoluteVelocity(THETA1RELATIVE, THETA2RELATIVE, RE);
-
-    return std::make_tuple(newVelocity, targetVelocity);
+    newVelocity.zAngle = THETA1RELATIVE;
+    newVelocity.energy = energy - RE;
+    targetVelocity.zAngle = THETA2RELATIVE;
+    targetVelocity.energy = RE;
+    
+    relativeToAbsoluteVelocity(newVelocity, targetVelocity);
 };
 
 double Ion::electronicStoppingEnergy() {
     double stoppingEnergy = 1.212*std::pow(charge, 7.0/6.0)*substrateCharge
-                /(std::pow((std::pow(charge, 2.0/3.0) + std::pow(substrateCharge, 2.0/3.0))
+                /(std::pow((std::pow(charge, 2.0/3.0) \
+                + std::pow(substrateCharge, 2.0/3.0))
                 , 3.0/2.0)*std::sqrt(mass))*std::sqrt(energy*1000);
     double energyLoss = 1.59*atomicSpacing()*substrateDensity*stoppingEnergy/1000;
     return energyLoss;
@@ -401,50 +427,75 @@ inline Coordinate Ion::calculateNewCoordinate() {
 };
 
 // Substrate functions
-Substrate::Substrate(Coordinate coordinate, Velocity velocity, double charge,
-    double mass, double density, double range,
-    std::weak_ptr<Bombardment> bombardment) :
-    Ion(coordinate, velocity, charge, mass, mass, density, mass, SUBSTRATE, range,
+Substrate::Substrate(
+    const Coordinate& coordinate,
+    const Velocity& velocity,
+    std::shared_ptr<InputFields> input,
+    std::weak_ptr<Bombardment> bombardment)
+    : Ion(coordinate,
+        velocity,
+        input->getEnableDamageCascade(),
+        input->getSubstrateCharge(),
+        input->getSubstrateMass(),   
+        input->getSubstrateCharge(),
+        input->getSubstrateDensity(),
+        input->getSubstrateMass(),
+        SUBSTRATE,
+        input->getRange(),
+        input->getIonDisplacementEnergy(),
+        input->getIonStoppingEnergy(),
+        input,
         bombardment) {};
 
 const size_t& Substrate::getDepth() const { return depth; };
 
-std::array<std::array<std::array<double,
-            Constants::numMottkParam>,Constants::numMottjParam>,
-            Constants::numMottElements> Electron::mottScatteringParams;
+//  Electron functions
+std::vector<std::array<std::array<
+    double,
+    Constants::numMottkParam>,
+    Constants::numMottjParam>> 
+    Electron::mottScatteringParams;
 
-std::array<std::array<double,
-            Constants::numElecScreeningPotentialParams>,
-            Defaults::numElecScreeningPotentialElements> Electron::elecScreeningParams;
+std::vector<std::array<
+    double,
+    Constants::numElecScreeningPotentialParams>>
+    Electron::elecScreeningParams;
 
 std::vector<double> Electron::divisionAngles;
 
-//  Electron functions
-Electron::Electron(Coordinate initialCoordinate, Velocity initialVelocity, InputFields input,
-        std::weak_ptr<Bombardment> bombardment)
-        : Particle(initialCoordinate, initialVelocity,
-        Constants::electronCharge, Constants::electronMass,
-        input.getSubstrateCharge(), input.getSubstrateDensity(),
-        input.getSubstrateMass(), ELECTRON, input.getRange(),
-        bombardment), randomCrossSections(Defaults::numFlyingDistances),
-        flyingDistances(Defaults::numFlyingDistances),
-        scatteringAngles(Defaults::numFlyingDistances),
-        partialCrossSections(Defaults::numAngleDivisors),
-        elasticEnergyLoss(Defaults::numFlyingDistances),
-        correctionFactor(1.0) {;
-    DEBUG_PRINT("Electron made");
-};
+Electron::Electron(
+    const Coordinate& initialCoordinate,
+    const Velocity& initialVelocity,
+    std::shared_ptr<InputFields> input,
+    std::weak_ptr<Bombardment> bombardment)
+    : Particle(
+        initialCoordinate,
+        initialVelocity,
+        input,
+        bombardment),
+    randomCrossSections(input->getNumFlyingDistances()),
+    flyingDistances(input->getNumFlyingDistances()),
+    scatteringAngles(input->getNumFlyingDistances()),
+    partialCrossSections(input->getNumAngleDivisors()),
+    elasticEnergyLoss(input->getNumFlyingDistances()),
+    correctionFactor(1.0),
+    electronStoppingEnergy(input->getElectronStoppingEnergy()) {};
 
-inline double Electron::findAngle(size_t i) {
+inline double Electron::findAngle(size_t i, std::shared_ptr<InputFields> input) {
     // Value is offset from 1 to avoid checking a zero-angle
     return -M_PI/(9.0)*(1-std::pow(10.0,(static_cast<double>(i+1)
-        /Defaults::numAngleDivisors)));
+        /input->getNumAngleDivisors())));   
 };
 
-void Electron::readParametersAndInitialize() {
+void Electron::readParametersAndInitialize(
+        std::shared_ptr<InputFields> inputFields) {
     DEBUG_PRINT("Reading Mott scattering values");
-    fs::path mottParametersPath(Defaults::inputDirectory);
-    mottParametersPath = mottParametersPath / Defaults::mottScatteringParametersFilename ;
+    fs::path currentWorkingDirectory = fs::current_path();
+    fs::path inputDirectory(inputFields->getInputDirectoryName());
+    fs::path mottParametersPath = 
+        currentWorkingDirectory
+        / inputDirectory
+        / inputFields->getMottScatteringParametersFilename();
 
     std::string input;
     std::string parameter;
@@ -453,10 +504,13 @@ void Electron::readParametersAndInitialize() {
     std::ifstream mottParametersFile(mottParametersPath);
 
     if(!mottParametersFile.is_open()) {
-        throw std::ios_base::failure("Could not open file " + mottParametersPath.string() );
+        throw std::ios_base::failure("Could not open file "
+            +mottParametersPath.string() );
     }
+    
+    mottScatteringParams.resize(inputFields->getNumMottScatteringPotentialElements());
 
-    for(size_t i = 0; i < Constants::numMottElements; i++) {
+    for(size_t i = 0; i < inputFields->getNumMottScatteringPotentialElements(); i++) {
         for(size_t j = 0; j < Constants::numMottjParam; j++) {
             std::getline(mottParametersFile, input);
             stringStream.clear();
@@ -472,21 +526,26 @@ void Electron::readParametersAndInitialize() {
 
     mottParametersFile.close();
 
-    DEBUG_PRINT("Electron screening parameters");
-    fs::path elecParametersPath(Defaults::inputDirectory);
-    elecParametersPath = elecParametersPath / Defaults::electronScreeningParametersFilename;
+    fs::path elecParametersPath = 
+        currentWorkingDirectory
+        / inputDirectory
+        / inputFields->getElectronScreeningParametersFilename();
+
 
     std::ifstream elecParametersFile(elecParametersPath);
 
     if(!elecParametersFile.is_open()) {
-        throw std::ios_base::failure("Could not open file " + elecParametersPath.string() );
+        throw std::ios_base::failure("Could not open file "
+            +elecParametersPath.string());
     }
 
-    for(size_t i = 0; i < Defaults::numElecScreeningPotentialElements; i++) {
+    elecScreeningParams.resize(inputFields->getNumElecScreeningPotentialElements());
+
+    for(size_t i = 0; i < inputFields->getNumElecScreeningPotentialElements(); i++) {
         std::getline(elecParametersFile, input);
         stringStream.clear();
         stringStream.str(input);
-        for(size_t j = 0; j < Constants::numElecScreeningPotentialParams; j++) {
+        for(size_t j = 0; j < Constants::numElecScreeningPotentialParams; j++){
             std::getline(stringStream, parameter, ',');
             elecScreeningParams[i][j] = std::stod(parameter);
         }
@@ -496,17 +555,16 @@ void Electron::readParametersAndInitialize() {
 
     DEBUG_PRINT("Calculating division angles");
 
-    divisionAngles.reserve(Defaults::numAngleDivisors);
+    divisionAngles.reserve(inputFields->getNumAngleDivisors());
 
-    for(size_t i = 0; i < Defaults::numAngleDivisors; i++) {
-        divisionAngles.push_back(findAngle(i));
+    for(size_t i = 0; i < inputFields->getNumAngleDivisors(); i++) {
+        divisionAngles.push_back(findAngle(i, inputFields));
     }
     
 };
 
-void Electron::fire() {
+void Electron::fire() { 
     DEBUG_PRINT("Firing electron!");
-    // size_t numParticles = getNumParticles();
     double totalMottCrossSection;
     double totalElasticEnergyLoss;
     double ionizationEnergyLoss;
@@ -514,80 +572,51 @@ void Electron::fire() {
     double newEnergy;
     bool firstIteration = true;
     double flightGroupLength;
-    Velocity newVelocity;
-    Velocity targetVelocity;
-    Coordinate newCoordinate;
-    while(velocity.energy > Constants::electronStoppingEnergy) {
-        DEBUG_PRINT("Energy: " << energy << " keV");
-
+    Velocity newVelocity = {0.0,0.0,0.0};
+    Velocity targetVelocity = {0.0, 0.0, 0.0};
+    while(velocity.energy > electronStoppingEnergy) {
         totalMottCrossSection = getMottTotalCrossSection();
-        
-        DEBUG_PRINT("Total Mott: " << totalMottCrossSection);
-
         flightGroupLength = generateFlyingDistances(totalMottCrossSection);
-
         generateRandomCrossSections();
         generateIntegratedCrossSections(totalMottCrossSection);
-
-        
-
-        // for(auto& i : scatteringAngles) DEBUG_PRINT("Random angle: " << i*180.0/M_PI << " degrees");
-
-        DEBUG_PRINT("Factor: " << correctionFactor);
-
         totalElasticEnergyLoss = getElasticEnergyLoss();
-
-        DEBUG_PRINT("Elastic: " << totalElasticEnergyLoss);
-
-        DEBUG_PRINT("Length: " << flightGroupLength);
-
         ionizationEnergyLoss = flightGroupLength*getIonizationEnergyLoss();
-
-        DEBUG_PRINT("Ionization: " << ionizationEnergyLoss);
-
         bremsstrahlung = flightGroupLength*getBremsstrahlung();
-
-        DEBUG_PRINT("Bremsstralung: " << bremsstrahlung);
-
         newEnergy = energy - totalElasticEnergyLoss - ionizationEnergyLoss -
             bremsstrahlung;
 
         // TODO: Include logic for explicit and implicit methods
         if(firstIteration) {
-            DEBUG_PRINT("Preassign: " << correctionFactor);
-            DEBUG_PRINT("Energy: " << energy);
-            DEBUG_PRINT("New Energy: " << newEnergy);
             correctionFactor = (energy + newEnergy)/2.0/energy;
-            DEBUG_PRINT("Postcorrection: " << correctionFactor);
             firstIteration = false;
             continue;
         } 
         correctionFactor = (energy + newEnergy)/2.0/energy;
         energy = newEnergy;
 
-        for(size_t i = 0; i < Defaults::numFlyingDistances; i++) {
+        for(size_t i = 0; i < input->getNumFlyingDistances(); i++) {
 
-            std::tie(newVelocity, targetVelocity) = relativeToAbsoluteVelocity(
-                scatteringAngles[i], (M_PI-scatteringAngles[i])/2.0, elasticEnergyLoss[i]
-            );
+            newVelocity.zAngle = scatteringAngles[i];
+            targetVelocity.zAngle = (M_PI-scatteringAngles[i])/2.0;
+            targetVelocity.energy = elasticEnergyLoss[i];
 
-            newCoordinate = calculateNewCoordinate(i);
+            relativeToAbsoluteVelocity(newVelocity,targetVelocity);
+            velocity = newVelocity;
+            coordinate = calculateNewCoordinate(i);
 
-            if(newCoordinate.z < 0.0) {
+            if(coordinate.z < 0.0) {
                 DEBUG_PRINT("Electron Sputter");
                 return;
             }
 
-            if(Defaults::enableDamageCascade) {
-                createSubstrateKnockon(newCoordinate, targetVelocity);
+            if(input->getEnableDamageCascade()
+                && energy - targetVelocity.energy > ionDisplacementEnergy) {
+                createSubstrateKnockon(coordinate, targetVelocity);
             }
 
             addCoordinate(coordinate);
-            coordinate = newCoordinate;
-            velocity = newVelocity;
+            
         }
-
-        
     }   
 };
 
@@ -595,7 +624,6 @@ double Electron::getMottDifferentialCrossSection(double Theta) {
     double correctedEnergy = energy*correctionFactor;
     double beta = std::sqrt(1.0-1.0/((correctedEnergy/511.0 + 1.0)
         *(correctedEnergy/511.0 + 1.0)));
-    // DEBUG_PRINT("Beta: " << correctionFactor);
     constexpr double betaAVE = 0.7181287;
     double gamma = correctedEnergy/511.0+1.0;
     constexpr double elecmass = 1; // specific for a.u. unit,  only for Feq calcu.
@@ -609,7 +637,6 @@ double Electron::getMottDifferentialCrossSection(double Theta) {
             alpha1 = alpha1 +
                 mottScatteringParams[static_cast<size_t>(substrateCharge)][j][k]
                 *std::pow(beta-betaAVE, k);
-            // DEBUG_PRINT("Expr: " << std::pow(beta-betaAVE, k-1.0));
         }
         Rmott = Rmott+alpha1*std::pow(1.0-std::cos(Theta), (j)/2.0);
     }
@@ -619,15 +646,17 @@ double Electron::getMottDifferentialCrossSection(double Theta) {
     double Feq = 0;
     for(size_t i = 0; i < Constants::numElecScreeningPotentialParams/2; i++) {
         Feq = Feq + elecScreeningParams[substrateCharge][i]*
-            elecScreeningParams[substrateCharge][i + 3]*elecScreeningParams[substrateCharge][i + 3]
-            /(elecScreeningParams[substrateCharge][i + 3]*elecScreeningParams[substrateCharge][i + 3]
+            elecScreeningParams[substrateCharge][i + 3]
+            *elecScreeningParams[substrateCharge][i + 3]
+            /(elecScreeningParams[substrateCharge][i + 3]
+            *elecScreeningParams[substrateCharge][i + 3]
             +moment*moment);
     }
     return Rmott*DSC*(1-Feq)*(1-Feq);
 };
 
 void Electron::generateRandomCrossSections() {
-    for(size_t i = 0; i < Defaults::numFlyingDistances; i++) {
+    for(size_t i = 0; i < input->getNumFlyingDistances(); i++) {
         randomCrossSections[i] = random(); 
     }
     std::sort(randomCrossSections.begin(), randomCrossSections.end());
@@ -639,10 +668,9 @@ double Electron::generateFlyingDistances(double totalMottCrossSection) {
     double crossSectionFlight = 0;
     double atomicSpacing = std::pow(substrateDensity*1e24, -1.0/3.0);
 
-    // DEBUG_PRINT("Cross section: " << totalMottCrossSection);
-
-    for(size_t i = 0; i < Defaults::numFlyingDistances; i++) {
-        crossSectionFlight = -std::log(random())/(substrateDensity*1e24*totalMottCrossSection);
+    for(size_t i = 0; i < input->getNumFlyingDistances(); i++) {
+        crossSectionFlight = -std::log(random())
+            /(substrateDensity*1e24*totalMottCrossSection);
         distance = crossSectionFlight+atomicSpacing;
         flightGroupLength += distance;
         flyingDistances[i] = distance; 
@@ -652,62 +680,64 @@ double Electron::generateFlyingDistances(double totalMottCrossSection) {
 
 double Electron::getMottTotalCrossSection() {
     double totalCrossSection = 0.0;
-    double differentialCrossSection = getMottDifferentialCrossSection(divisionAngles[0]);
-    totalCrossSection += differentialCrossSection*2.0*M_PI
-        *std::sin(divisionAngles[0])*(divisionAngles[1]-divisionAngles[0])/2.0;
+    double differentialCrossSection =
+        getMottDifferentialCrossSection(divisionAngles[0]);
+    totalCrossSection += 
+        differentialCrossSection*2.0*M_PI
+        *std::sin(divisionAngles[0])
+        *(divisionAngles[1]-divisionAngles[0])/2.0;
     partialCrossSections[0] = totalCrossSection;
-    for(size_t i = 1; i < Defaults::numAngleDivisors - 1; i++) {
-        // DEBUG_PRINT("Diff: " << differentialCrossSection << "\tDiff (calc): " << differentialCrossSection*2.0*M_PI*std::sin(divisionAngles[i]) *(divisionAngles[i+1] - divisionAngles[i-1])/2.0 << "\tTotal " << i << ": " << totalCrossSection);
-        differentialCrossSection = getMottDifferentialCrossSection(divisionAngles[i]);
-        totalCrossSection += differentialCrossSection*2.0*M_PI*std::sin(divisionAngles[i])
+    for(size_t i = 1; i < input->getNumAngleDivisors() - 1; i++) {
+        differentialCrossSection =
+            getMottDifferentialCrossSection(divisionAngles[i]);
+        totalCrossSection += 
+            differentialCrossSection*2.0
+            *M_PI*std::sin(divisionAngles[i])
             *(divisionAngles[i+1] - divisionAngles[i-1])/2.0;
         partialCrossSections[i] = totalCrossSection;
-        // DEBUG_PRINT("Diff (calc): " << differentialCrossSection*2.0*M_PI*std::sin(divisionAngles[i])
-        //     *(divisionAngles[i+1] - divisionAngles[i-1])/2.0);
-        
-        // DEBUG_PRINT("Partial cross " << i << ": " << totalCrossSection);
     }
-    totalCrossSection += differentialCrossSection*2.0*M_PI*
-        std::sin(divisionAngles[Defaults::numAngleDivisors-1])
-        *(M_PI-(divisionAngles[Defaults::numAngleDivisors-3]
-        -divisionAngles[Defaults::numAngleDivisors-2])/2.0);
-    partialCrossSections[Defaults::numAngleDivisors-1] = totalCrossSection;
+    totalCrossSection +=
+        differentialCrossSection*2.0*M_PI*
+        std::sin(divisionAngles[input->getNumAngleDivisors()-1])
+        *(M_PI
+            -(  divisionAngles[input->getNumAngleDivisors()-3]
+                -divisionAngles[input->getNumAngleDivisors()-2]
+            )/2.0);
+    partialCrossSections[input->getNumAngleDivisors() - 1] = totalCrossSection;
     return totalCrossSection;
 };
 
 void Electron::generateIntegratedCrossSections(double totalMottCrossSection) {
-    // DEBUG_PRINT("Beginning integrated cross section");
     double prevFractionalCrossSection;
     double fractionalCrossSection;
-    // TODO: Replace Defaults with parameter
-    // DEBUG_PRINT("partialCrossSection Size: " << partialCrossSections.size());
-    for(size_t i = 0; i < Defaults::numFlyingDistances; i++) {
+    for(size_t i = 0; i < input->getNumFlyingDistances(); i++) {
         prevFractionalCrossSection = 0;
-        // DEBUG_PRINT("Random: " << i << "\tCross: " << randomCrossSections[i]);
-        for(size_t j = 0; j < partialCrossSections.size(); j++) {
-            fractionalCrossSection = partialCrossSections[j]/totalMottCrossSection;
+        for(size_t j = 0; j < input->getNumAngleDivisors(); j++) {
+            fractionalCrossSection =
+                partialCrossSections[j]
+                /totalMottCrossSection;
             if(fractionalCrossSection > randomCrossSections[i]) {
-                // DEBUG_PRINT("Match! " << j);
-                if(j > 0 && j < partialCrossSections.size()-1) {
-                    scatteringAngles[i] = (divisionAngles[j] + divisionAngles[j + 1])/2.0
+                if(j > 0 && j < input->getNumAngleDivisors()-1) {
+                    scatteringAngles[i] = 
+                        (divisionAngles[j] + divisionAngles[j + 1])/2.0
                         -(fractionalCrossSection-randomCrossSections[i])
                         *(divisionAngles[j+1]-divisionAngles[j-1])/2.0
                         /(fractionalCrossSection - prevFractionalCrossSection);
-                    // DEBUG_PRINT("Between: " << scatteringAngles[i]);
+                    prevFractionalCrossSection = fractionalCrossSection;
                 } else if (j == 0) {
-                    scatteringAngles[i] = (divisionAngles[j]+divisionAngles[j+1])/2.0
+                    scatteringAngles[i] = 
+                        (divisionAngles[j]+divisionAngles[j+1])/2.0
                         -(fractionalCrossSection-randomCrossSections[i])
                         *(divisionAngles[j] + divisionAngles[j+1])/2.0
                         /(fractionalCrossSection - prevFractionalCrossSection);
-                    // DEBUG_PRINT("Start: " << scatteringAngles[i]);
+                    prevFractionalCrossSection = fractionalCrossSection;
                 } else {
                     scatteringAngles[i] = M_PI
                         -(fractionalCrossSection-randomCrossSections[i])
-                        *(M_PI - (divisionAngles[j-2]-divisionAngles[j-3]))
+                        *(M_PI - (divisionAngles[j-2]+divisionAngles[j-3])/2.0)
                         /(fractionalCrossSection - prevFractionalCrossSection);
-                    // DEBUG_PRINT("End: " << scatteringAngles[i]);
+                    prevFractionalCrossSection = fractionalCrossSection;
                 }
-                prevFractionalCrossSection = fractionalCrossSection;
                 break;
             } else {
                 continue;
@@ -719,25 +749,22 @@ void Electron::generateIntegratedCrossSections(double totalMottCrossSection) {
 
 double Electron::getElasticEnergyLoss() {
     double totalElasticEnergyLoss = 0;
-    for(size_t i = 0; i < Defaults::numFlyingDistances; i++) {
-        // DEBUG_PRINT("Angle: " << scatteringAngles[i]);
-        double ElecREup = ((energy+511.0)*(std::sin(scatteringAngles[i]))
-            *(std::sin(scatteringAngles[i]))+substrateMass*931.0*1000.0*(1
-            -std::cos(scatteringAngles[i])))*energy*(energy+2.0*511.0);
-        // DEBUG_PRINT("Top: " << ElecREup);
+    for(size_t i = 0; i < input->getNumFlyingDistances(); i++) {
+        double ElecREup = 
+            ((energy+511.0)*(std::sin(scatteringAngles[i]))
+                *(std::sin(scatteringAngles[i]))+substrateMass*931.0*1000.0*(1
+                -std::cos(scatteringAngles[i])))
+            *energy*(energy+2.0*511.0);
         double ElecREdown = (energy+substrateMass*931.5*1000.0)
             *(energy+substrateMass*931.5*1000.0)-energy*(energy+2.0*511.0)
             *(std::cos(scatteringAngles[i]))*(std::cos(scatteringAngles[i]));
-        // DEBUG_PRINT("Bottom: " << ElecREdown);  
         elasticEnergyLoss[i] = ElecREup/ElecREdown;
         totalElasticEnergyLoss += elasticEnergyLoss[i];
     }
-    // DEBUG_PRINT("Total loss: " << totalElasticEnergyLoss );
     return totalElasticEnergyLoss;
 };
 
 double Electron::getIonizationEnergyLoss() {
-    // std::sqrt(1 - 1/((ElecE / 511 + 1)*(ElecE / 511 + 1)))
     double correctedEnergy = energy*correctionFactor;
     double beta = std::sqrt(1.0-1.0/((correctedEnergy/511.0+1.0)
         *(correctedEnergy/511.0+1.0)));
@@ -752,9 +779,8 @@ double Electron::getIonizationEnergyLoss() {
         *correctedEnergy/(2.0*JforLoss*JforLoss*(1.0-beta*beta)))-std::log(2.0)
         *(2.0*std::sqrt(1.0-beta*beta)-1+beta*beta)+1-beta*beta+1.0/8.0
         *(1.0-std::sqrt(1.0-beta*beta))*(1.0-std::sqrt(1.0-beta*beta)));
-    DEBUG_PRINT("Ionization energy: " << ionizationEnergy << " keV/cm");
     // Final expression ensures a positive value
-    return (ionizationEnergy + ::abs(ionizationEnergy))/2.0;
+    return (ionizationEnergy + std::abs(ionizationEnergy))/2.0;
 };
 
 inline double Electron::getBremsstrahlung() {
@@ -762,7 +788,6 @@ inline double Electron::getBremsstrahlung() {
     double bremsstralung = 1.4e-4*1E24*substrateDensity/(Constants::avogadrosNumber)
         *substrateCharge*(substrateCharge+1.0)*(correctedEnergy+511.0)*(4.0
         *std::log(2.0*(correctedEnergy+511.0)/511.0)-4.0/3.0);
-    DEBUG_PRINT("Bremsstralung: " << bremsstralung << " keV/cm");
     // Final expressio ensures a positive value
     return (bremsstralung + std::abs(bremsstralung))/2.0;
 };
@@ -778,32 +803,289 @@ inline Coordinate Electron::calculateNewCoordinate(size_t i) {
     };
 };
 
-// Input fields functions
-InputFields::InputFields() : charge(Defaults::ionCharge),
-energy(Defaults::ionEnergy), mass(Defaults::ionMass),
-simulationCount(Defaults::simulationCount),
-substrateCharge(Defaults::substrateCharge),
-substrateDensity(Defaults::substrateDensity),
-substrateMass(Defaults::substrateMass), type(ION), range(Defaults::range) {};
+// InputFields functions
+InputFields::InputFields() 
+    : charge((Defaults::type == ION) ? Defaults::ionCharge : Constants::electronCharge),
+    electronStoppingEnergy(Defaults::electronStoppingEnergy),
+    energy((Defaults::type == ION) ? Defaults::ionEnergy : Defaults::electronEnergy),
+    enableDamageCascade(Defaults::enableDamageCascade),
+    electronScreeningParametersFilename(Defaults::electronScreeningParametersFilename),
+    inputDirectoryName(Defaults::inputDirectory),
+    ionDisplacementEnergy(Defaults::ionDisplacementEnergy),
+    ionStoppingEnergy(Defaults::ionStoppingEnergy),
+    logSingleDisplacement(Defaults::logSingleDisplacement),
+    mass((Defaults::type == ION) ? Defaults::ionMass : Constants::electronMass),
+    mottScatteringParametersFilename(Defaults::mottScatteringParametersFilename),
+    numAngleDivisors(Defaults::numAngleDivisors),
+    numElecScreeningPotentialElements(Defaults::numElecScreeningPotentialElements),
+    numFlyingDistances(Defaults::numFlyingDistances),
+    numMottScatteringPotentialElements(Defaults::numMottElements),
+    outputFileEndMarker(Defaults::outputFileEnd),
+    outputFileExtension(Defaults::outputFileExtension),
+    outputCoordinateFilename(Defaults::outputCoordinateFilename),
+    outputDirectory(Defaults::outputDirectory),
+    range(Defaults::range),
+    simulationCount(Defaults::simulationCount),
+    substrateCharge(Defaults::substrateCharge),
+    substrateDensity(Defaults::substrateDensity),
+    substrateMass(Defaults::substrateMass),
+    settingsFilename(Defaults::settingsFilename),
+    type(Defaults::type) {}
 
-InputFields::InputFields(double charge, double energy,
-double mass, size_t simulationCount,
-double substrateCharge, double substrateDensity,
-double substrateMass, ParticleType type, double range)
-: charge(charge), energy(energy), mass(mass), 
-simulationCount(simulationCount),  substrateCharge(substrateCharge),
-substrateDensity(substrateDensity), substrateMass(substrateMass),
-type(type), range(range) {};
 
-double InputFields::getCharge() const { return charge; };
-double InputFields::getEnergy() const { return energy; };
-double InputFields::getMass() const { return mass; };
-size_t InputFields::getSimulationCount() const { return simulationCount; };
-double InputFields::getSubstrateCharge() const { return substrateCharge; };
-double InputFields::getSubstrateDensity() const { return substrateDensity; };
-double InputFields::getSubstrateMass() const { return substrateMass; };
-ParticleType InputFields::getType() const { return type; };
-double InputFields::getRange() const { return range; };
+InputFields::InputFields(
+    double charge,
+    double electronStoppingEnergy,
+    double energy,
+    bool enableDamageCascade,
+    const std::string& electronScreeningParametersFilename,
+    const std::string& inputDirectoryName,
+    double ionDisplacementEnergy,
+    double ionStoppingEnergy,
+    bool logSingleDisplacement, 
+    double mass,
+    const std::string& mottScatteringParametersFilename,
+    size_t numAngleDivisors,
+    size_t numElecScreeningPotentialElements,
+    size_t numFlyingDistances,
+    size_t numMottScatteringPotentialElements,
+    const std::string& outputFileEndMarker,
+    const std::string& outputFileExtension,
+    const std::string& outputCoordinateFilename,
+    const std::string& outputDirectory,
+    double range,
+    size_t simulationCount,
+    double substrateCharge,
+    double substrateDensity,
+    double substrateMass,
+    const std::string& settingsFilename,
+    ParticleType type)
+    : 
+    charge(charge),
+    electronStoppingEnergy(electronStoppingEnergy),
+    energy(energy),
+    enableDamageCascade(enableDamageCascade),
+    electronScreeningParametersFilename(electronScreeningParametersFilename),
+    inputDirectoryName(inputDirectoryName),
+    ionDisplacementEnergy(ionDisplacementEnergy),
+    ionStoppingEnergy(ionStoppingEnergy),
+    logSingleDisplacement(logSingleDisplacement),
+    mass(mass),
+    mottScatteringParametersFilename(mottScatteringParametersFilename),
+    numAngleDivisors(numAngleDivisors),
+    numElecScreeningPotentialElements(numElecScreeningPotentialElements),
+    numFlyingDistances(numFlyingDistances),
+    numMottScatteringPotentialElements(numMottScatteringPotentialElements),
+    outputFileEndMarker(outputFileEndMarker),
+    outputFileExtension(outputFileExtension),
+    outputCoordinateFilename(outputCoordinateFilename),
+    outputDirectory(outputDirectory),
+    range(range),
+    simulationCount(simulationCount),
+    substrateCharge(substrateCharge),
+    substrateDensity(substrateDensity),
+    substrateMass(substrateMass),
+    settingsFilename(settingsFilename),
+    type(type) {};
+
+InputFields::InputFields(const std::string& settingsFilename)
+        : InputFields() {
+    this->settingsFilename = settingsFilename;
+};
+
+std::shared_ptr<InputFields> InputFields::instance;
+
+std::shared_ptr<InputFields> InputFields::getInstance() {
+    // Create the instance if it doesn't exist
+    if (!instance) {
+        instance = std::shared_ptr<InputFields>(new InputFields());
+    }
+    return instance;
+}
+
+std::shared_ptr<InputFields> InputFields::getInstance(
+        const std::string& settingsFilename) {
+    // Create the instance if it doesn't exist
+    if (!instance) {
+        instance = std::shared_ptr<InputFields>(new InputFields(settingsFilename));
+    }
+    return instance;
+}
+
+// Getters
+bool InputFields::getEnableDamageCascade() const { return enableDamageCascade; }
+double InputFields::getElectronStoppingEnergy() const { return electronStoppingEnergy; };
+bool InputFields::getLogSingleDisplacement() const { return logSingleDisplacement; }
+double InputFields::getCharge() const { return charge; }
+double InputFields::getEnergy() const { return energy; }
+double InputFields::getIonDisplacementEnergy() const { return ionDisplacementEnergy; };
+double InputFields::getIonStoppingEnergy() const { return ionStoppingEnergy; };
+double InputFields::getMass() const { return mass; }
+double InputFields::getRange() const { return range; }
+double InputFields::getSubstrateCharge() const { return substrateCharge; }
+double InputFields::getSubstrateDensity() const { return substrateDensity; }
+double InputFields::getSubstrateMass() const { return substrateMass; }
+ParticleType InputFields::getType() const { return type; }
+size_t InputFields::getSimulationCount() const { return simulationCount; }
+size_t InputFields::getNumAngleDivisors() const { return numAngleDivisors; }
+size_t InputFields::getNumElecScreeningPotentialElements() const { return numElecScreeningPotentialElements; }
+size_t InputFields::getNumFlyingDistances() const { return numFlyingDistances; }
+size_t InputFields::getNumMottScatteringPotentialElements() const { return numMottScatteringPotentialElements; }
+const std::string& InputFields::getElectronScreeningParametersFilename() const { return electronScreeningParametersFilename; }
+const std::string& InputFields::getInputDirectoryName() const { return inputDirectoryName; }
+const std::string& InputFields::getMottScatteringParametersFilename() const { return mottScatteringParametersFilename; }
+const std::string& InputFields::getOutputCoordinateFilename() const { return outputCoordinateFilename; }
+const std::string& InputFields::getOutputDirectory() const { return outputDirectory; }
+const std::string& InputFields::getOutputFileEndMarker() const { return outputFileEndMarker; }
+const std::string& InputFields::getOutputFileExtension() const { return outputFileExtension; }
+const std::string& InputFields::getSettingsFilename() const { return settingsFilename; }
+
+// Setters
+void InputFields::setCharge(double charge) { this->charge = charge; }
+void InputFields::setElectronStoppingEnergy(double energy) { this->electronStoppingEnergy = energy; };
+void InputFields::setElectronScreeningParametersFilename(const std::string& filename) { this->electronScreeningParametersFilename = filename; }
+void InputFields::setEnableDamageCascade(bool enable) { this->enableDamageCascade = enable; }
+void InputFields::setEnergy(double energy) { this->energy = energy; }
+void InputFields::setIonDisplacementEnergy(double energy) { this->ionDisplacementEnergy = energy; };
+void InputFields::setIonStoppingEnergy(double energy) { this->ionStoppingEnergy = energy; };
+void InputFields::setInputDirectoryName(const std::string& name) { this->inputDirectoryName = name; }
+void InputFields::setLogSingleDisplacement(bool log) { this->logSingleDisplacement = log; }
+void InputFields::setMass(double mass) { this->mass = mass; }
+void InputFields::setMottScatteringParametersFilename(const std::string& filename) { this->mottScatteringParametersFilename = filename; }
+void InputFields::setNumAngleDivisors(size_t divisors) { this->numAngleDivisors = divisors; }
+void InputFields::setNumElecScreeningPotentialElements(size_t elements) { this->numElecScreeningPotentialElements = elements; }
+void InputFields::setNumFlyingDistances(size_t distances) { this->numFlyingDistances = distances; }
+void InputFields::setNumMottScatteringPotentialElements(size_t elements) { this->numMottScatteringPotentialElements = elements; }
+void InputFields::setOutputCoordinateFilename(const std::string& filename) { this->outputCoordinateFilename = filename; }
+void InputFields::setOutputDirectory(const std::string& directory) { this->outputDirectory = directory; }
+void InputFields::setOutputFileEndMarker(const std::string& marker) { this->outputFileEndMarker = marker; }
+void InputFields::setOutputFileExtension(const std::string& extension) { this->outputFileExtension = extension; }
+void InputFields::setRange(size_t range) { this->range = range; }
+void InputFields::setSettingsFilename(const std::string& filename) { this->settingsFilename = filename; }
+void InputFields::setSimulationCount(size_t count) { this->simulationCount = count; }
+void InputFields::setSubstrateCharge(double substrateCharge) { this->substrateCharge = substrateCharge; }
+void InputFields::setSubstrateDensity(double substrateDensity) { this->substrateDensity = substrateDensity; }
+void InputFields::setSubstrateMass(double substrateMass) { this->substrateMass = substrateMass; }
+void InputFields::setType(ParticleType type) { this->type = type; }
+
+bool InputFields::parseSetting(const std::string& line, std::string& name, std::string& value) {
+        std::istringstream iss(line);
+    if (std::getline(iss, name, '=') && std::getline(iss, value)) {
+        return true;
+    }
+    return false;
+} 
+
+bool InputFields::stringToBool(const std::string& str) {
+    return str == "True" || str == "true" || str == "1";
+}
+
+void InputFields::readSettingsFromFile() {
+    std::shared_ptr<InputFields> input;
+    std::ifstream file(settingsFilename);
+    if (!file.is_open()) {
+        std::cerr << "Error: Unable to open file \""
+            <<  settingsFilename
+            << "\". Using default settings"
+            << std::endl;
+        input = InputFields::getInstance();
+    } else {
+        std::string line;
+        input = InputFields::getInstance(settingsFilename);
+        while (std::getline(file, line)) {
+            std::string name, value;
+            if (parseSetting(line, name, value)) {
+                if (name == "electronMode") {
+                    input->setType(stringToBool(value) ? ELECTRON : ION);
+                } else if (name == "electronEnergy(keV)") {
+                    input->setEnergy(std::stod(value));
+                } else if (name == "electronStoppingEnergy(keV)") {
+                    input->setElectronStoppingEnergy(std::stod(value));
+                } else if (name == "electronScreeningParametersFilename") {
+                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+                    input->setElectronScreeningParametersFilename(value);
+                } else if (name == "numElecScreeningPotentialElements") {
+                    input->setNumElecScreeningPotentialElements(std::stoi(value));
+                } else if (name == "mottScatteringParametersFilename") {
+                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+                    input->setMottScatteringParametersFilename(value);
+                } else if (name == "numMottScatteringPotentialElements") {
+                    input->setNumMottScatteringPotentialElements(std::stoi(value));
+                } else if (name == "numAngleDivisors") {
+                    input->setNumAngleDivisors(std::stoi(value));
+                } else if (name == "numFlyingDistances") {
+                    input->setNumFlyingDistances(std::stoi(value));
+                } else if (name == "enableDamageCascade") {
+                    input->setEnableDamageCascade(stringToBool(value));
+                } else if (name == "ionCharge(e)") {
+                    input->setCharge(input->getType() == ELECTRON ? Constants::electronCharge : std::stod(value));
+                } else if (name == "ionEnergy(keV)") {
+                    input->setEnergy(input->getType() == ELECTRON ? Defaults::electronEnergy : std::stod(value));
+                } else if (name == "ionMass(amu)") {
+                    input->setMass(input->getType() == ELECTRON ? Constants::electronMass : std::stod(value));
+                } else if (name == "substrateDisplacementEnergy(keV)") {
+                    input->setIonDisplacementEnergy(std::stod(value));
+                } else if (name == "ionStoppingEnergy(keV)") {
+                    input->setIonStoppingEnergy(std::stod(value));
+                } else if (name == "logSingleDisplacement") {
+                    input->setLogSingleDisplacement(stringToBool(value));
+                } else if (name == "inputDirectoryName") {
+                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+                    input->setInputDirectoryName(value);
+                } else if (name == "outputCoordinateFilename") {
+                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+                    input->setOutputCoordinateFilename(value);
+                } else if (name == "outputFileEndMarker") {
+                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+                    input->setOutputFileEndMarker(value);
+                } else if (name == "outputFileExtension") {
+                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+                    input->setOutputFileExtension(value);
+                } else if (name == "outputDirectory") {
+                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
+                    input->setOutputDirectory(value);
+                } else if (name == "substrateCharge(e)") {
+                    input->setSubstrateCharge(std::stod(value));
+                } else if (name == "substrateMass(amu)") {
+                    input->setSubstrateMass(std::stod(value));
+                } else if (name == "settingsFilename") {
+                    input->setSettingsFilename(value);
+                } else if (name == "simulationCount") {
+                    input->setSimulationCount(std::stoi(value));
+                } else
+                    // Handle other settings here if needed
+                    std::cerr << "Warning: Unknown setting name '" << name << "'" << std::endl;
+                }
+            }
+        }
+    file.close();
+}
+
+void InputFields::printInputFields() const {
+    std::cout << "Charge:\t" << charge << std::endl;
+    std::cout << "Energy:\t" << energy << std::endl;
+    std::cout << "Enable Damage Cascade:\t" << (enableDamageCascade ? "true" : "false") << std::endl;
+    std::cout << "Electron Screening Parameters Filename:\t" << electronScreeningParametersFilename << std::endl;
+    std::cout << "Input Directory Name:\t" << inputDirectoryName << std::endl;
+    std::cout << "Log Single Displacement:\t" << (logSingleDisplacement ? "true" : "false") << std::endl;
+    std::cout << "Mass:\t" << mass << std::endl;
+    std::cout << "Mott Scattering Parameters Filename:\t" << mottScatteringParametersFilename << std::endl;
+    std::cout << "Number of Angle Divisors:\t" << numAngleDivisors << std::endl;
+    std::cout << "Number of Electron Screening Potential Elements:\t" << numElecScreeningPotentialElements << std::endl;
+    std::cout << "Number of Flying Distances:\t" << numFlyingDistances << std::endl;
+    std::cout << "Number of Mott Scattering Potential Elements:\t" << numMottScatteringPotentialElements << std::endl;
+    std::cout << "Output File End Marker:\t" << outputFileEndMarker << std::endl;
+    std::cout << "Output File Extension:\t" << outputFileExtension << std::endl;
+    std::cout << "Output Coordinate Filename:\t" << outputCoordinateFilename << std::endl;
+    std::cout << "Output Directory:\t" << outputDirectory << std::endl;
+    std::cout << "Range:\t" << range << std::endl;
+    std::cout << "Simulation Count:\t" << simulationCount << std::endl;
+    std::cout << "Substrate Charge:\t" << substrateCharge << std::endl;
+    std::cout << "Substrate Density:\t" << substrateDensity << std::endl;
+    std::cout << "Substrate Mass:\t" << substrateMass << std::endl;
+    std::cout << "Settings Filename:\t" << settingsFilename << std::endl;
+    std::cout << "Type:\t" << (type == ELECTRON ? "Electron" : "Ion") << std::endl;
+}
 
 // Bombardment functions
 Bombardment::Bombardment(std::weak_ptr<Simulation> simulation, size_t id)
@@ -819,19 +1101,18 @@ const std::vector<std::unique_ptr<Particle>>& Bombardment::getParticles() const 
     return particles;
 };
 
-void Bombardment::initiate(InputFields& inputFields) {
+void Bombardment::initiate(std::shared_ptr<InputFields> input) {
     DEBUG_PRINT("Initiating bombardment " << id);
     std::unique_ptr<Particle> initialParticle;
     Coordinate initialCoordinate = {0.0, 0.0, 0.0, 0};
-    Velocity initialVelocity = {0.0, 0.0, inputFields.getEnergy()};
+    Velocity initialVelocity = {0.0, 0.0, input->getEnergy()};
 
-    if(inputFields.getType() == ION) {
-        // DEBUG_PRINT("Making Ion...");
+    if(input->getType() == ION) {
         initialParticle = std::make_unique<Ion>(initialCoordinate, initialVelocity,
-            inputFields, shared_from_this());
+            input, shared_from_this());
     } else {
         initialParticle = std::make_unique<Electron>(initialCoordinate, initialVelocity, 
-            inputFields, shared_from_this());
+            input, shared_from_this());
     }
 
     addParticle(std::move(initialParticle));
@@ -839,7 +1120,11 @@ void Bombardment::initiate(InputFields& inputFields) {
     if(auto locked = simulation.lock()) {
         locked->writeData(COORDINATE, getParticles(), id);
     } else {
-        std::cerr << "Failed to initiate write" << std::endl;
+        std::filesystem::path cwd = std::filesystem::current_path();
+        std::cerr << "Failed to initiate write to " << 
+            (cwd / input->getOutputDirectory()
+            / (input->getOutputCoordinateFilename()
+            + input->getOutputFileExtension())) << std::endl;
     }
 };
 
@@ -850,30 +1135,18 @@ void Bombardment::addParticle(std::unique_ptr<Particle> particle) {
 }
 
 // Simulation functions
-// Simulation::Simulation() : inputs(InputFields()), 
-//     bombardments(Defaults::simulationCount) {
-//     DEBUG_PRINT("Creating simulation (Default)");
-//     for(std::shared_ptr<Bombardment> bombardment : bombardments) {
-//         bombardment = std::make_shared<Bombardment>();
-//     }
-// };
+Simulation::Simulation(std::shared_ptr<InputFields> input)
+    : input(input),
+    bombardments(input->getSimulationCount()),
+    outputPath(fs::path(".") / input->getOutputDirectory()) {};
 
 void Bombardment::popParticle() {
     particles.pop_back();
 };
 
-Simulation::Simulation(InputFields inputs)
-: inputs(inputs), bombardments(inputs.getSimulationCount()),
-  outputPath(fs::path(".") / Defaults::outputDirectory) {
-    DEBUG_PRINT("Creating simulation");
-    // for(std::shared_ptr<Bombardment>& bombardment : bombardments) {
-};
+Simulation::~Simulation() {};
 
-Simulation::~Simulation() {
-    DEBUG_PRINT("Destructing simulation");
-};
-
-InputFields Simulation::getInputs() { return inputs; };
+std::shared_ptr<InputFields> Simulation::getInput() { return input; };
 size_t Simulation::getBombardmentSize() { return bombardments.capacity(); };
 size_t Simulation::getBombardmentCapacity() { return bombardments.capacity(); };
 
@@ -881,22 +1154,18 @@ void Simulation::initiate() {
 
     checkOutputFiles();
 
-    for(size_t i = 0; i < inputs.getSimulationCount(); i++) {
-        // DEBUG_PRINT("Allocating bombardment");
+    for(size_t i = 0; i < input->getSimulationCount(); i++) {
         bombardments[i] = std::make_shared<Bombardment>(shared_from_this(), i);
     }
 
-    const size_t simulation_count = inputs.getSimulationCount();
-    threads.reserve(simulation_count); // Reserve space to avoid unnecessary reallocations
+    const size_t simulation_count = input->getSimulationCount();
+    threads.reserve(simulation_count);
 
     DEBUG_PRINT("Initiating simulation");
     for(size_t i = 0; i < simulation_count; i++) {
-        // DEBUG_PRINT("Initializing bombardment...");
         threads.emplace_back([this, i]() {
-            bombardments[i]->initiate(inputs);
-            // std::cout << "Use before: " << bombardments.at(i).use_count() << std::endl;
+            bombardments[i]->initiate(input);
             bombardments[i].reset();
-            // std::cout << "Use after: " << bombardments.at(i).use_count() << std::endl;
         });
     }
 
@@ -924,8 +1193,8 @@ void Simulation::writeData(OutputType outputType,
     }
 
     // Open output file
-    std::string filename = std::string(Defaults::outputCoordinateFilename);
-    filename = filename + std::string(Defaults::outputFileExtension);
+    std::string filename = std::string(input->getOutputCoordinateFilename());
+    filename = filename + std::string(input->getOutputFileExtension());
     std::ofstream outputFile(outputPath / filename, std::ios_base::app);
     if (!outputFile.is_open()) {
         std::cerr << "Failed to open output file." << std::endl;
@@ -944,7 +1213,7 @@ void Simulation::writeData(OutputType outputType,
         case OutputType::COORDINATE:
             for (const auto& particle : particles){
                 if(particle->getCoordinates().empty()) {
-                    if(Defaults::logSingleDisplacement)
+                    if(input->getLogSingleDisplacement())
                     {
                         outputFile << simulationID << ','
                                 << particleID << ','
@@ -973,7 +1242,7 @@ void Simulation::writeData(OutputType outputType,
         
         // Add cases for other OutputType values as needed
         case OutputType::ENDOFFILE:
-            outputFile << Defaults::outputFileEnd;
+            outputFile << input->getOutputFileEndMarker();
             break; 
         default:
             std::cerr << "Unsupported output type." << std::endl;
@@ -986,31 +1255,32 @@ void Simulation::writeData(OutputType outputType,
 
 bool Simulation::fileIsWritten(const fs::path filename) {
     
-    const int bufferSize = strlen(Defaults::outputFileEnd);
+    const std::streampos bufferSize =
+        static_cast<std::streampos>(input->getOutputFileEndMarker().length());
 
     std::ifstream file(filename, std::ios::ate);
     if (!file.is_open()) {
         return false;
     }
-    // Check if file size is smaller than the phrase length
+
     if (file.tellg() < bufferSize) {
         return false;
     }
     
-    // Move file pointer to bufferSize characters before the end
+    // Move file pointer to bufferSize characters    before the end
     file.seekg(-bufferSize, std::ios::end);
     // Read the last bufferSize characters
     std::string lastChars(bufferSize, '\0');
     file.read(&lastChars[0], bufferSize);
-    return lastChars == std::string(Defaults::outputFileEnd);
+    return lastChars == std::string(input->getOutputFileEndMarker());
 };
 
 void Simulation::renameFileWithTimestamp(const std::string& filename) {
     std::string timestamp = getCurrentDateTime();
     std::string newFilename = filename + "_" + timestamp
-        + Defaults::outputFileExtension;
+        + input->getOutputFileExtension();
     fs::path newFilePath = outputPath/newFilename;
-    std::string oldFilename = filename + Defaults::outputFileExtension;
+    std::string oldFilename = filename + input->getOutputFileExtension();
     fs::path filePath = outputPath/oldFilename;
     fs::rename(filePath, newFilePath);
 }
@@ -1031,11 +1301,13 @@ void Simulation::checkOutputFiles() {
     for(int i = COORDINATE; i  < ENDOFFILE; i++) {
         switch(i) {
             case COORDINATE:
-                filename = std::string(Defaults::outputCoordinateFilename);
-                filename = filename + std::string(Defaults::outputFileExtension);
+                filename = std::string(input->getOutputCoordinateFilename());
+                filename = filename
+                    + std::string(input->getOutputFileExtension());
                 filepath = outputPath/filename;
                 if(fileIsWritten(filepath)) {
-                    filename = std::string(Defaults::outputCoordinateFilename);
+                    filename = std::string(
+                        input->getOutputCoordinateFilename());
                     renameFileWithTimestamp(filename);
                 }
                 break;
@@ -1044,3 +1316,5 @@ void Simulation::checkOutputFiles() {
         }
     }
 };
+
+#endif
