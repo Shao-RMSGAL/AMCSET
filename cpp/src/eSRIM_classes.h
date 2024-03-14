@@ -91,7 +91,9 @@ private:
         double substrateDensity,
         double substrateMass,
         const std::string& settingsFilename,
-        ParticleType type);
+        ParticleType type,
+        bool logEndOfFlyingDistanceOnly,
+        bool logStoppingPointOnly);
     InputFields(const std::string& settingsFilename);
 
     // Static instance of the class
@@ -124,6 +126,8 @@ private:
     double substrateMass;
     std::string settingsFilename;
     ParticleType type;
+    bool logEndOfFlyingDistanceOnly;
+    bool logStoppingPointOnly;
 
     // Functions
     bool parseSetting(
@@ -165,6 +169,8 @@ public:
     const std::string& getOutputFileEndMarker() const;
     const std::string& getOutputFileExtension() const;
     const std::string& getSettingsFilename() const;
+    bool getLogEndOfFlyingDistanceOnly() const;
+    bool getLogStoppingPointOnly() const;
 
 
     // Setters
@@ -194,10 +200,12 @@ public:
     void setSubstrateDensity(double substrateDensity);
     void setSubstrateMass(double substrateMass);
     void setType(ParticleType type);
+    void setLogEndOfFlyingDistanceOnly(bool logEndOfFlyingDistanceOnly);
+    void setLogStoppingPointOnly(bool logStoppingPointOnly);
 
     // Functions
     void readSettingsFromFile();
-    void printInputFields() const;
+    std::string printInputFields() const;
 };
 
 
@@ -272,8 +280,8 @@ class Particle {
         void relativeToAbsoluteVelocity(
             Velocity& newVelocity,
             Velocity& targetVelocity
-            );
-        inline virtual double sign(double x);
+            ) const noexcept;
+        virtual double sign(const double x) const noexcept;
         virtual inline Coordinate calculateNewCoordinate();
         void createSubstrateKnockon(const Coordinate& newCoordinate,
             const Velocity&
@@ -415,6 +423,9 @@ class Bombardment : public std::enable_shared_from_this<Bombardment> {
 
 class Simulation : public std::enable_shared_from_this<Simulation> {
     private:
+
+        
+        size_t bombardmentCount;
         std::shared_ptr<InputFields> input;
         std::vector<std::shared_ptr<Bombardment>> bombardments;
         fs::path outputPath;
@@ -447,6 +458,7 @@ class Simulation : public std::enable_shared_from_this<Simulation> {
         void renameFileWithTimestamp(const std::string& filename);
         std::string getCurrentDateTime();
         void checkOutputFiles();
+
 };
 
 #endif

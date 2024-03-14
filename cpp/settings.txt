@@ -1,5 +1,5 @@
-electronMode=false
-electronEnergy(keV)=1000
+electronMode=
+electronEnergy(keV)=10000
 electronStoppingEnergy(keV)=1;
 electronScreeningParametersFilename="electron_screeening_potentials.csv"
 numElecScreeningPotentialElements=92
@@ -22,4 +22,6 @@ outputDirectory="output"
 substrateCharge(e)=26
 substrateMass(amu)=55.9349363
 settingsFilename="settings.txt"
-simulationCount=1000
+logEndOfFlyingDistanceOnly=false
+logStoppingPointOnly=true   
+simulationCount=1

@@ -3,8 +3,8 @@
  * Project:         eSRIM
  * Author:          Nathaniel Thomas
  * Date Created:    March 8, 2024
- * Date Modified:   March 8, 2024
- * File Version:    1.0
+ * Date Modified:   March 13, 2024
+ * File Version:    1.1
  * Group:           Dr. Shao's RMSLCF Group
  *
  * Description:
@@ -14,7 +14,8 @@
  * Revision History
  * 1.0:
  * - File created and initial program structure made
- *
+ * 1.1: (March 13, 2024)
+ * - Added File I/O
  *****************************************************************************/
 #ifndef MAIN_CXX
 #define MAIN_CXX
@@ -29,11 +30,27 @@ int main(int argc, char* argv[]) {
     Arguments arguments = parseCommandLine(argc, argv);
     std::shared_ptr<InputFields> input = InputFields::getInstance(arguments.filename);
     input->readSettingsFromFile();
-    
+
+    if(arguments.displaySettings) {
+        const std::string ANSI_COLOR_GREEN = "\033[1;32m";
+        const std::string ANSI_COLOR_RESET = "\033[0m";
+        std::cout 
+        << ANSI_COLOR_GREEN
+        << "Stimulation settings:\n\n"
+        << ANSI_COLOR_RESET
+        << input->printInputFields() 
+        << std::endl;
+    }
+
     auto start = std::chrono::high_resolution_clock::now();
 
     if(input->getType() == ELECTRON) {
-        Electron::readParametersAndInitialize(input);
+        try{
+            Electron::readParametersAndInitialize(input);
+        } catch(std::ios_base::failure& e) {
+            std::cerr << e.what() << std::endl;
+            std::exit(EXIT_FAILURE);
+        }
     }
 
     std::shared_ptr<Simulation> simulation = std::make_shared<Simulation>(input);
@@ -45,7 +62,10 @@ int main(int argc, char* argv[]) {
     if(arguments.time) {
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> duration = end - start;
-        std::cout << "Execution time: " << duration.count() << " seconds" << std::endl;
+        std::cout   << "Execution time: "
+                    << duration.count()
+                    << " seconds"
+                    << std::endl;
     }
 
     return 0;

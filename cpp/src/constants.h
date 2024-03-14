@@ -3,7 +3,7 @@
  * Project:         eSRIM
  * Author:          Nathaniel Thomas
  * Date Created:    March 8, 2024
- * Date Modified:   March 8, 2024
+ * Date Modified:   March 13, 2024
  * File Version:    1.0
  * Group:           Dr. Shao's RMSLCF Group
  *
@@ -14,7 +14,8 @@
  * Revision History
  * 1.0:
  * - File created and constants added
- *
+ * See main.cpp for other revision history
+ * 
  *****************************************************************************/
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
@@ -63,7 +64,9 @@ namespace Defaults {
     constexpr double ionEnergy = 50; // keV, default ion energy
     constexpr double ionMass = 27.97692653442; // amu, silicon 29
     constexpr double range = 80000000; // angstrom
+    constexpr bool logEndOfFlyingDistanceOnly = false;
     constexpr bool logSingleDisplacement = false; // Disable to shrink output file size
+    constexpr bool logStoppingPointOnly = false;
     constexpr size_t numAngleDivisors = 1000;
     constexpr size_t numElecScreeningPotentialElements = 92;
     constexpr size_t numFlyingDistances = 1000;
@@ -78,7 +81,7 @@ namespace Defaults {
     constexpr double substrateCharge = 26; // e, iron
     constexpr double substrateMass = 55.9349363; // amu, iron 56
     constexpr const char* settingsFilename = "settings.txt";
-    constexpr size_t simulationCount = 100;
+    constexpr size_t simulationCount = 1;
     constexpr double windowRange = Defaults::range;
 
     // Dependent values
