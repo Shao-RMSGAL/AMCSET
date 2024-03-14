@@ -23,3 +23,4 @@ cpp/test_files/!*.cpp
 cpp/Makefile
 cpp/CMakeCache.txt
 cpp/cmake_install.cmake
+cpp/test_files/bin
