@@ -290,7 +290,7 @@ class Particle {
             Velocity& targetVelocity
             ) const noexcept;
         virtual double sign(const double x) const noexcept;
-        virtual inline Coordinate calculateNewCoordinate();
+        virtual inline Coordinate calculateNewElectronCoordinate();
         void createSubstrateKnockon(const Coordinate& newCoordinate,
             const Velocity&
             targetVelocity);
@@ -332,7 +332,7 @@ class Ion : public Particle {
             Velocity& targetVelocity);
         double electronicStoppingEnergy();
         virtual const size_t& getDepth() const;
-        inline Coordinate calculateNewCoordinate() override;
+        inline Coordinate calculateNewElectronCoordinate() override;
 };
 
 
