@@ -1145,8 +1145,9 @@ std::string InputFields::printInputFields() const {
     // oss << "Range(unused):\t" << range << std::endl;
     oss << "Log Stopping Point Only:\t" << (logStoppingPointOnly ? "true" : "false") << std::endl;
     oss << "Log End of Flying Distance Only:\t" << (logEndOfFlyingDistanceOnly ? "true" : "false") << std::endl;
-    oss << "Number of Threads:\t" << numThreads << std::flush;
-    oss << "Simulation Count:\t" << simulationCount << std::flush;
+    oss << "Number of Threads:\t" << numThreads << std::endl;
+    oss << "Simulation Count:\t" << simulationCount << std::endl;
+    oss << "Progress Tracking:\t" << (progressChecking ? "true" : "false") << std::flush;
 
     // Return the contents of the std::ostringstream as a string
     return oss.str();
@@ -1431,7 +1432,7 @@ void Simulation::checkOutputFiles() {
 
 void Simulation::updateProgressCounter() {
     std::lock_guard<std::mutex> lock(counterLock);
-    ++progressCounter;
+        ++progressCounter;
         constexpr int progressBarWidth = 80;
         int progress = static_cast<int>((static_cast<double>(progressCounter)
             /static_cast<double>(input->getSimulationCount()))

@@ -24,5 +24,5 @@ substrateMass(amu)=55.9349363
 settingsFilename="settings.txt"
 logEndOfFlyingDistanceOnly=false
 logStoppingPointOnly=true
-simulationCount=5000
-numThreads=8
+simulationCount=100
+numThreads=7

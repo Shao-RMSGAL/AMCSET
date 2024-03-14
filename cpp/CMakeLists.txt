@@ -54,5 +54,5 @@ endif()
 if(PROD)
     message("Production mode is enabled.")
     # Add optimization flags 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -march=native -flto -ffast-math -finline-functions -fomit-frame-pointer -DNDEBUG")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -march=native -ffast-math -finline-functions -fomit-frame-pointer -DNDEBUG")
 endif()

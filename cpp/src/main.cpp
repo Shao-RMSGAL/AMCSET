@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
 
     if(arguments.progress) {
         input->setProgressChecking(true);
-    } 
+    }
 
     if(arguments.displaySettings) {
         const std::string ANSI_COLOR_GREEN = "\033[1;32m";
