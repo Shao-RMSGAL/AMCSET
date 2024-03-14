@@ -82,9 +82,11 @@ namespace Defaults {
     constexpr double substrateMass = 55.9349363; // amu, iron 56
     constexpr const char* settingsFilename = "settings.txt";
     constexpr size_t simulationCount = 1;
-    constexpr double windowRange = Defaults::range;
+    constexpr bool progressChecking = false;
+    constexpr size_t numThreads = 8;
 
     // Dependent values
+    constexpr double windowRange = Defaults::range;
     constexpr double substrateDensity = 7.874
                                         /Defaults::substrateMass
                                         *Constants::avogadrosNumber

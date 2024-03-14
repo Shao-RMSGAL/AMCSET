@@ -31,6 +31,10 @@ int main(int argc, char* argv[]) {
     std::shared_ptr<InputFields> input = InputFields::getInstance(arguments.filename);
     input->readSettingsFromFile();
 
+    if(arguments.progress) {
+        input->setProgressChecking(true);
+    } 
+
     if(arguments.displaySettings) {
         const std::string ANSI_COLOR_GREEN = "\033[1;32m";
         const std::string ANSI_COLOR_RESET = "\033[0m";
@@ -60,6 +64,7 @@ int main(int argc, char* argv[]) {
     simulation.reset();
     
     if(arguments.time) {
+        clearLine();
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> duration = end - start;
         std::cout   << "Execution time: "

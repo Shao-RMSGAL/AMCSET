@@ -72,6 +72,8 @@ Arguments parseCommandLine(int argc, char* argv[]) {
             settings.time = true;
         } else if (arg == "-d" || arg == "--display") {
             settings.displaySettings = true;
+        } else if (arg == "-p" || arg == "--progress") {
+            settings.progress = true;
         } else {
             std::cerr << "Error: Unrecognized flag '" << arg << "'" << std::endl;
             std::cerr << "Use -h or --help for usage information" << std::endl;
@@ -105,6 +107,16 @@ bool promptContinue() {
     } while (!isValidInput);
 
     return false; // This line should never be reached, but added for completeness
+}
+
+void clearLine() {
+    constexpr int width = 80;
+    std::cout << "\r";
+    for (size_t i = 0; i < width; ++i) {
+        std::cout << " ";
+    }
+    std::cout << "\r";
+    std::cout.flush();
 }
 
 #endif

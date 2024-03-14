@@ -93,7 +93,10 @@ private:
         const std::string& settingsFilename,
         ParticleType type,
         bool logEndOfFlyingDistanceOnly,
-        bool logStoppingPointOnly);
+        bool logStoppingPointOnly,
+        bool progressChecking,
+        size_t numThreads);
+
     InputFields(const std::string& settingsFilename);
 
     // Static instance of the class
@@ -128,6 +131,8 @@ private:
     ParticleType type;
     bool logEndOfFlyingDistanceOnly;
     bool logStoppingPointOnly;
+    bool progressChecking;
+    size_t numThreads;
 
     // Functions
     bool parseSetting(
@@ -171,7 +176,8 @@ public:
     const std::string& getSettingsFilename() const;
     bool getLogEndOfFlyingDistanceOnly() const;
     bool getLogStoppingPointOnly() const;
-
+    bool getProgressChecking() const;
+    size_t getNumThreads() const;
 
     // Setters
     void setCharge(double charge);
@@ -202,6 +208,8 @@ public:
     void setType(ParticleType type);
     void setLogEndOfFlyingDistanceOnly(bool logEndOfFlyingDistanceOnly);
     void setLogStoppingPointOnly(bool logStoppingPointOnly);
+    void setProgressChecking(bool progressChecking);
+    void setNumThreads(size_t numThreads);
 
     // Functions
     void readSettingsFromFile();
@@ -423,14 +431,15 @@ class Bombardment : public std::enable_shared_from_this<Bombardment> {
 
 class Simulation : public std::enable_shared_from_this<Simulation> {
     private:
-
-        
         size_t bombardmentCount;
         std::shared_ptr<InputFields> input;
         std::vector<std::shared_ptr<Bombardment>> bombardments;
         fs::path outputPath;
         std::mutex fileLock;
+        std::mutex counterLock;
         std::vector<std::thread> threads;
+        u_int64_t progressCounter;
+
     public:
         // Constructors
         Simulation();
@@ -458,6 +467,7 @@ class Simulation : public std::enable_shared_from_this<Simulation> {
         void renameFileWithTimestamp(const std::string& filename);
         std::string getCurrentDateTime();
         void checkOutputFiles();
+        void updateProgressCounter();
 
 };
 

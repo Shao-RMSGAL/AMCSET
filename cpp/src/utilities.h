@@ -33,6 +33,7 @@ struct Arguments {
     std::string filename;
     bool time;
     bool displaySettings;
+    bool progress;
 };
 
 const std::string_view helpMessage = 
@@ -48,9 +49,10 @@ Usage: ./eSRIM [options][paths...]
 Options
     -f --filename <filename>    Read settings for eSRIM from <filename>. [Default="settings.txt"]
     -t --time                   Record execution time and output to standard output.
-    -s --settings               Display an example settings file.
+    -s --settings               Display an example settings file.   
     -d --display                Output the active settings to the standard output.
     -h --help                   Display this help message.
+    -p --progress               Display the progress of the simulation while it is running to the standard output.
 )";
 
 const std::string_view settingsMessage = 
@@ -85,6 +87,7 @@ settingsFilename="settings.txt"
 logEndOfFlyingDistanceOnly=false
 logStoppingPointOnly=false
 simulationCount=1
+numThreads=8
 )";
 
 // Function to parse command line arguments
@@ -92,5 +95,8 @@ Arguments parseCommandLine(int argc, char* argv[]);
 
 // Function to prompt user to continue when an error is encountered
 bool promptContinue();
+
+// Function for clearing the standard output
+void clearLine();
 
 #endif

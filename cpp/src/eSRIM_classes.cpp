@@ -141,7 +141,6 @@ void Particle::relativeToAbsoluteVelocity (
     const double& THETA1RELATIVE = newVelocity.zAngle;
     const double& THETA2RELATIVE = targetVelocity.zAngle;
 
-    const double& targetEnergy = targetVelocity.energy;
     const double ALPHA1RELATIVE = random()*2.0*M_PI;
     const double ALPHA2RELATIVE = ALPHA1RELATIVE + M_PI;
 
@@ -197,8 +196,10 @@ void Particle::relativeToAbsoluteVelocity (
             : (X5 > 0.0) ? std::atan(Y5/X5)
             : M_PI - 0.5*sign(Y5)*M_PI)
         : 0.0;
-    newVelocity = {THETA1, ALPHA1, energy};
-    targetVelocity = {THETA2, ALPHA2, targetEnergy};
+    newVelocity.zAngle = THETA1;
+    newVelocity.xAngle = ALPHA1;
+    targetVelocity.zAngle = THETA2;
+    targetVelocity.xAngle = ALPHA2;
 };
 
 inline double Particle::sign(const double x) const noexcept{
@@ -578,7 +579,7 @@ void Electron::fire() {
     bool firstIteration = true;
     double flightGroupLength;
     Velocity newVelocity = {0.0,0.0,0.0};
-    Velocity targetVelocity = {0.0, 0.0, 0.0};
+    Velocity targetVelocity = {0.0,0.0,0.0};
     while(velocity.energy > electronStoppingEnergy) {
         totalMottCrossSection = getMottTotalCrossSection();
         flightGroupLength = generateFlyingDistances(totalMottCrossSection);
@@ -597,7 +598,7 @@ void Electron::fire() {
             continue;
         } 
         correctionFactor = (energy + newEnergy)/2.0/energy;
-        energy = newEnergy;
+        newVelocity.energy = newEnergy;
 
         for(size_t i = 0; i < input->getNumFlyingDistances(); i++) {
 
@@ -615,7 +616,7 @@ void Electron::fire() {
             }
 
             if(input->getEnableDamageCascade()
-                && energy - targetVelocity.energy > ionDisplacementEnergy) {
+                && targetVelocity.energy > ionDisplacementEnergy) {
                 createSubstrateKnockon(coordinate, targetVelocity);
             }
 
@@ -855,7 +856,8 @@ InputFields::InputFields()
     settingsFilename(Defaults::settingsFilename),
     type(Defaults::type),
     logEndOfFlyingDistanceOnly(Defaults::logEndOfFlyingDistanceOnly),
-    logStoppingPointOnly(Defaults::logStoppingPointOnly) {}
+    logStoppingPointOnly(Defaults::logStoppingPointOnly),
+    progressChecking(Defaults::progressChecking) {}
 
 
 InputFields::InputFields(
@@ -886,7 +888,9 @@ InputFields::InputFields(
     const std::string& settingsFilename,
     ParticleType type,
     bool logEndOfFlyingDistanceOnly,
-    bool logStoppingPointOnly)
+    bool logStoppingPointOnly,
+    bool progressChecking,
+    size_t numThreads)
     : 
     charge(charge),
     electronStoppingEnergy(electronStoppingEnergy),
@@ -915,7 +919,9 @@ InputFields::InputFields(
     settingsFilename(settingsFilename),
     type(type),
     logEndOfFlyingDistanceOnly(logEndOfFlyingDistanceOnly),
-    logStoppingPointOnly(logStoppingPointOnly) {};
+    logStoppingPointOnly(logStoppingPointOnly),
+    progressChecking(progressChecking),
+    numThreads(numThreads) {};
 
 InputFields::InputFields(const std::string& settingsFilename)
         : InputFields() {
@@ -970,6 +976,8 @@ const std::string& InputFields::getOutputFileExtension() const { return outputFi
 const std::string& InputFields::getSettingsFilename() const { return settingsFilename; }
 bool InputFields::getLogEndOfFlyingDistanceOnly() const { return logEndOfFlyingDistanceOnly;};
 bool InputFields::getLogStoppingPointOnly() const { return logStoppingPointOnly;};
+bool InputFields::getProgressChecking() const { return progressChecking; };
+size_t InputFields::getNumThreads() const { return numThreads; };
 
 // Setters
 void InputFields::setCharge(double charge) { this->charge = charge; }
@@ -1000,6 +1008,8 @@ void InputFields::setSubstrateMass(double substrateMass) { this->substrateMass =
 void InputFields::setType(ParticleType type) { this->type = type; }
 void InputFields::setLogEndOfFlyingDistanceOnly(bool logEndOfFlyingDistanceOnly) {this->logEndOfFlyingDistanceOnly = logEndOfFlyingDistanceOnly; }
 void InputFields::setLogStoppingPointOnly(bool logStoppingPointOnly) {this->logStoppingPointOnly = logStoppingPointOnly; }
+void InputFields::setProgressChecking(bool progressChecking) {this->progressChecking = progressChecking; }
+void InputFields::setNumThreads(size_t numThreads) {this->numThreads = numThreads; }
 
 bool InputFields::parseSetting(const std::string& line, std::string& name, std::string& value) {
         std::istringstream iss(line);
@@ -1093,6 +1103,8 @@ void InputFields::readSettingsFromFile() {
                     input->setLogStoppingPointOnly(stringToBool(value));
                 } else if (name == "simulationCount") {
                     input->setSimulationCount(std::stoi(value));
+                } else if (name == "numThreads") {
+                    input->setNumThreads(std::stoi(value));
                 } else
                     // Handle other settings here if needed
                     std::cerr << "Warning: Unknown setting name '" << name << "'" << std::endl;
@@ -1133,6 +1145,7 @@ std::string InputFields::printInputFields() const {
     // oss << "Range(unused):\t" << range << std::endl;
     oss << "Log Stopping Point Only:\t" << (logStoppingPointOnly ? "true" : "false") << std::endl;
     oss << "Log End of Flying Distance Only:\t" << (logEndOfFlyingDistanceOnly ? "true" : "false") << std::endl;
+    oss << "Number of Threads:\t" << numThreads << std::flush;
     oss << "Simulation Count:\t" << simulationCount << std::flush;
 
     // Return the contents of the std::ostringstream as a string
@@ -1190,7 +1203,8 @@ void Bombardment::addParticle(std::unique_ptr<Particle> particle) {
 Simulation::Simulation(std::shared_ptr<InputFields> input)
     : input(input),
     bombardments(input->getSimulationCount()),
-    outputPath(fs::current_path() / input->getOutputDirectory()) {};
+    outputPath(fs::current_path() / input->getOutputDirectory()),
+    progressCounter(0) {};
 
 void Bombardment::popParticle() {
     particles.pop_back();
@@ -1218,16 +1232,31 @@ void Simulation::initiate() {
     threads.reserve(simulation_count);
 
     DEBUG_PRINT("Initiating simulation");
-    for(size_t i = 0; i < simulation_count; i++) {
-        threads.emplace_back([this, i]() {
-            bombardments[i]->initiate(input);
-            bombardments[i].reset();
-        });
-    }
+    size_t numThreadsPerBatch = input->getNumThreads();
+    size_t numBatches = (simulation_count+numThreadsPerBatch-1)
+        /numThreadsPerBatch;
 
-    for(auto& thread : threads) {
-        if (thread.joinable()) {
-            thread.join();
+    for (size_t batchIndex = 0; batchIndex < numBatches; ++batchIndex) {
+        size_t startIndex = batchIndex * numThreadsPerBatch;
+        size_t endIndex = std::min(startIndex + numThreadsPerBatch,
+            simulation_count);
+
+        std::vector<std::thread> batchThreads;
+
+        for (size_t i = startIndex; i < endIndex; ++i) {
+            batchThreads.emplace_back([this, i]() {
+                bombardments[i]->initiate(input);
+                bombardments[i].reset();
+                if (input->getProgressChecking()) {
+                    updateProgressCounter();
+                }
+            });
+        }
+
+        for (auto& thread : batchThreads) {
+            if (thread.joinable()) {
+                thread.join();
+            }
         }
     }
 
@@ -1376,7 +1405,7 @@ std::string Simulation::getCurrentDateTime() {
     std::replace(timestamp.begin(), timestamp.end(), ' ', '_');
     std::replace(timestamp.begin(), timestamp.end(), ':', '-');
     return timestamp;
-};
+}
 
 void Simulation::checkOutputFiles() {
     fs::path filepath;
@@ -1398,6 +1427,32 @@ void Simulation::checkOutputFiles() {
                 break;
         }
     }
-};
+}
+
+void Simulation::updateProgressCounter() {
+    std::lock_guard<std::mutex> lock(counterLock);
+    ++progressCounter;
+        constexpr int progressBarWidth = 80;
+        int progress = static_cast<int>((static_cast<double>(progressCounter)
+            /static_cast<double>(input->getSimulationCount()))
+            *progressBarWidth);
+
+        std::cout << "Progress: [";
+        for (int i = 0; i < progressBarWidth; ++i) {
+            if (i < progress) {
+                std::cout << "=";
+            } else {
+                std::cout << " ";
+            }
+        }
+        std::cout << "] "
+                    << std::setw(3)
+                    << std::setfill(' ')
+                    << std::right
+                    << ((progressCounter * 100) / input->getSimulationCount())
+                    << "%\r";
+        std::cout.flush();
+
+}
 
 #endif
