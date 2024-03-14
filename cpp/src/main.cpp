@@ -27,13 +27,15 @@
 
 // Main program  start
 int main(int argc, char* argv[]) {
+
+    // Pre-simulation code. Input and error checking, as well as signal handling. 
     Arguments arguments = parseCommandLine(argc, argv);
     std::shared_ptr<InputFields> input = InputFields::getInstance(arguments.filename);
     input->readSettingsFromFile();
 
     if(arguments.progress) {
         input->setProgressChecking(true);
-    }
+    }   
 
     if(arguments.displaySettings) {
         const std::string ANSI_COLOR_GREEN = "\033[1;32m";
@@ -46,6 +48,30 @@ int main(int argc, char* argv[]) {
         << std::endl;
     }
 
+    unsigned int cores = std::thread::hardware_concurrency();
+
+    if(cores < input->getNumThreads()) {
+        const std::string ANSI_COLOR_GREEN = "\033[1;33m";
+        const std::string ANSI_COLOR_RESET = "\033[0m";
+        std::cerr << ANSI_COLOR_GREEN
+                    <<"Warning: Number of threads ("
+                    << input->getNumThreads()
+                    << ") exceeds number of hardware threads ("
+                    << std::thread::hardware_concurrency()
+                    << "). Continuing may cause unexpected behavior on this system."
+                    << " Consider settings the \"numThreads\" setting to a value less"
+                    << " than or equal to "
+                    <<  std::thread::hardware_concurrency()
+                    << "."
+                    << ANSI_COLOR_RESET
+                    << "\nUse -s for settings help. Use -h for usage help."
+                    << std::endl;
+        if(!promptContinue()) {
+            std::exit(EXIT_SUCCESS);
+        }
+    }
+
+    // Primary simulation section
     auto start = std::chrono::high_resolution_clock::now();
 
     if(input->getType() == ELECTRON) {
@@ -61,6 +87,9 @@ int main(int argc, char* argv[]) {
     Particle::seedRandomGenerator();
 
     simulation->initiate();
+
+    // Simulation complete. Cleanup code.
+
     simulation.reset();
     
     if(arguments.time) {

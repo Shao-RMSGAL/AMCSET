@@ -38,6 +38,7 @@ Arguments parseCommandLine(int argc, char* argv[]) {
     settings.filename = "settings.txt"; // Default filename
     settings.time = false; // Default time flag
     settings.displaySettings = false; // Default time flag
+    settings.progress = false; // Default time flag
 
     // Check for help option
     for (int i = 1; i < argc; ++i) {

@@ -59,8 +59,8 @@ namespace Defaults {
     constexpr double electronStoppingEnergy = 1; // keV
     constexpr bool enableDamageCascade = true;
     constexpr double ionCharge = 14; // e, silicon
-    constexpr size_t ionDisplacementEnergy = 0.04; // keV
-    constexpr size_t ionStoppingEnergy = 0.04; // keV
+    constexpr double ionDisplacementEnergy = 0.04; // keV
+    constexpr double ionStoppingEnergy = 0.04; // keV
     constexpr double ionEnergy = 50; // keV, default ion energy
     constexpr double ionMass = 27.97692653442; // amu, silicon 29
     constexpr double range = 80000000; // angstrom
