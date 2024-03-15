@@ -1,26 +1,8 @@
-# python
-.vscode/settings.json
-latex/main.aux
-latex/main.fdb_latexmk
-latex/main.fls
-latex/main.log
-latex/main.synctex.gz
-latex/main.pdf
-latex/_minted-main/
-latex/dist/quickbasic_lexer-0.1-py3.10.egg
-latex/quickbasic_lexer.egg-info/
-latex/formatted_basic_code.bas
-latex/main.out
-latex/main.lof
-latex/main.lot
-latex/main.toc
-
 # CPP files to ignore
-cpp/bin/*
-cpp/CMakeFiles
-cpp/output
-cpp/test_files/!*.cpp
-cpp/Makefile
-cpp/CMakeCache.txt
-cpp/cmake_install.cmake
-cpp/test_files/bin
+bin/*
+CMakeFiles
+output
+Makefile
+CMakeCache.txt
+cmake_install.cmake
+test_files/bin
