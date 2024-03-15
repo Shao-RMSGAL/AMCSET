@@ -1,54 +1,23 @@
-cmake_policy(SET CMP0077 NEW)
+# Intel compiler lines
+if (CMAKE_HOST_WIN32)
+# need CMake 3.25.0+ for IntelLLVM support of target link properties on Windows
+cmake_minimum_required(VERSION 3.25)
+else()
+# CMake 3.23.5 is the minimum recommended for IntelLLVM on Linux
+cmake_minimum_required(VERSION 3.23.5)
+endif()
 
-cmake_minimum_required(VERSION 3.22.1)
 project(eSRIM)
 
 set(CMAKE_CXX_STANDARD 20)
 
 # Define compiler options
-set(COMPILER "gcc" CACHE STRING "Choose the compiler: 'gcc' or 'clang' (default is 'gcc')")
-
-# Check for clang compiler
-if(COMPILER STREQUAL "clang")
-    find_program(CLANG_FOUND clang)
-    find_program(CLANGXX_FOUND clang++)
-    if(NOT CLANG_FOUND OR NOT CLANGXX_FOUND)
-        message(FATAL_ERROR "clang compiler not found.")
-        return()
-    endif()
-# Check for gcc compiler
-elseif(COMPILER STREQUAL "gcc")
-    find_program(GCC_FOUND gcc)
-    find_program(GXX_FOUND g++)
-    if(NOT GCC_FOUND OR NOT GXX_FOUND)
-        message(FATAL_ERROR "gcc compiler not found.")
-        return()
-    endif()
-# Check intel
-elseif(COMPILER STREQUAL "intel")
-#     find_program(INTEL_FOUND icpx)
-#     if(NOT INTEL_FOUND)
-#         message(FATAL_ERROR "intel compiler not found.")
-#         return()
-#     endif()
-elseif(NOT COMPILER STREQUAL "gcc")
-    message(FATAL_ERROR "Unrecognized compiler name: ${COMPILER}")
-    return()
-endif()
-
-# Set compiler
-if(COMPILER STREQUAL "clang")
-    set(CMAKE_C_COMPILER "clang")
-    set(CMAKE_CXX_COMPILER "clang++")
-elseif(COMPILER STREQUAL "gcc")
-    set(CMAKE_C_COMPILER "gcc")
-    set(CMAKE_CXX_COMPILER "g++")
-elseif(COMPILER STREQUAL "intel")
-    set(CMAKE_CXX_COMPILER "icx-cl")
-endif()
+set(CMAKE_C_COMPILER "gcc" CACHE STRING "Choose the C compiler: 'gcc', 'clang', or 'icx' (default is 'gcc')")
+set(CMAKE_CXX_COMPILER "g++" CACHE STRING "Choose the C++ compiler: 'g++', 'clang++', or 'icpx' (default is 'g++')")
 
 # Display selected compiler
-message(STATUS "Using ${COMPILER} compiler")
+message(STATUS "Using ${CMAKE_C_COMPILER} C compiler")
+message(STATUS "Using ${CMAKE_CXX_COMPILER} C++ compiler")
 
 # Create a 'bin' directory for the build
 set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/bin)
@@ -75,6 +44,12 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -pedantic -pthread")
 # Set the output directory for the executable
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_SOURCE_DIR}/bin)
 
+# Intel-specific checks
+if (CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+    find_package(IntelSYCL REQUIRED)
+    # Add your conditional code here that should only execute when using icpx
+endif()
+
 # Define a CMake option for enabling/disabling debug mode
 option(DEBUG_MODE "Enable debug mode. Passing -g and -O0 flags." OFF)
 option(PERF "Enable performance analysis mode. Passing -gp -O0. Use either Valgrind or gprof for performance analysis." OFF)
@@ -97,13 +72,19 @@ elseif(PERF) # Add compile definitions based on the PERF option
     add_compile_definitions(NO_OUTPUT)
 
     # Add compiler flags for performance analysis mode. This is NOT production mode. Use -DPROD=ON to enable production mode. 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pg -O0")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0")
 
 elseif(PROD) # Add compile definitions based on the PROD option
     message(STATUS "Production mode is enabled.")
 
     # Add optimization flags 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -march=native -ffast-math -finline-functions -fomit-frame-pointer -DNDEBUG")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -march=native -ffast-math -flto -finline-functions -fomit-frame-pointer -DNDEBUG")
+
+    if(CMAKE_CXX_COMPILER STREQUAL "icpx")
+        find_package(IntelSYCL REQUIRED)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -xHost -fsycl")
+    endif()
+
 else() # Add compile definitions based on the PROD option
     message(STATUS "No options set. Using -O0 compilation.")
 
