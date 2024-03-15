@@ -290,7 +290,7 @@ class Particle {
             Velocity& targetVelocity
             ) const noexcept;
         virtual double sign(const double x) const noexcept;
-        virtual inline Coordinate calculateNewElectronCoordinate();
+        virtual inline Coordinate calculateNewCoordinate();
         void createSubstrateKnockon(const Coordinate& newCoordinate,
             const Velocity&
             targetVelocity);
@@ -332,7 +332,7 @@ class Ion : public Particle {
             Velocity& targetVelocity);
         double electronicStoppingEnergy();
         virtual const size_t& getDepth() const;
-        inline Coordinate calculateNewElectronCoordinate() override;
+        inline Coordinate calculateNewCoordinate() override;
 };
 
 
@@ -403,7 +403,7 @@ class Electron : public Particle {
         double getElasticEnergyLoss();
         double getIonizationEnergyLoss();
         inline double getBremsstrahlung();
-        inline Coordinate calculateNewCoordinate(size_t i);
+        inline Coordinate calculateNewElectronCoordinate(size_t i);
 };
 
 class Simulation;
@@ -468,7 +468,6 @@ class Simulation : public std::enable_shared_from_this<Simulation> {
         std::string getCurrentDateTime();
         void checkOutputFiles();
         void updateProgressCounter();
-
 };
 
 #endif

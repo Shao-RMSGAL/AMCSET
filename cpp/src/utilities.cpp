@@ -111,7 +111,7 @@ bool promptContinue() {
 }
 
 void clearLine() {
-    constexpr int width = 80;
+    constexpr int width = 120;
     std::cout << "\r";
     for (size_t i = 0; i < width; ++i) {
         std::cout << " ";

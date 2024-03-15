@@ -608,7 +608,7 @@ void Electron::fire() {
 
             relativeToAbsoluteVelocity(newVelocity,targetVelocity);
             velocity = newVelocity;
-            coordinate = calculateNewCoordinate(i);
+            coordinate = calculateNewElectronCoordinate(i);
 
             if(coordinate.z < 0.0) {
                 DEBUG_PRINT("Electron Sputter");
@@ -816,7 +816,7 @@ inline double Electron::getBremsstrahlung() {
     return (bremsstralung + std::abs(bremsstralung))/2.0;
 };
 
-inline Coordinate Electron::calculateNewCoordinate(size_t i) {
+inline Coordinate Electron::calculateNewElectronCoordinate(size_t i) {
     return {
         coordinate.x + flyingDistances[i]*10e8*std::sin(velocity.zAngle)
                         *std::cos(velocity.xAngle),
@@ -1238,6 +1238,7 @@ void Simulation::initiate() {
         /numThreadsPerBatch;
 
     for (size_t batchIndex = 0; batchIndex < numBatches; ++batchIndex) {
+
         size_t startIndex = batchIndex * numThreadsPerBatch;
         size_t endIndex = std::min(startIndex + numThreadsPerBatch,
             simulation_count);
@@ -1252,6 +1253,7 @@ void Simulation::initiate() {
                     updateProgressCounter();
                 }
             });
+            bombardmentCount++;
         }
 
         for (auto& thread : batchThreads) {
