@@ -284,7 +284,7 @@ void Ion::fire() {
             && !input->getLogSingleDisplacement()) {
         return;
     }
-    while(energy > ionStoppingEnergy) {
+    while(energy > input->getIonStoppingEnergy()) {
         velocity.energy -= electronicStoppingEnergy();
         recoilEnergyAndVelocity(newVelocity, targetVelocity);
         velocity = newVelocity;
@@ -293,8 +293,8 @@ void Ion::fire() {
             DEBUG_PRINT("Ion Sputter");
             return;
         }
-        if(enableDamageCascade
-                && energy - targetVelocity.energy > ionDisplacementEnergy) {
+        if(input->getEnableDamageCascade()
+                && energy - targetVelocity.energy > input->getIonDisplacementEnergy()) {
             createSubstrateKnockon(coordinate, targetVelocity);
         }
 
@@ -1247,11 +1247,11 @@ void Simulation::initiate() {
 
         for (size_t i = startIndex; i < endIndex; ++i) {
             batchThreads.emplace_back([this, i]() {
-                bombardments[i]->initiate(input);
-                bombardments[i].reset();
                 if (input->getProgressChecking()) {
                     updateProgressCounter();
                 }
+                bombardments[i]->initiate(input);
+                bombardments[i].reset();
             });
             bombardmentCount++;
         }
