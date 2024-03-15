@@ -26,6 +26,7 @@
 #include <cstdlib>
 #include <cstddef>
 #include <iostream>
+#include <fstream>
 
 // Local includes
 #include "constants.h"
@@ -53,7 +54,12 @@ Arguments parseCommandLine(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-s" || arg == "--settings") {
-            std::cout << settingsMessage << std::endl;
+            std::cout << "Settings\n\n"
+                      << "The settings file is a text file, usually named \"settings.txt\", "
+                      << "but you can use a custom settings filename if you pass it via the command line."
+                      << "Here is an example file of the default settings:\n\n"
+                      << settingsMessage
+                      << std::endl;
             std::exit(EXIT_SUCCESS);
         }
     }
@@ -118,6 +124,63 @@ void clearLine() {
     }
     std::cout << "\r";
     std::cout.flush();
+}
+
+void checkHardwareThreads(std::shared_ptr<InputFields> &input)
+{
+    unsigned int cores = std::thread::hardware_concurrency();
+
+    if (cores < input->getNumThreads())
+    {
+        const std::string ANSI_COLOR_GREEN = "\033[1;33m";
+        const std::string ANSI_COLOR_RESET = "\033[0m";
+        std::cerr << ANSI_COLOR_GREEN
+                  << "Warning: Number of threads ("
+                  << input->getNumThreads()
+                  << ") exceeds number of hardware threads ("
+                  << std::thread::hardware_concurrency()
+                  << "). Continuing may cause unexpected behavior on this system."
+                  << " Consider settings the \"numThreads\" setting to a value less"
+                  << " than or equal to "
+                  << std::thread::hardware_concurrency()
+                  << "."
+                  << ANSI_COLOR_RESET
+                  << "\nUse -s for settings help. Use -h for usage help."
+                  << std::endl;
+        if (!promptContinue())
+        {
+            std::exit(EXIT_SUCCESS);
+        }
+    }
+}
+
+void checkDisplayOption(Arguments &arguments, std::shared_ptr<InputFields> &input)
+{
+    if (arguments.displaySettings)
+    {
+        const std::string ANSI_COLOR_GREEN = "\033[1;32m";
+        const std::string ANSI_COLOR_RESET = "\033[0m";
+        std::cout
+            << ANSI_COLOR_GREEN
+            << "Stimulation settings:\n\n"
+            << ANSI_COLOR_RESET
+            << input->printInputFields()
+            << std::endl;
+    }
+}
+
+void writeSettingsToFile() {
+    // Open the file "settings.txt" for writing
+    std::ofstream outputFile(Defaults::settingsFilename);
+
+    if (outputFile.is_open()) {
+        outputFile << settingsMessage;
+        outputFile.close();
+        
+        std::cout << "Created new \"" << Defaults::settingsFilename << "\" file.\n";
+    } else {
+        std::cerr << "Error opening " << Defaults::settingsFilename << " for writing.\n";
+    }
 }
 
 #endif

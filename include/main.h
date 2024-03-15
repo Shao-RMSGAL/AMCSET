@@ -15,10 +15,16 @@
  * 1.0:
  * - File created and initial program structure made
  *****************************************************************************/
+#include "utilities.h"
+
 #ifndef MAIN_H
 #define MAIN_H
 
 // Main program  start
-int main(int argc, char* argv[]) {}
+int startESRIM(int argc, char* argv[]);
 
 #endif
+
+void checkHardwareThreads(std::shared_ptr<InputFields> &input);
+
+void checkDisplayOption(Arguments &arguments, std::shared_ptr<InputFields> &input);

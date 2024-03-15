@@ -3,7 +3,9 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/_deps",
+                "${workspaceFolder}/_deps/googletest-src/googletest/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/g++",

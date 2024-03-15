@@ -27,6 +27,7 @@
 
 // Local includes
 #include "constants.h"
+#include "eSRIM_classes.h"
 
 // Define a struct to store settings
 struct Arguments {
@@ -56,12 +57,8 @@ Options
 )";
 
 const std::string_view settingsMessage = 
-R"(Settings
-
-The settings file is a text file, usually named settings.txt, but you can use a custom settings filename if you pass it via the command line. Here is an example file of the default settings:
-
-electronMode=true
-electronEnergy(keV)=1000
+R"(electronMode=true
+electronEnergy(keV)=10000
 electronStoppingEnergy(keV)=1;
 electronScreeningParametersFilename="electron_screeening_potentials.csv"
 numElecScreeningPotentialElements=92
@@ -74,7 +71,7 @@ ionCharge(e)=14
 ionEnergy(keV)=50
 ionMass(amu)=27.97692653442
 substrateDisplacementEnergy(keV)=0.04
-ionStoppingEnergy(keV)=0.04
+ionStoppingEnergy(keV)=0.04   
 logSingleDisplacement=false
 inputDirectoryName="input"
 outputCoordinateFilename="coordinateOutput"
@@ -85,7 +82,7 @@ substrateCharge(e)=26
 substrateMass(amu)=55.9349363
 settingsFilename="settings.txt"
 logEndOfFlyingDistanceOnly=false
-logStoppingPointOnly=false
+logStoppingPointOnly=true
 simulationCount=1
 numThreads=8
 )";
@@ -98,5 +95,11 @@ bool promptContinue();
 
 // Function for clearing the standard output
 void clearLine();
+
+void checkHardwareThreads(std::shared_ptr<InputFields> &input);
+
+void checkDisplayOption(Arguments &arguments, std::shared_ptr<InputFields> &input);
+
+void writeSettingsToFile();
 
 #endif

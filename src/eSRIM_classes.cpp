@@ -1029,10 +1029,11 @@ void InputFields::readSettingsFromFile() {
     if (!file.is_open()) {
         std::cerr << "Error: Unable to open file \""
             <<  settingsFilename
-            << "\". Using default settings. Use -s for settings help."
-            << std::endl;
+            << "\". Creating default settings file \"" << Defaults::settingsFilename << "\". Use -s for settings help."
+            << std::endl;   
         if(promptContinue()) {
-            input = InputFields::getInstance();
+            writeSettingsToFile();
+            readSettingsFromFile();
         } else {
             std::exit(EXIT_FAILURE);
         }

@@ -22,11 +22,12 @@
 
 // Local header files
 #include "eSRIM_classes.h"
+#include "main.h"
 #include "utilities.h"
 
 
 // Main program  start
-int main(int argc, char* argv[]) {
+int startESRIM(int argc, char* argv[]) {
 
     // Pre-simulation code. Input and error checking, as well as signal handling. 
     Arguments arguments = parseCommandLine(argc, argv);
@@ -35,41 +36,11 @@ int main(int argc, char* argv[]) {
 
     if(arguments.progress) {
         input->setProgressChecking(true);
-    }   
-
-    if(arguments.displaySettings) {
-        const std::string ANSI_COLOR_GREEN = "\033[1;32m";
-        const std::string ANSI_COLOR_RESET = "\033[0m";
-        std::cout 
-        << ANSI_COLOR_GREEN
-        << "Stimulation settings:\n\n"
-        << ANSI_COLOR_RESET
-        << input->printInputFields() 
-        << std::endl;
     }
 
-    unsigned int cores = std::thread::hardware_concurrency();
+    checkDisplayOption(arguments, input);
 
-    if(cores < input->getNumThreads()) {
-        const std::string ANSI_COLOR_GREEN = "\033[1;33m";
-        const std::string ANSI_COLOR_RESET = "\033[0m";
-        std::cerr << ANSI_COLOR_GREEN
-                    <<"Warning: Number of threads ("
-                    << input->getNumThreads()
-                    << ") exceeds number of hardware threads ("
-                    << std::thread::hardware_concurrency()
-                    << "). Continuing may cause unexpected behavior on this system."
-                    << " Consider settings the \"numThreads\" setting to a value less"
-                    << " than or equal to "
-                    <<  std::thread::hardware_concurrency()
-                    << "."
-                    << ANSI_COLOR_RESET
-                    << "\nUse -s for settings help. Use -h for usage help."
-                    << std::endl;
-        if(!promptContinue()) {
-            std::exit(EXIT_SUCCESS);
-        }
-    }
+    checkHardwareThreads(input);
 
     // Primary simulation section
     auto start = std::chrono::high_resolution_clock::now();
@@ -103,6 +74,11 @@ int main(int argc, char* argv[]) {
     }
 
     return 0;
+}
+
+// Main program  start
+int main(int argc, char* argv[]) {
+    return startESRIM(argc, argv);
 }
 
 #endif
