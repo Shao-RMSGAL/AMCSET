@@ -15,7 +15,7 @@
 
 TEST(TrivialTest, ZeroEqualsZerp) {
     // Trivial test fro demonstration
-    EXPECT_EQ(0, 0); 
+    EXPECT_EQ(1, 0); 
 }
 
 #endif
