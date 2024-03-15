@@ -32,7 +32,7 @@ Thanks to multi-threading support, thousands of simulations can be run in parall
 
 ### Ion Bombardment Simulation
 
-Just like the classic SRIM program, this simulation can simulate the Stopping and Range of Ions in Matter. Using the [settings.txt](settings.txt) file, set any bombardment ion mass and Z-number, as well as any substrate mass and Z-number, and the program will simulate ion bombardment, outputting to a file with a name specified in the settings.
+Just like the classic SRIM program, this simulation can simulate the Stopping and Range of Ions in Matter. Using the [settings.txt](build/settings.txt) file, set any bombardment ion mass and Z-number, as well as any substrate mass and Z-number, and the program will simulate ion bombardment, outputting to a file with a name specified in the settings.
 
 ### Electron Bombardment Simulation
 
@@ -56,7 +56,15 @@ There are several toggles available in the settings file that enables a user to 
 
 ## Dependencies
 
+### C++ Compiler
+
 Building the program requires the C++ standard libraries, as well as a C++ compiler. This program was developed using the g++ and clang compiler. The compiler can be chosen by setting the ```-DCOMPILER``` flag when using cmake. On Linux, a C++ compiler and the associated standard libraries generally included with most distributions. This compiler is called g++, and it is all you will need to build and run this project.
+
+### Google gtest
+
+This project uses Google [gtest](https://github.com/google/googletest/) to handle test cases. The [cmake configuration file](CMakeFile.txt) automatically handles the installation of this dependency.
+
+The testing environment has been configured, but no tests have been run so far. To run the ["Trivial test"](tests/mainTest.cpp#TrivialTest)
 
 ### Supported Compilers
 
@@ -73,32 +81,43 @@ If you are using another Linux distribution or Windows, ensure you have cmake, a
 
 Note that Windows is not officially supported, but it is not expected that this code would not compile and run on Windows.
 
-To build the project, first configure cmake
+To build the project, first nagivate to the build directory:
+
+```bash
+cd build
+```
+
+Then configure cmake
 
 ```bash    
-cmake .
+cmake ..
 ```
 
 You should see an output like this
 
 ```bash
--- The C compiler identification is GNU XX.X.X
 -- The CXX compiler identification is GNU XX.X.X
--- Detecting C compiler ABI info
--- Detecting C compiler ABI info - done
--- Check for working C compiler: /usr/bin/cc - skipped
--- Detecting C compile features
--- Detecting C compile features - done
 -- Detecting CXX compiler ABI info
 -- Detecting CXX compiler ABI info - done
 -- Check for working CXX compiler: /usr/bin/c++ - skipped
 -- Detecting CXX compile features
 -- Detecting CXX compile features - done
--- Using gcc compiler
+-- The C compiler identification is GNU XX.X.X
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/gcc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Found Python3: /usr/bin/python3.XX (found version "3.XX.XX") found components: Interpreter
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Using /usr/bin/gcc C compiler
+-- Using /usr/bin/c++ C++ compiler
 -- Production mode is enabled.
--- Configuring done
--- Generating done
--- Build files have been written to: ${Project directory}/eSRIM
+-- Configuring done (2.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /path/to/project/eSRIM/build
 ```
 
 You can also set flags to configure cmake to use a different compiler. Read the [CMakeLists.txt](CMakeLists.txt) file to learn more.
@@ -106,7 +125,7 @@ You can also set flags to configure cmake to use a different compiler. Read the 
 Once cmake is configured, build the project using
 
 ```bash
-make
+cmake --build .
 ```
 
 This will build the project and place the binary in the [/bin] folder.
@@ -119,7 +138,7 @@ Run the program using the following command
 ./bin/eSRIM
 ```
 
-By default, the program does not produce any output, it simply reads the [settings.txt](settings.txt) file and completes a simulation based on those settings before exiting. 
+By default, the program does not produce any output, it simply reads the [settings.txt](build/settings.txt) file and completes a simulation based on those settings before exiting. 
 
 eSRIM supports a number of command-line arguments. You can see all the available arguments using the _-h_ flag
 
@@ -138,7 +157,7 @@ This will automatically delete any executables and intermediate files generated 
 
 ### Output
 
-By default, the program outputs a .csv file. The name and file extension can be changed in the [settings.txt](settings.txt) file. 
+By default, the program outputs a .csv file. The name and file extension can be changed in the [settings.txt](build/settings.txt) file. 
 
 The output has 6 columns. Here is an example
 
@@ -162,6 +181,10 @@ Below is a list of planned features that are not yet implemented in the program.
 - (Required) Sections marked as Required are features that should be an inherent part of the program -- they cannot be controlled by the user. They are inherent program behavior that should be the only behavior of the program, with no option to disable it.
 - (Option) Sections marked as Option are features that can be toggled by the user. These are optional features that are not critical to the program's function.
 - (Development) These are  codebase features that should be implemented to make development go by more smoothly. They do not affect the final program's behavior, only the development process.
+
+### Add Planned Features and Issues to GitHub
+
+While this file tracks planned features, they should also be added to the [GitHub](https://github.com/Shao-RMSGAL/eSRIM/issues) page as issues. Similarly, issues should also be added to GitHub.
 
 ### Signal Handling (Required)
 
@@ -199,7 +222,7 @@ The codebase should be tested using Google gtest to ensure that the program work
 
 ### GPU Optimization (Option)
 
-The code should be able to leverage the GPU to perform parallelized calculations on a large scale. The most promising candidate for this option is the function for generating Mott Differential Cross Sections [Link](src/eSRIM_classes.cpp#getMottDifferentialCrossSection). This function is a major bottleneck for electron bombardment simulation (determined by performance analysis). Parallelizing this operation using a GPU may result in drastic speedups. 
+The code should be able to leverage the GPU to perform parallelized calculations on a large scale. The most promising candidate for this option is the [function for generating Mott Differential Cross Sections](src/eSRIM_classes.cpp#getMottDifferentialCrossSection). This function is a major bottleneck for electron bombardment simulation (determined by performance analysis). Parallelizing this operation using a GPU may result in drastic speedups. 
 
 Due to the non-standardized nature of GPU-Accelerated programming (NVidea uses [CUDA](https://developer.nvidia.com/cuda-toolkit), AMD uses [ROCm](https://www.amd.com/en/products/software/rocm.html), Intel uses [OpenCL](https://www.intel.com/content/www/us/en/developer/articles/tool/tools-for-opencl-applications.html)) multiple GPU-Acceleration algorithms may need to be implemented depending on the system configuration. 
 
@@ -207,9 +230,17 @@ Due to the non-standardized nature of GPU-Accelerated programming (NVidea uses [
 
 ### Mott Scattering Differential Cross Section Calculation Caching (Option)
 
-The Mott scattering differenttial cross section calculation is a major bottleneck in the code. It involves exponentiation and many array accesses to calculate a single differential cross section for a particular energy.
+The Mott scattering differential cross section calculation is a major bottleneck in the code. It involves exponentiation and many array accesses to calculate a single differential cross section for a particular energy.
 
 However, this is a deterministic function, albeit a complicated one. The results for certain energies can be cached and used by multiple threads to reduce the computational workload for large simulations. Bins should be sufficiently small to ensure that accuracy is not lost. A promising data structure for this purpose is std::unordered_map.
+
+### Unified Default Settings (Development)
+
+Currently, the default settings (in [constants.h](include/constants.h)) and default settings file image (in [utilities.h](include/utilities.h)). These should be unified so that a change in the [default settings](include/constants.h#electronEnergy) in constants.h is reflected in the [settingsMessage](include/utilities.h#settingsMessage)<!--First variable in the Defaults namespace--> variable.
+
+### Integrated Mott Scattering Parameters and Electron Screening Parameters (Option)
+
+The Mott Scattering Parameters and Electron Screening Parameters are currently read in from a separate file. While this functionality is useful, an option should also be provided to regenerate the files from the executable in case the files are lost. This is similar to the existing settings preservation settings, where if the ["settings.txt"](/build/settings.txt) cannot be located, a new one is generated.
 
 ## Known issues
 
