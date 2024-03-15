@@ -1,8 +1,13 @@
-bin/*
-CMakeFiles
-output
+build/bin/*
+build/CMakeFiles
+build/lib
+build/Testing
+build/output
+build/Makefile
+build/*.cmake
 Makefile
 CMakeCache.txt
 cmake_install.cmake
 test_files/bin
 performance_testing/*
+build/_deps
