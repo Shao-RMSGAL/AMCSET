@@ -1,0 +1,28 @@
+name: Run Google Test Suite
+
+on:
+  push:
+    branches:
+      - main  # Adjust the branch name as needed
+      - develop  # Adjust the branch name as needed
+  pull_request:
+    branches:
+      - main  # Adjust the branch name as needed
+      - develop  # Adjust the branch name as needed
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2  # Checkout the code repository
+      
+      - name: Install dependencies
+        run: sudo apt-get install -y libgtest-dev cmake
+
+      - name: Build and run tests
+        run: |
+          cd build
+          cmake ..
+          cmake --build .
+          ctest
