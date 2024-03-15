@@ -46,7 +46,7 @@ This program employs multi-threading, which allows for multiple CPU cores to be 
 
 ### Protected Output Files
 
-The program has a built-in protection which ensures that data from previous runs is not accidentally overridden. When the program encounters a file that has the same name as the name specified in the settings file, it checks to see if it has a file marker at the end (this marker can also be customized). If a marker is present, the old file is renamed '''\<filename>\_\<Day>\_\<Month>\_\<Date>\_\<Hour>\_\<Minute>\_\<Second>\_.\<file extension>'''. For example, ```coordinateOutput.csv``` will become ```coordinateOutput_Thu_Mar_14_19-40-03_2024.csv``` if it is already present in the output directory when a new run is initiated.
+The program has a built-in protection which ensures that data from previous runs is not accidentally overridden. When the program encounters a file that has the same name as the name specified in the settings file, it checks to see if it has a file marker at the end (this marker can also be customized). If a marker is present, the old file is renamed \<filename>\_\<Day>\_\<Month>\_\<Date>\_\<Hour>\_\<Minute>\_\<Second>\_.\<file extension>. For example, ```coordinateOutput.csv``` will become ```coordinateOutput_Thu_Mar_14_19-40-03_2024.csv``` if it is already present in the output directory when a new run is initiated.
 
 ### Data Toggles
 
@@ -56,7 +56,11 @@ There are several toggles available in the settings file that enables a user to 
 
 ## Dependencies
 
-Building the program requires the C++ standard libraries, as well as a C++ compiler. This program was developed using the g++ and clang compiler. The compiler can be chosen by setting the ```-DCOMPILER``` flag when using cmake. On Linux, a C++ compiler and the associated standard libraries generally included with most distributions. This compiler is called g++, and it is all you will need to build and run this project. 
+Building the program requires the C++ standard libraries, as well as a C++ compiler. This program was developed using the g++ and clang compiler. The compiler can be chosen by setting the ```-DCOMPILER``` flag when using cmake. On Linux, a C++ compiler and the associated standard libraries generally included with most distributions. This compiler is called g++, and it is all you will need to build and run this project.
+
+### Supported Compilers
+
+Three compilers are supported, g++, clang++, and icpx (Intel compiler).
 
 ## Building
 
@@ -65,7 +69,7 @@ This project can be built using cmake. Once you clone the repository to your loc
 sudo apt install cmake
 ```
 
-If you are using another Linux distribution or Windows, ensure you have cmake, a c++ compiler, and the C++ standard libraries installed on your system before continuing. 
+If you are using another Linux distribution or Windows, ensure you have cmake, a C++ compiler, and the C++ standard libraries installed on your system before continuing. 
 
 Note that Windows is not officially supported, but it is not expected that this code would not compile and run on Windows.
 
@@ -154,35 +158,58 @@ bombardmentID,  particleID, depth,  x,            y,            z
 
 ## Planned Features
 
-Below is a list of planned features that are not yet implemented in the program. 
+Below is a list of planned features that are not yet implemented in the program. There are three different types of planned features
+- (Required) Sections marked as Required are features that should be an inherent part of the program -- they cannot be controlled by the user. They are inherent program behavior that should be the only behavior of the program, with no option to disable it.
+- (Option) Sections marked as Option are features that can be toggled by the user. These are optional features that are not critical to the program's function.
+- (Development) These are  codebase features that should be implemented to make development go by more smoothly. They do not affect the final program's behavior, only the development process.
 
-### Signal Handling
+### Signal Handling (Required)
 
 The program should be able to interpret and respond to signals such as SIGINT (Usually sent my Ctrl+C) by stopping any file I/O and writing a file end marker to the output file.
 
-### Auxillary Output Information
+### Auxillary Output Information (Option)
 
 In addition to the primary output file, an auxillary information file should be created which contains information about the simulation
 
-### Graphical User Interface
+### Graphical User Interface (Option)
 
 A graphical interface should be created upon running the program. This should be the default behavior, unless the program is specifically invoked through the command line with a flag disabling it. 
 
 The user should be able to specify settings, such as the substrate isotope/element, as well as the ion isotope/element (if an ion). They should also be able to run the program and view the data, all inside the interface. Ideally this should be implemented using a modern UI interface. Some promising candidates are:
 
-
-
-### High and Low Energy Electron Adjustment
+### High and Low Energy Electron Adjustment (Required)
 
 Currently, the code does not change the number of grouped substrate interactions for electrons with very small or very large energy. This can prove to be a problem for very high energy electrons, where total flying distance become exceedingly large, and for low energies, where the lack of granular elastic energy calculations could result in a negative electron energy. The number of flying distances should be reduced in both cases.
 
-### Output File Compression
+### Output File Compression (Option)
 
 The program should have an option to enable/disable output file compression. It should be able to compress output to .7z or .zip files.
 
-### Alternative Output Filetypes
+### Alternative Output Filetypes (Option)
 
 Other output filetypes should be supported. While ```.csv``` files are ubiquitous, they are not good for extremely large files (like those that can be generated by this program) as they are very simple files (text separated by commas, as indiacted by the file extension, _.CommaSeparatedList_, or ```.csv```).
+
+### Energy Bounds Checking (Required)
+
+Currently the program does not check the bounds on the energy of particles before performing calculations. This is especially important for electron bombardment calculations, where several of the calculations made are only valid for certain ranges of energy. The program should check that the user-provided energy is within the energy bounds of the calculation.
+
+### Test Case Writing (Development)
+
+The codebase should be tested using Google gtest to ensure that the program works between updates. This should be integrated with GitHub to ensure that code that does not function correctly is not accidentally merged into the main branch.
+
+### GPU Optimization (Option)
+
+The code should be able to leverage the GPU to perform parallelized calculations on a large scale. The most promising candidate for this option is the function for generating Mott Differential Cross Sections [Link](src/eSRIM_classes.cpp#getMottDifferentialCrossSection). This function is a major bottleneck for electron bombardment simulation (determined by performance analysis). Parallelizing this operation using a GPU may result in drastic speedups. 
+
+Due to the non-standardized nature of GPU-Accelerated programming (NVidea uses [CUDA](https://developer.nvidia.com/cuda-toolkit), AMD uses [ROCm](https://www.amd.com/en/products/software/rocm.html), Intel uses [OpenCL](https://www.intel.com/content/www/us/en/developer/articles/tool/tools-for-opencl-applications.html)) multiple GPU-Acceleration algorithms may need to be implemented depending on the system configuration. 
+
+[SYCL](https://www.khronos.org/sycl/) is a promising library which attempts to unify the many different GPU vendors under a single development library. Using this can avoid multiple implementations, but may be less performant.
+
+### Mott Scattering Differential Cross Section Calculation Caching (Option)
+
+The Mott scattering differenttial cross section calculation is a major bottleneck in the code. It involves exponentiation and many array accesses to calculate a single differential cross section for a particular energy.
+
+However, this is a deterministic function, albeit a complicated one. The results for certain energies can be cached and used by multiple threads to reduce the computational workload for large simulations. Bins should be sufficiently small to ensure that accuracy is not lost. A promising data structure for this purpose is std::unordered_map.
 
 ## Known issues
 
@@ -193,10 +220,7 @@ Other output filetypes should be supported. While ```.csv``` files are ubiquitou
 
 ### Markdown file image bug
 
-- Image at the top of the markdown file as axis multipliers of "10e8", but are only partially visible. This is a matplotlib.pylot bug, as this was generated from that.
-
-
-
+- Image at the top of the markdown file as axis multipliers of "10e8", but are only partially visible. The graph was generated using matplotlib.pylot.
 
 ## Author
 
@@ -211,12 +235,12 @@ In my free time, I love to play piano, swim, play video games, and program.
 - Email:    nathaniel@swbell.net
 - GitHub:   [github.com/At11011](https://github.com/At11011)
 
-# License
+## License
 
 This project is licensed under the [GNU General Public License v2.0](LICENSE) - see the [LICENSE](LICENSE) file for details.
 
 
-# Acknowledgements
+## Acknowledgements
 
 All credit goes to Dr. Lin Shao at Texas A&M University for providing the original implementation of this software using QuickBASIC. His program included ion and electron bombardment support, as well as the novel flying-distance grouping method and the midpoint energy approximation method that drastically improved the performance of electron bombardment calculations while still maintaining high accuracy.
 
@@ -225,4 +249,4 @@ This program builds upon his original work by improving the ease of use (setting
 Thanks to Kenneth Cooper and Benjamin Mejia Diaz for their help in reviewing this code.
 
 ---
-### Last modified March 14, 2024
+### Last modified March 15, 2024
