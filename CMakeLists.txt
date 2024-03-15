@@ -119,11 +119,3 @@ target_link_libraries(mytests gtest_main)
 # Add tests to CMake
 add_test(NAME MainTest COMMAND mytests)
 # Add more tests as needed
-
-add_custom_target(clean-cmake
-    COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}/CMakeFiles
-    COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_BINARY_DIR}/CMakeCache.txt
-    COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_BINARY_DIR}/cmake_install.cmake
-    COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_BINARY_DIR}/Makefile
-    COMMENT "Cleaning CMake-generated files"
-)
