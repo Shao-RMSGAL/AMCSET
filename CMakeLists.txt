@@ -50,13 +50,15 @@ endif()
 # Display selected compiler
 message(STATUS "Using ${COMPILER} compiler")
 
-
 # Create a 'bin' directory for the build
 set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/bin)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 
 # Set the path to the source directory
 set(SOURCE_DIR ${CMAKE_SOURCE_DIR}/src)
+
+# Include directory for header files
+include_directories(include)
 
 # Add all source files in the 'src' directory to the project
 file(GLOB SOURCE_FILES ${SOURCE_DIR}/*.cpp)
