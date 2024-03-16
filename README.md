@@ -76,6 +76,11 @@ Three compilers are supported, g++, clang++, and icpx (Intel compiler).
 
 ## Building
 
+
+**IMPORTANT: Please follow the build directions exactly to ensure successful compilation of the project. It is recoomended to copy and paste the instructions exactly**
+
+Please build this project using a Linux. If you are on Windows, install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) before continuing. Support for building on Windows is planned for future releases.
+
 This project can be built using cmake. Once you clone the repository to your local machine, ensure you have cmake installed. If you are on a Debian Linux distribution, you can do this using
 ```bash
 sudo apt install cmake
@@ -186,7 +191,11 @@ Below is a list of planned features that are not yet implemented in the program.
 - (Option) Sections marked as Option are features that can be toggled by the user. These are optional features that are not critical to the program's function.
 - (Development) These are  codebase features that should be implemented to make development go by more smoothly. They do not affect the final program's behavior, only the development process.
 
-### Add Planned Features and Issues to GitHub
+### Building on Windows (Development)
+
+Currently this project is only tested to build and run on Linux. Windows support should be added.
+
+### Add Planned Features and Issues to GitHub (Development)
 
 While this file tracks planned features, they should also be added to the [GitHub](https://github.com/Shao-RMSGAL/eSRIM/issues) page as issues. Similarly, issues should also be added to GitHub.
 
@@ -252,13 +261,13 @@ In order to get tests to run properly, the main function was wrapped in a functi
 
 Add the input stream reference (std::istream& inputStream) as a member in the InputFields class so that it can be better handled.
 
-### Implement Object-Oriented Programming for I/O functions
+### Implement Object-Oriented Programming for I/O functions (Development)
 
 Currently several user-interface functions (those in [utilities.cpp](src/utilities.cpp)) are not wrapped with objects, and are in the global scope. This is bad practice that can lead to disorganized code. The I/O functions should be wrapped into an IOHandler class which manages I/O operations through member variables and functions. 
 
-### Proper Licensing
+### Proper Licensing (Development)
 
-While the project has a license file, the project is not yet properly licensed. It needs a copyright disclaimer, as well as proper header files with the copyright notice. 
+While the project has a license file, the project is not yet properly licensed. It needs a copyright disclaimer, as well as proper header files with the copyright notice. Notice should be aquired from Dr. Shao and any other invested parties before proper licensing is enforced. 
 
 It should adhere to the [GNU Licensing Guidelines](https://www.gnu.org/licenses/gpl-howto.html).
 
@@ -288,7 +297,9 @@ In my free time, I love to play piano, swim, play video games, and program.
 
 ## License
 
-This project is licensed under the [GNU General Public License v2.0](LICENSE) - see the [LICENSE](LICENSE) file for details.
+This projoect will be licensed under the [GNU General Public License v2.0](LICENSE) - see the [LICENSE](LICENSE) file for details. 
+
+Currently the licensing is not yet properly implemented. See proper [Proper Licensing (Development)](#proper-licensing-development) for details.
 
 
 ## Acknowledgements
@@ -300,4 +311,4 @@ This program builds upon his original work by improving the ease of use (setting
 Thanks to Kenneth Cooper and Benjamin Mejia Diaz for their help in reviewing this code.
 
 ---
-### Last modified March 15, 2024
+### Last modified March 16, 2024
