@@ -18,9 +18,4 @@ TEST(TrivialTest, ZeroEqualsZero) {
     EXPECT_EQ(0, 0); 
 }
 
-TEST(TrivialTest, OneEqualsZero) {
-    // This test is expected to fail
-    EXPECT_EQ(1, 0); 
-}
-
 #endif  
