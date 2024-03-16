@@ -62,7 +62,11 @@ Building the program requires the C++ standard libraries, as well as a C++ compi
 
 ### Google gtest
 
-This project uses Google [gtest](https://github.com/google/googletest/) to handle test cases. The [cmake configuration file](CMakeFile.txt) automatically handles the installation of this dependency.
+This project uses Google [gtest](https://github.com/google/googletest/) to handle test cases. The [cmake configuration file](CMakeFile.txt) automatically handles the installation of this dependency. If you encounter any gtest related issues on your system, ensure that it is installed using
+
+```bash
+sudo apt-get install libgtest-dev
+```
 
 The testing environment has been configured, but no tests have been run so far. To run the ["Trivial test"](tests/mainTest.cpp#TrivialTest)
 

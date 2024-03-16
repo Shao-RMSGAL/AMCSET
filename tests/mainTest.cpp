@@ -13,9 +13,14 @@
 //     EXPECT_EQ(startESRIM(argc, argv), 0);  // Assuming 0 indicates normal exit
 // }
 
-TEST(TrivialTest, ZeroEqualsZerp) {
-    // Trivial test fro demonstration
+// Trivial test for demonstration
+TEST(TrivialTest, ZeroEqualsZero) {
+    EXPECT_EQ(0, 0); 
+}
+
+TEST(TrivialTest, OneEqualsZero) {
+    // This test is expected to fail
     EXPECT_EQ(1, 0); 
 }
 
-#endif
+#endif  
