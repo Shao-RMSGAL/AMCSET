@@ -256,6 +256,12 @@ Add the input stream reference (std::istream& inputStream) as a member in the In
 
 Currently several user-interface functions (those in [utilities.cpp](src/utilities.cpp)) are not wrapped with objects, and are in the global scope. This is bad practice that can lead to disorganized code. The I/O functions should be wrapped into an IOHandler class which manages I/O operations through member variables and functions. 
 
+### Proper Licensing
+
+While the project has a license file, the project is not yet properly licensed. It needs a copyright disclaimer, as well as proper header files with the copyright notice. 
+
+It should adhere to the [GNU Licensing Guidelines](https://www.gnu.org/licenses/gpl-howto.html).
+
 ## Known issues
 
 ### Command line progress bar
