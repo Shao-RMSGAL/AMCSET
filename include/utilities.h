@@ -26,7 +26,6 @@
 #include <iostream>
 
 // Local includes
-#include "constants.h"
 #include "eSRIM_classes.h"
 
 // Define a struct to store settings
@@ -91,12 +90,12 @@ numThreads=8
 Arguments parseCommandLine(int argc, char* argv[]);
 
 // Function to prompt user to continue when an error is encountered
-bool promptContinue();
+bool promptContinue(std::istream& inputStream);
 
 // Function for clearing the standard output
 void clearLine();
 
-void checkHardwareThreads(std::shared_ptr<InputFields> &input);
+void checkHardwareThreads(std::shared_ptr<InputFields> &input, std::istream& inputStream = std::cin);
 
 void checkDisplayOption(Arguments &arguments, std::shared_ptr<InputFields> &input);
 

@@ -246,6 +246,16 @@ Currently, the default settings (in [constants.h](include/constants.h)) and defa
 
 The Mott Scattering Parameters and Electron Screening Parameters are currently read in from a separate file. While this functionality is useful, an option should also be provided to regenerate the files from the executable in case the files are lost. This is similar to the existing settings preservation settings, where if the ["settings.txt"](/build/settings.txt) cannot be located, a new one is generated.
 
+### Clean Up Main Function Wrapping and Input Stream Handling (Development)
+
+In order to get tests to run properly, the main function was wrapped in a function called eSRIM(). and a [separate header file](include/eSRIM.h) was made for it. However, the input stream (which is passed as an argument to the wrapper) is not properly passed through the InputFields class, and is instead passed as a parameter to several functions which read the standard output, either directly or indirectly. This behavior is undesirable as it makes function signatures unnecessarily complicated and should be corrected.
+
+Add the input stream reference (std::istream& inputStream) as a member in the InputFields class so that it can be better handled.
+
+### Implement Object-Oriented Programming for I/O functions
+
+Currently several user-interface functions (those in [utilities.cpp](src/utilities.cpp)) are not wrapped with objects, and are in the global scope. This is bad practice that can lead to disorganized code. The I/O functions should be wrapped into an IOHandler class which manages I/O operations through member variables and functions. 
+
 ## Known issues
 
 ### Command line progress bar

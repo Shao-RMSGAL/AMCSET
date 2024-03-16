@@ -1,5 +1,5 @@
 /******************************************************************************
- * Filename:        main.h
+ * Filename:        eSRIM.h
  * Project:         eSRIM
  * Author:          Nathaniel Thomas
  * Date Created:    March 15, 2024
@@ -15,16 +15,12 @@
  * 1.0:
  * - File created and initial program structure made
  *****************************************************************************/
-#include "utilities.h"
+#ifndef eSRIM_H
+#define eSRIM_H
 
-#ifndef MAIN_H
-#define MAIN_H
+#include <iostream>
 
 // Main program  start
-int startESRIM(int argc, char* argv[]);
+int startESRIM(int argc, char* argv[], std::istream& inputStream = std::cin);
 
 #endif
-
-void checkHardwareThreads(std::shared_ptr<InputFields> &input);
-
-void checkDisplayOption(Arguments &arguments, std::shared_ptr<InputFields> &input);

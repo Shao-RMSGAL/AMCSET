@@ -212,7 +212,7 @@ public:
     void setNumThreads(size_t numThreads);
 
     // Functions
-    void readSettingsFromFile();
+    void readSettingsFromFile(std::istream& inputStream);
     std::string printInputFields() const;
 };
 
@@ -461,8 +461,9 @@ class Simulation : public std::enable_shared_from_this<Simulation> {
 
         void writeData(
             OutputType outputType,
-            const std::vector<std::unique_ptr<Particle>>& particles,
-            size_t simulationID);
+            const std::vector<std::unique_ptr<Particle>>& particles = {},
+            size_t simulationID = 0,
+            std::istream& inputStream = std::cin);
         bool fileIsWritten(const fs::path filename);
         void renameFileWithTimestamp(const std::string& filename);
         std::string getCurrentDateTime();

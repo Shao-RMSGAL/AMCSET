@@ -91,16 +91,16 @@ Arguments parseCommandLine(int argc, char* argv[]) {
     return settings;
 }
 
-bool promptContinue() {
+bool promptContinue(std::istream& inputStream) {
     char answer;
     bool isValidInput = false;
 
     do {
         std::cout << "Continue? (y/n) ";
-        std::cin >> answer;
+        inputStream >> answer;
 
         // Clear input buffer to handle incorrect input
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        inputStream.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 
         if (answer == 'y' || answer == 'Y') {
             isValidInput = true;
@@ -126,7 +126,7 @@ void clearLine() {
     std::cout.flush();
 }
 
-void checkHardwareThreads(std::shared_ptr<InputFields> &input)
+void checkHardwareThreads(std::shared_ptr<InputFields> &input, std::istream& inputStream)
 {
     unsigned int cores = std::thread::hardware_concurrency();
 
@@ -147,7 +147,7 @@ void checkHardwareThreads(std::shared_ptr<InputFields> &input)
                   << ANSI_COLOR_RESET
                   << "\nUse -s for settings help. Use -h for usage help."
                   << std::endl;
-        if (!promptContinue())
+        if (!promptContinue(inputStream))
         {
             std::exit(EXIT_SUCCESS);
         }

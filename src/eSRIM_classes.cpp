@@ -1023,17 +1023,34 @@ bool InputFields::stringToBool(const std::string& str) {
     return str == "True" || str == "true" || str == "1";
 }
 
-void InputFields::readSettingsFromFile() {
+void InputFields::readSettingsFromFile(std::istream& inputStream) {
     std::shared_ptr<InputFields> input;
     std::ifstream file(settingsFilename);
+    
     if (!file.is_open()) {
         std::cerr << "Error: Unable to open file \""
-            <<  settingsFilename
-            << "\". Creating default settings file \"" << Defaults::settingsFilename << "\". Use -s for settings help."
-            << std::endl;   
-        if(promptContinue()) {
+            <<  settingsFilename << "\".";
+            // Check if the default settings file exists
+            std::ifstream defaultSettingsFile(Defaults::settingsFilename);
+            if (defaultSettingsFile.is_open()) {
+                std::cout << "The file \""
+                            << Defaults::settingsFilename
+                            << "\" has been found. Continue with this file?" 
+                            << std::endl;
+                if(promptContinue(inputStream)) {
+                    input->setSettingsFilename(Defaults::settingsFilename);
+                    readSettingsFromFile(inputStream);
+                } else {
+                    std::exit(EXIT_FAILURE);
+                }
+            } else {
+                std::cout << "Creating default settings file \"" << Defaults::settingsFilename << "\". Use -s for settings help." << std::endl;
+            }
+
+        if(promptContinue(inputStream)) {
+            input->setSettingsFilename(Defaults::settingsFilename);
             writeSettingsToFile();
-            readSettingsFromFile();
+            readSettingsFromFile(inputStream);
         } else {
             std::exit(EXIT_FAILURE);
         }
@@ -1265,14 +1282,15 @@ void Simulation::initiate() {
     }
 
     #ifndef NO_OUTPUT
-    writeData(ENDOFFILE, {}, 0);
+    writeData(ENDOFFILE);
     #endif
 }
 
 void Simulation::writeData(
     OutputType outputType,
-    const std::vector<std::unique_ptr<Particle>>& particles = {},
-    size_t bombardmentID = 0) {
+    const std::vector<std::unique_ptr<Particle>>& particles,
+    size_t bombardmentID,
+    std::istream& inputStream) {
     
     // Acquire lock
     std::lock_guard<std::mutex> lock(fileLock);
@@ -1289,7 +1307,7 @@ void Simulation::writeData(
             << ".\n"
             << ANSI_COLOR_RED << "Warning: Cancellation at this point will lead to loss of simulation data." << ANSI_COLOR_RESET
             << std::endl;
-        if(promptContinue()) {
+        if(promptContinue(inputStream)) {
             fs::create_directories(outputPath);
         } else {
             exit(EXIT_FAILURE);
