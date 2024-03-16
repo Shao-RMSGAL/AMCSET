@@ -1,4 +1,13 @@
+# Check if cmake is run from the project root directory
+if(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
+    message(FATAL_ERROR "CMake should not be run from the project root directory.\n" 
+        "Please run 'cmake ..' from the project build directory.\n"
+        "If you previously attempted to run cmake from the project root directory,"
+        "delete the auto-generated CMakeCache.txt file and CMakeFiles directory and try again.")
+endif()
+
 cmake_minimum_required(VERSION 3.23.5)
+
 project(eSRIM LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
