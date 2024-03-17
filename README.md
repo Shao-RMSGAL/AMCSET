@@ -2,7 +2,7 @@
 
 
 <div style="text-align:center;">
-  <img src="assets/images/1000electrons.svg" alt="1000 Electron Simulation", style="trim-path">
+  <img src="assets/images/1000electrons.png" alt="1000 Electron Simulation", style="trim-path">
 </div>
 
 ## Table of Contents  

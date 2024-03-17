@@ -18,6 +18,8 @@
 #include "eSRIM.h"
 
 // Main program  start
-int main(const int argc, const char* argv[]) {
+int main(/*const int argc, const char* argv[]*/) {
+    const char* argv[] = {"eSRIM", "-xxxx", nullptr};
+    const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
     return startESRIM(argc, argv);
 }
