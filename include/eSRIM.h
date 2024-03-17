@@ -21,6 +21,12 @@
 #include <iostream>
 
 // Main program  start
-int startESRIM(int argc, char* argv[], std::istream& inputStream = std::cin);
+int startESRIM(
+    const int argc,
+    const char* argv[],
+    std::istream& inputStream = std::cin,
+    std::ostream& outputStream = std::cout,
+    std::ostream& errorStream = std::cerr
+        );
 
 #endif

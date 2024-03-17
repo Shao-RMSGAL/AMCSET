@@ -25,56 +25,79 @@
 // Local header files
 #include "eSRIM.h"
 #include "utilities.h"
-// #include "eSRIM_classes.h" // No need, included in "main.h"
+
+ExitException::ExitException(int status) : status(status) {};
 
 // Main program  start
-int startESRIM(int argc, char* argv[], std::istream& inputStream) {
+int startESRIM(
+        const int argc, const char* argv[],
+        std::istream& inputStream,
+        std::ostream& outputStream,
+        std::ostream& errorStream) {
 
-    // Pre-simulation code. Input and error checking, as well as signal handling. 
-    Arguments arguments = parseCommandLine(argc, argv);
-    std::shared_ptr<InputFields> input = InputFields::getInstance(arguments.filename);
-    input->readSettingsFromFile(inputStream);
+    try {
 
-    if(arguments.progress) {
-        input->setProgressChecking(true);
-    }
+        // Pre-simulation code. Input and error checking, as well as signal handling. 
 
-    checkDisplayOption(arguments, input);
+        // IOHandler and InputFields contain pointers to each other. Because of this,
+        // one must be given a temporary "nullptr" as the pointer to the other
+        // before being properly initialized.
+        std::shared_ptr<IOHandler> ioHandler = IOHandler::getInstance(
+            std::shared_ptr<InputFields>(nullptr) ,
+            inputStream,
+            outputStream,
+            errorStream);
+        
+        // Arguments must be parsed before passing to InputFields
+        ioHandler->parseCommandLine(argc, argv);
 
-    checkHardwareThreads(input);
+        std::shared_ptr<InputFields> input = InputFields::getInstance(ioHandler);
+        ioHandler->setInput(input); // Update the input pointer
 
-    // Primary simulation section
-    auto start = std::chrono::high_resolution_clock::now();
+        ioHandler->readSettingsFromFile();
 
-    if(input->getType() == ELECTRON) {
-        try{
-            Electron::readParametersAndInitialize(input);
-        } catch(std::ios_base::failure& e) {
-            std::cerr << e.what() << std::endl;
-            std::exit(EXIT_FAILURE);
+        if(ioHandler->getArguments().progress) {
+            input->setProgressChecking(true);
         }
+
+        ioHandler->checkDisplayOption();
+        ioHandler->checkHardwareThreads();
+
+        // Primary simulation section
+        auto start = std::chrono::high_resolution_clock::now();
+
+        if(input->getType() == ELECTRON) {
+            try{
+                Electron::readParametersAndInitialize(input);
+            } catch(std::ios_base::failure& e) {
+                errorStream << e.what() << std::endl;
+                throw ExitException(EXIT_FAILURE);
+            }
+        }
+
+        std::shared_ptr<Simulation> simulation = std::make_shared<Simulation>(input);
+        Particle::seedRandomGenerator();
+
+        simulation->initiate();
+
+        // Simulation complete. Cleanup code.
+
+        simulation.reset();
+        
+        if(ioHandler->getArguments().time) {
+            ioHandler->clearLine();
+            auto end = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double> duration = end - start;
+            *ioHandler  << "Execution time: "
+                        << std::to_string(duration.count())
+                        << " seconds"
+                        << std::endl;
+        }
+
+        return 0;
+    } catch (const ExitException& e) {
+        return e.status;
     }
-
-    std::shared_ptr<Simulation> simulation = std::make_shared<Simulation>(input);
-    Particle::seedRandomGenerator();
-
-    simulation->initiate();
-
-    // Simulation complete. Cleanup code.
-
-    simulation.reset();
-    
-    if(arguments.time) {
-        clearLine();
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> duration = end - start;
-        std::cout   << "Execution time: "
-                    << duration.count()
-                    << " seconds"
-                    << std::endl;
-    }
-
-    return 0;
 }
 
 #endif

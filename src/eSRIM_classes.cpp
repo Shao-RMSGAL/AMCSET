@@ -853,11 +853,11 @@ InputFields::InputFields()
     substrateCharge(Defaults::substrateCharge),
     substrateDensity(Defaults::substrateDensity),
     substrateMass(Defaults::substrateMass),
-    settingsFilename(Defaults::settingsFilename),
     type(Defaults::type),
     logEndOfFlyingDistanceOnly(Defaults::logEndOfFlyingDistanceOnly),
     logStoppingPointOnly(Defaults::logStoppingPointOnly),
-    progressChecking(Defaults::progressChecking) {}
+    progressChecking(Defaults::progressChecking),
+    ioHandler(IOHandler::getInstance()) {}
 
 
 InputFields::InputFields(
@@ -885,12 +885,12 @@ InputFields::InputFields(
     double substrateCharge,
     double substrateDensity,
     double substrateMass,
-    const std::string& settingsFilename,
     ParticleType type,
     bool logEndOfFlyingDistanceOnly,
     bool logStoppingPointOnly,
     bool progressChecking,
-    size_t numThreads)
+    size_t numThreads,
+    std::shared_ptr<IOHandler> ioHandler)
     : 
     charge(charge),
     electronStoppingEnergy(electronStoppingEnergy),
@@ -916,33 +916,26 @@ InputFields::InputFields(
     substrateCharge(substrateCharge),
     substrateDensity(substrateDensity),
     substrateMass(substrateMass),
-    settingsFilename(settingsFilename),
     type(type),
     logEndOfFlyingDistanceOnly(logEndOfFlyingDistanceOnly),
     logStoppingPointOnly(logStoppingPointOnly),
     progressChecking(progressChecking),
-    numThreads(numThreads) {};
+    numThreads(numThreads),
+    ioHandler(ioHandler) {};
 
-InputFields::InputFields(const std::string& settingsFilename)
-        : InputFields() {
-    this->settingsFilename = settingsFilename;
+// Using the delegated constructor allows default values to be used if they are not specified in the settings.
+InputFields::InputFields(std::shared_ptr<IOHandler> ioHandler)
+: InputFields()
+{
+    this->ioHandler = ioHandler;
 };
 
-std::shared_ptr<InputFields> InputFields::instance;
+std::shared_ptr<InputFields> InputFields::instance = nullptr;
 
-std::shared_ptr<InputFields> InputFields::getInstance() {
+std::shared_ptr<InputFields> InputFields::getInstance(std::shared_ptr<IOHandler> ioHandler) {
     // Create the instance if it doesn't exist
     if (!instance) {
-        instance = std::shared_ptr<InputFields>(new InputFields());
-    }
-    return instance;
-}
-
-std::shared_ptr<InputFields> InputFields::getInstance(
-        const std::string& settingsFilename) {
-    // Create the instance if it doesn't exist
-    if (!instance) {
-        instance = std::shared_ptr<InputFields>(new InputFields(settingsFilename));
+        instance = std::shared_ptr<InputFields>(new InputFields(ioHandler));
     }
     return instance;
 }
@@ -973,11 +966,11 @@ const std::string& InputFields::getOutputCoordinateFilename() const { return out
 const std::string& InputFields::getOutputDirectory() const { return outputDirectory; }
 const std::string& InputFields::getOutputFileEndMarker() const { return outputFileEndMarker; }
 const std::string& InputFields::getOutputFileExtension() const { return outputFileExtension; }
-const std::string& InputFields::getSettingsFilename() const { return settingsFilename; }
 bool InputFields::getLogEndOfFlyingDistanceOnly() const { return logEndOfFlyingDistanceOnly;};
 bool InputFields::getLogStoppingPointOnly() const { return logStoppingPointOnly;};
 bool InputFields::getProgressChecking() const { return progressChecking; };
 size_t InputFields::getNumThreads() const { return numThreads; };
+std::shared_ptr<IOHandler> InputFields::getIOHandler() const { return ioHandler; };
 
 // Setters
 void InputFields::setCharge(double charge) { this->charge = charge; }
@@ -1000,7 +993,6 @@ void InputFields::setOutputDirectory(const std::string& directory) { this->outpu
 void InputFields::setOutputFileEndMarker(const std::string& marker) { this->outputFileEndMarker = marker; }
 void InputFields::setOutputFileExtension(const std::string& extension) { this->outputFileExtension = extension; }
 void InputFields::setRange(size_t range) { this->range = range; }
-void InputFields::setSettingsFilename(const std::string& filename) { this->settingsFilename = filename; }
 void InputFields::setSimulationCount(size_t count) { this->simulationCount = count; }
 void InputFields::setSubstrateCharge(double substrateCharge) { this->substrateCharge = substrateCharge; }
 void InputFields::setSubstrateDensity(double substrateDensity) { this->substrateDensity = substrateDensity; }
@@ -1010,127 +1002,7 @@ void InputFields::setLogEndOfFlyingDistanceOnly(bool logEndOfFlyingDistanceOnly)
 void InputFields::setLogStoppingPointOnly(bool logStoppingPointOnly) {this->logStoppingPointOnly = logStoppingPointOnly; }
 void InputFields::setProgressChecking(bool progressChecking) {this->progressChecking = progressChecking; }
 void InputFields::setNumThreads(size_t numThreads) {this->numThreads = numThreads; }
-
-bool InputFields::parseSetting(const std::string& line, std::string& name, std::string& value) {
-        std::istringstream iss(line);
-    if (std::getline(iss, name, '=') && std::getline(iss, value)) {
-        return true;
-    }
-    return false;
-} 
-
-bool InputFields::stringToBool(const std::string& str) {
-    return str == "True" || str == "true" || str == "1";
-}
-
-void InputFields::readSettingsFromFile(std::istream& inputStream) {
-    std::shared_ptr<InputFields> input;
-    std::ifstream file(settingsFilename);
-    
-    if (!file.is_open()) {
-        std::cerr << "Error: Unable to open file \""
-            <<  settingsFilename << "\".";
-            // Check if the default settings file exists
-            std::ifstream defaultSettingsFile(Defaults::settingsFilename);
-            if (defaultSettingsFile.is_open()) {
-                std::cout << "The file \""
-                            << Defaults::settingsFilename
-                            << "\" has been found. Continue with this file?" 
-                            << std::endl;
-                if(promptContinue(inputStream)) {
-                    input->setSettingsFilename(Defaults::settingsFilename);
-                    readSettingsFromFile(inputStream);
-                } else {
-                    std::exit(EXIT_FAILURE);
-                }
-            } else {
-                std::cout << "Creating default settings file \"" << Defaults::settingsFilename << "\". Use -s for settings help." << std::endl;
-            }
-
-        if(promptContinue(inputStream)) {
-            input->setSettingsFilename(Defaults::settingsFilename);
-            writeSettingsToFile();
-            readSettingsFromFile(inputStream);
-        } else {
-            std::exit(EXIT_FAILURE);
-        }
-    } else {
-        std::string line;
-        input = InputFields::getInstance(settingsFilename);
-        while (std::getline(file, line)) {
-            std::string name, value;
-            if (parseSetting(line, name, value)) {
-                if (name == "electronMode") {
-                    input->setType(stringToBool(value) ? ELECTRON : ION);
-                } else if (name == "electronEnergy(keV)") {
-                    input->setEnergy(std::stod(value));
-                } else if (name == "electronStoppingEnergy(keV)") {
-                    input->setElectronStoppingEnergy(std::stod(value));
-                } else if (name == "electronScreeningParametersFilename") {
-                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
-                    input->setElectronScreeningParametersFilename(value);
-                } else if (name == "numElecScreeningPotentialElements") {
-                    input->setNumElecScreeningPotentialElements(std::stoi(value));
-                } else if (name == "mottScatteringParametersFilename") {
-                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
-                    input->setMottScatteringParametersFilename(value);
-                } else if (name == "numMottScatteringPotentialElements") {
-                    input->setNumMottScatteringPotentialElements(std::stoi(value));
-                } else if (name == "numAngleDivisors") {
-                    input->setNumAngleDivisors(std::stoi(value));
-                } else if (name == "numFlyingDistances") {
-                    input->setNumFlyingDistances(std::stoi(value));
-                } else if (name == "enableDamageCascade") {
-                    input->setEnableDamageCascade(stringToBool(value));
-                } else if (name == "ionCharge(e)") {
-                    input->setCharge(input->getType() == ELECTRON ? Constants::electronCharge : std::stod(value));
-                } else if (name == "ionEnergy(keV)") {
-                    input->setEnergy(input->getType() == ELECTRON ? Defaults::electronEnergy : std::stod(value));
-                } else if (name == "ionMass(amu)") {
-                    input->setMass(input->getType() == ELECTRON ? Constants::electronMass : std::stod(value));
-                } else if (name == "substrateDisplacementEnergy(keV)") {
-                    input->setIonDisplacementEnergy(std::stod(value));
-                } else if (name == "ionStoppingEnergy(keV)") {
-                    input->setIonStoppingEnergy(std::stod(value));
-                } else if (name == "logSingleDisplacement") {
-                    input->setLogSingleDisplacement(stringToBool(value));
-                } else if (name == "inputDirectoryName") {
-                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
-                    input->setInputDirectoryName(value);
-                } else if (name == "outputCoordinateFilename") {
-                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
-                    input->setOutputCoordinateFilename(value);
-                } else if (name == "outputFileEndMarker") {
-                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
-                    input->setOutputFileEndMarker(value);
-                } else if (name == "outputFileExtension") {
-                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
-                    input->setOutputFileExtension(value);
-                } else if (name == "outputDirectory") {
-                    value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
-                    input->setOutputDirectory(value);
-                } else if (name == "substrateCharge(e)") {
-                    input->setSubstrateCharge(std::stod(value));
-                } else if (name == "substrateMass(amu)") {
-                    input->setSubstrateMass(std::stod(value));
-                } else if (name == "settingsFilename") {
-                    input->setSettingsFilename(value);
-                } else if (name == "logEndOfFlyingDistanceOnly") {
-                    input->setLogEndOfFlyingDistanceOnly(stringToBool(value));
-                } else if (name == "logStoppingPointOnly") {
-                    input->setLogStoppingPointOnly(stringToBool(value));
-                } else if (name == "simulationCount") {
-                    input->setSimulationCount(std::stoi(value));
-                } else if (name == "numThreads") {
-                    input->setNumThreads(std::stoi(value));
-                } else
-                    // Handle other settings here if needed
-                    std::cerr << "Warning: Unknown setting name '" << name << "'" << std::endl;
-                }
-            }
-        }
-    file.close();
-}
+void InputFields::setIOHandler(std::shared_ptr<IOHandler> ioHandler) {this->ioHandler = ioHandler; }
 
 std::string InputFields::printInputFields() const {
     std::ostringstream oss; // Create a std::ostringstream to store the output
@@ -1159,7 +1031,6 @@ std::string InputFields::printInputFields() const {
     oss << "Substrate Charge:\t" << substrateCharge << std::endl;
     oss << "Substrate Density:\t" << substrateDensity << std::endl;
     oss << "Substrate Mass:\t" << substrateMass << std::endl;
-    oss << "Settings Filename:\t" << settingsFilename << std::endl;
     // oss << "Range(unused):\t" << range << std::endl;
     oss << "Log Stopping Point Only:\t" << (logStoppingPointOnly ? "true" : "false") << std::endl;
     oss << "Log End of Flying Distance Only:\t" << (logEndOfFlyingDistanceOnly ? "true" : "false") << std::endl;
@@ -1207,7 +1078,7 @@ void Bombardment::initiate(std::shared_ptr<InputFields> input) {
         #endif
     } else {
         std::filesystem::path cwd = std::filesystem::current_path();
-        std::cerr << "Failed to initiate write to " << 
+        *(input->getIOHandler()) << "Failed to initiate write to " << 
             (cwd / input->getOutputDirectory()
             / (input->getOutputCoordinateFilename()
             + input->getOutputFileExtension())) << std::endl;
@@ -1289,8 +1160,8 @@ void Simulation::initiate() {
 void Simulation::writeData(
     OutputType outputType,
     const std::vector<std::unique_ptr<Particle>>& particles,
-    size_t bombardmentID,
-    std::istream& inputStream) {
+    size_t bombardmentID
+    ) {
     
     // Acquire lock
     std::lock_guard<std::mutex> lock(fileLock);
@@ -1299,40 +1170,19 @@ void Simulation::writeData(
 
     // Check if output directory exists, create it if not
     if (!fs::exists(outputPath)) {
-        const std::string ANSI_COLOR_RED = "\033[1;31m";
-        const std::string ANSI_COLOR_RESET = "\033[0m";
-        std::cerr << "Unable to access output directory " << outputPath.string()
-            << ".\nCreating directory "
-            << outputPath.string()
-            << ".\n"
-            << ANSI_COLOR_RED << "Warning: Cancellation at this point will lead to loss of simulation data." << ANSI_COLOR_RESET
-            << std::endl;
-        if(promptContinue(inputStream)) {
-            fs::create_directories(outputPath);
-        } else {
-            exit(EXIT_FAILURE);
-        }
+        input->getIOHandler()->handleNoOutputDirectory(outputPath);
     }
 
     // Open output file
     std::string filename = std::string(input->getOutputCoordinateFilename());
     filename = filename + std::string(input->getOutputFileExtension());
     std::ofstream outputFile(outputPath / filename, std::ios_base::app);
-    if (!outputFile.is_open() && outputType != ENDOFFILE) {
-        std::cerr << "Failed to open output file "
-                  << (outputPath / filename).string() 
-                  << ".\nData will be lost for simulation "
-                  << bombardmentID
-                  << "."
-                  << std::endl;
-        return;
-    } else if (!outputFile.is_open() && outputType == ENDOFFILE){
-        std::cerr << "Failed to open output file "
-                  << (outputPath / filename).string()
-                  << ".\nFile end marker \""
-                  << input->getOutputFileEndMarker() << "\""
-                  << " could not be appended." 
-                  << std::endl;
+    if (!outputFile.is_open()) {
+        input->getIOHandler()->handleOutputFileOpenError(
+            outputType,
+            outputPath,
+            filename,
+            bombardmentID);;
     }
 
     // Write headers if the file is empty
@@ -1379,7 +1229,7 @@ void Simulation::writeData(
             outputFile << input->getOutputFileEndMarker();
             break; 
         default:
-            std::cerr << "Unsupported output type." << std::endl;
+            *(input->getIOHandler()) << "Unsupported output type." << std::endl;
             break;
     }
 
@@ -1459,21 +1309,21 @@ void Simulation::updateProgressCounter() {
             /static_cast<double>(input->getSimulationCount()))
             *progressBarWidth);
 
-        std::cout << "Progress: [";
+        *(input->getIOHandler()) << "Progress: [";
         for (int i = 0; i < progressBarWidth; ++i) {
             if (i < progress) {
-                std::cout << "=";
+                *(input->getIOHandler()) << "=";
             } else {
-                std::cout << " ";
+                *(input->getIOHandler()) << " ";
             }
         }
-        std::cout << "] "
+        *(input->getIOHandler()) << "] "
                     << std::setw(3)
                     << std::setfill(' ')
                     << std::right
                     << ((progressCounter * 100) / input->getSimulationCount())
-                    << "%\r";
-        std::cout.flush();
+                    << "%\r"
+                    << std::flush;
 
 }
 

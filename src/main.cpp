@@ -18,6 +18,6 @@
 #include "eSRIM.h"
 
 // Main program  start
-int main(int argc, char* argv[]) {
+int main(const int argc, const char* argv[]) {
     return startESRIM(argc, argv);
 }

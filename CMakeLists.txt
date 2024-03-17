@@ -81,13 +81,15 @@ endif()
 
 enable_testing()
 set(TEST_SOURCE_DIR ${CMAKE_SOURCE_DIR}/tests)
+
+# Add testing files
 set(TEST_SOURCE_FILES
-    ${TEST_SOURCE_DIR}/mainTest.cpp
+    ${TEST_SOURCE_DIR}/mainFunctionTest.cpp
 )
 
 add_executable(eSRIMTests ${TEST_SOURCE_FILES} ${SOURCE_FILES})
 
-target_link_libraries(eSRIMTests gtest_main)
+target_link_libraries(eSRIMTests gtest)
 add_test(NAME MainTest COMMAND eSRIMTests)
 
 # Include source and header directories

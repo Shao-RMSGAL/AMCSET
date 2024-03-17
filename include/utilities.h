@@ -3,7 +3,7 @@
  * Project:         eSRIM
  * Author:          Nathaniel Thomas
  * Date Created:    March 12, 2024
- * Date Modified:   March 12, 2024
+ * Date Modified:   March 16, 2024
  * File Version:    1.0
  * Group:           Dr. Shao's RMSLCF Group
  *
@@ -36,69 +36,114 @@ struct Arguments {
     bool progress;
 };
 
-const std::string_view helpMessage = 
-R"(eSRIM Version 1.0
-Author:         Nathaniel Thomas
-Contact:        nathaniel@swbell.net
-Release date:   March 12, 2024
+// Define a custom exception that carries an exit status
+class ExitException : public std::exception {
+public:
+    ExitException(int status);
+    int status;
+};
 
-This is a program for simulating the Stopping and Range of Ions in Matter (SRIM), with electron bombardment simulation capabilities.
+class InputFields;
 
-Usage: ./eSRIM [options][paths...]
 
-Options
-    -f --filename <filename>    Read settings for eSRIM from <filename>. [Default="settings.txt"]
-    -t --time                   Record execution time and output to standard output.
-    -s --settings               Display an example settings file.   
-    -d --display                Output the active settings to the standard output.
-    -h --help                   Display this help message.
-    -p --progress               Display the progress of the simulation while it is running to the standard output.
-)";
+// This class is for handler USER IO, output file data is handled by the Simulation::writeData() function
+class IOHandler {
+    private:
+        // Private constructor to prevent external instantiation
+        IOHandler(
+            std::shared_ptr<InputFields> input,
+            std::istream& inputStream,
+            std::ostream& outputStream,
+            std::ostream& errorStream);
 
-const std::string_view settingsMessage = 
-R"(electronMode=true
-electronEnergy(keV)=10000
-electronStoppingEnergy(keV)=1;
-electronScreeningParametersFilename="electron_screeening_potentials.csv"
-numElecScreeningPotentialElements=92
-mottScatteringParametersFilename="mott_scattering_parameters.csv"
-numMottScatteringPotentialElements=118
-numAngleDivisors=1000
-numFlyingDistances=1000
-enableDamageCascade=false
-ionCharge(e)=14
-ionEnergy(keV)=50
-ionMass(amu)=27.97692653442
-substrateDisplacementEnergy(keV)=0.04
-ionStoppingEnergy(keV)=0.04   
-logSingleDisplacement=false
-inputDirectoryName="input"
-outputCoordinateFilename="coordinateOutput"
-outputFileEndMarker="End of file"
-outputFileExtension=".csv"
-outputDirectory="output"
-substrateCharge(e)=26
-substrateMass(amu)=55.9349363
-settingsFilename="settings.txt"
-logEndOfFlyingDistanceOnly=false
-logStoppingPointOnly=true
-simulationCount=1
-numThreads=8
-)";
+        // Static instance pointer for a single IOHandler instance
+        static std::shared_ptr<IOHandler> instance;
 
-// Function to parse command line arguments
-Arguments parseCommandLine(int argc, char* argv[]);
+        // Constants
 
-// Function to prompt user to continue when an error is encountered
-bool promptContinue(std::istream& inputStream);
+        const std::string_view inputNotInitializedMessage = "InputFields input has not been initialized.";
 
-// Function for clearing the standard output
-void clearLine();
+        const std::string_view helpMessage = 
+        R"(eSRIM Version 1.0
+        Author:         Nathaniel Thomas
+        Contact:        nathaniel@swbell.net
+        Release date:   March 12, 2024
 
-void checkHardwareThreads(std::shared_ptr<InputFields> &input, std::istream& inputStream = std::cin);
+        This is a program for simulating the Stopping and Range of Ions in Matter (SRIM), with electron bombardment simulation capabilities.
 
-void checkDisplayOption(Arguments &arguments, std::shared_ptr<InputFields> &input);
+        Usage: ./eSRIM [options][paths...]
 
-void writeSettingsToFile();
+        Options
+            -f --filename <filename>    Read settings for eSRIM from <filename>. [Default="settings.txt"]
+            -t --time                   Record execution time and output to standard output.
+            -s --settings               Display an example settings file.   
+            -d --display                Output the active settings to the standard output.
+            -h --help                   Display this help message.
+            -p --progress               Display the progress of the simulation while it is running to the standard output.
+        )";
+
+        std::string settingsMessage;
+
+        // Private Members
+        std::shared_ptr<InputFields> input;
+        std::istream& inputStream;
+        std::ostream& outputStream;
+        std::ostream& errorStream;
+        Arguments arguments;
+        bool argumentsSet = false;
+
+    public:
+
+        // Instantiators
+        static std::shared_ptr<IOHandler> getInstance();  
+        
+        static std::shared_ptr<IOHandler> getInstance(
+            std::shared_ptr<InputFields> input,
+            std::istream& inputStream = std::cin,
+            std::ostream& outputStream = std::cout,
+            std::ostream& errorStream = std::cerr);
+
+        // Getters
+        std::shared_ptr<InputFields> getInput() const;
+        Arguments& getArguments();
+        std::istream& getInputStream() const;
+        std::ostream& getOutputStream() const;
+        std::ostream& getErrorStream() const;
+
+        // Setters
+        void setInput(std::shared_ptr<InputFields> input);
+        // No setters for reference members, as they cannot be rebound.
+
+        // Functions
+        void parseCommandLine(const int argc, const char* argv[]); // Add scope resolution operator
+        bool promptContinue();
+        void clearLine();
+        void checkHardwareThreads();
+        void checkDisplayOption(); // Add scope resolution operator
+        void writeSettingsToFile(const std::string& settingsFilename);
+        bool parseSetting(const std::string& line, std::string& name, std::string& value);
+        bool stringToBool(const std::string& str);
+        void handleFileOpenError(const std::string& filename);
+        void readSettingsFromFile();
+        void handleNoOutputDirectory(const std::filesystem::path& outputPath);
+        void handleOutputFileOpenError(
+            OutputType outputType,
+            std::filesystem::path outputPath,
+            std::string filename,
+            int bombardmentID);
+        bool areArgumentsSet() const;
+
+        // Templated function
+        template<typename T>
+        IOHandler& operator<<(const T& message) {
+            errorStream << message;
+            return *this;
+        }
+
+        IOHandler& operator<<(std::ostream& (*func)(std::ostream&)) {
+            func(errorStream);
+            return *this;
+        }
+};
 
 #endif

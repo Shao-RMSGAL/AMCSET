@@ -60,6 +60,7 @@ struct Velocity{
     double energy;
 };
 
+class IOHandler;
 
 class InputFields {
 private:
@@ -90,14 +91,14 @@ private:
         double substrateCharge,
         double substrateDensity,
         double substrateMass,
-        const std::string& settingsFilename,
         ParticleType type,
         bool logEndOfFlyingDistanceOnly,
         bool logStoppingPointOnly,
         bool progressChecking,
-        size_t numThreads);
+        size_t numThreads,
+        std::shared_ptr<IOHandler> ioHandler);
 
-    InputFields(const std::string& settingsFilename);
+    InputFields(std::shared_ptr<IOHandler> ioHandler);
 
     // Static instance of the class
     static std::shared_ptr<InputFields> instance;
@@ -127,12 +128,12 @@ private:
     double substrateCharge;
     double substrateDensity;
     double substrateMass;
-    std::string settingsFilename;
     ParticleType type;
     bool logEndOfFlyingDistanceOnly;
     bool logStoppingPointOnly;
     bool progressChecking;
     size_t numThreads;
+    std::shared_ptr<IOHandler> ioHandler;
 
     // Functions
     bool parseSetting(
@@ -144,8 +145,7 @@ private:
 public:
     // Static methods to get the instance of the class
     static std::shared_ptr<InputFields> getInstance();
-    static std::shared_ptr<InputFields> getInstance(
-    const std::string& settingsFilename);
+    static std::shared_ptr<InputFields> getInstance(std::shared_ptr<IOHandler> ioHandler);  
 
     // Getters
     bool getEnableDamageCascade() const;
@@ -173,11 +173,11 @@ public:
     const std::string& getOutputDirectory() const;
     const std::string& getOutputFileEndMarker() const;
     const std::string& getOutputFileExtension() const;
-    const std::string& getSettingsFilename() const;
     bool getLogEndOfFlyingDistanceOnly() const;
     bool getLogStoppingPointOnly() const;
     bool getProgressChecking() const;
     size_t getNumThreads() const;
+    std::shared_ptr<IOHandler> getIOHandler() const;
 
     // Setters
     void setCharge(double charge);
@@ -200,7 +200,6 @@ public:
     void setOutputFileEndMarker(const std::string& marker);
     void setOutputFileExtension(const std::string& extension);
     void setRange(size_t range);
-    void setSettingsFilename(const std::string& filename);
     void setSimulationCount(size_t count);
     void setSubstrateCharge(double substrateCharge);
     void setSubstrateDensity(double substrateDensity);
@@ -210,9 +209,10 @@ public:
     void setLogStoppingPointOnly(bool logStoppingPointOnly);
     void setProgressChecking(bool progressChecking);
     void setNumThreads(size_t numThreads);
+    void setInputStream(std::istream& inputStream);
+    void setIOHandler(std::shared_ptr<IOHandler> ioHandler);
 
     // Functions
-    void readSettingsFromFile(std::istream& inputStream);
     std::string printInputFields() const;
 };
 
@@ -462,8 +462,8 @@ class Simulation : public std::enable_shared_from_this<Simulation> {
         void writeData(
             OutputType outputType,
             const std::vector<std::unique_ptr<Particle>>& particles = {},
-            size_t simulationID = 0,
-            std::istream& inputStream = std::cin);
+            size_t simulationID = 0
+            );
         bool fileIsWritten(const fs::path filename);
         void renameFileWithTimestamp(const std::string& filename);
         std::string getCurrentDateTime();

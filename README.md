@@ -139,6 +139,17 @@ cmake --build .
 
 This will build the project and place the binary in the [/bin] folder.
 
+### Testing (For Developers only)
+
+Test cases can be found in the [tests](tests) directory. To run the all the test suites, run 
+
+```bash
+ctest
+```
+
+once you've [built](#building) the project.
+
+
 ## Running
 
 Run the program using the following command
