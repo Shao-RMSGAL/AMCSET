@@ -857,6 +857,7 @@ InputFields::InputFields()
     logEndOfFlyingDistanceOnly(Defaults::logEndOfFlyingDistanceOnly),
     logStoppingPointOnly(Defaults::logStoppingPointOnly),
     progressChecking(Defaults::progressChecking),
+    numThreads(Defaults::numThreads),
     ioHandler(IOHandler::getInstance()) {}
 
 

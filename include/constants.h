@@ -57,7 +57,7 @@ namespace Defaults {
     constexpr double electronEnergy = 10000; // keV, default electron energy
     constexpr const char* electronScreeningParametersFilename = "electron_screeening_potentials.csv";
     constexpr double electronStoppingEnergy = 1; // keV
-    constexpr bool enableDamageCascade = true;
+    constexpr bool enableDamageCascade = false;
     constexpr double ionCharge = 14; // e, silicon
     constexpr double ionDisplacementEnergy = 0.04; // keV
     constexpr double ionStoppingEnergy = 0.04; // keV
@@ -66,7 +66,7 @@ namespace Defaults {
     constexpr double range = 80000000; // angstrom
     constexpr bool logEndOfFlyingDistanceOnly = false;
     constexpr bool logSingleDisplacement = false; // Disable to shrink output file size
-    constexpr bool logStoppingPointOnly = false;
+    constexpr bool logStoppingPointOnly = true;
     constexpr size_t numAngleDivisors = 1000;
     constexpr size_t numElecScreeningPotentialElements = 92;
     constexpr size_t numFlyingDistances = 1000;
@@ -77,13 +77,13 @@ namespace Defaults {
     constexpr const char* outputFileEnd = "End of file";
     constexpr const char* outputFileExtension = ".csv";
     constexpr const char* outputDirectory =  "output";
-    constexpr ParticleType type = ELECTRON;
+    constexpr ParticleType type = ION;
     constexpr double substrateCharge = 26; // e, iron
     constexpr double substrateMass = 55.9349363; // amu, iron 56
     constexpr const char* settingsFilename = "settings.txt";
     constexpr size_t simulationCount = 1;
     constexpr bool progressChecking = false;
-    constexpr size_t numThreads = 8;
+    constexpr size_t numThreads = 1;
 
     // Dependent values
     constexpr double windowRange = Defaults::range;

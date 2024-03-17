@@ -113,6 +113,8 @@ void IOHandler::setInput(std::shared_ptr<InputFields> input) { this->input = inp
 // Function to parse command line arguments
 void IOHandler::parseCommandLine(const int argc, const char* argv[]) {
 
+    DEBUG_PRINT("-----------------------Progress Checking 116-----------------------");
+
     Arguments& settings = arguments;
     
     settings.filename = "settings.txt"; // Default filename
@@ -122,6 +124,7 @@ void IOHandler::parseCommandLine(const int argc, const char* argv[]) {
 
     // No arguments passed
     if(argc == 1) {
+        DEBUG_PRINT("-----------------------Progress Checking 127-----------------------");
         return;
     }
 
@@ -134,6 +137,8 @@ void IOHandler::parseCommandLine(const int argc, const char* argv[]) {
             throw ExitException(EXIT_SUCCESS);
         }
     }
+
+    DEBUG_PRINT("-----------------------Progress Checking 141-----------------------");
 
     // Check for settings display option
     for (int i = 1; i < argc; ++i) {
@@ -149,8 +154,11 @@ void IOHandler::parseCommandLine(const int argc, const char* argv[]) {
         }
     }
 
+    DEBUG_PRINT("-----------------------Progress Checking 157-----------------------");
+    
     // Parse other options
     for (int i = 1; i < argc; ++i) {
+        DEBUG_PRINT("Val: " << argc);
         std::string arg = argv[i];
         if (arg == "-f" || arg == "--filename") {
             if (i + 1 < argc) {
@@ -211,11 +219,19 @@ void IOHandler::checkHardwareThreads()
     if(input == nullptr) {
         throw std::logic_error(std::string(inputNotInitializedMessage));
     }
-    size_t cores = std::thread::hardware_concurrency();
-    size_t threads = input->getNumThreads();
 
+    DEBUG_PRINT("-----------------------Progress Checking 223-----------------------");
+
+
+    size_t cores = std::thread::hardware_concurrency();
+    DEBUG_PRINT("-----------------------Progress Checking 227-----------------------");
+    size_t threads = input->getNumThreads();
+    
     if (cores < threads)
     {
+        DEBUG_PRINT("cores: " << cores << " threads: " << threads);
+        DEBUG_PRINT("-----------------------Progress Checking 232-----------------------");
+
         const std::string ANSI_COLOR_GREEN = "\033[1;33m";
         const std::string ANSI_COLOR_RESET = "\033[0m";
         errorStream << ANSI_COLOR_GREEN
@@ -233,9 +249,13 @@ void IOHandler::checkHardwareThreads()
                 << std::endl;
         if (!promptContinue())
         {
+            DEBUG_PRINT("-----------------------Progress Checking 251-----------------------");
+
             throw ExitException(EXIT_SUCCESS);
         }
     }
+    DEBUG_PRINT("-----------------------Progress Checking 256-----------------------");
+
 }
 
 void IOHandler::checkDisplayOption()
@@ -291,21 +311,34 @@ bool IOHandler::stringToBool(const std::string& str) {
 
 void IOHandler::handleFileOpenError(const std::string& settingsFilename) {
 
+    DEBUG_PRINT("-----------------------Progress Checking 302-----------------------");
+
     if(input == nullptr) {
+                DEBUG_PRINT("-----------------------Progress Checking 305-----------------------");
         throw std::logic_error(std::string(inputNotInitializedMessage));
     }
 
+    DEBUG_PRINT("-----------------------Progress Checking 309-----------------------");
+
+
+    DEBUG_PRINT("File that could not be opened: " << settingsFilename);
     errorStream << "Error: Unable to open file \""
                 <<  settingsFilename << "\". ";
             // Check if the default settings file exists
+
+    DEBUG_PRINT("Tryng to open file:" << Defaults::settingsFilename);
     std::ifstream defaultSettingsFile(Defaults::settingsFilename);
+    DEBUG_PRINT("File opened:" << Defaults::settingsFilename);
+
 
     if (defaultSettingsFile.is_open()) {
+                DEBUG_PRINT("-----------------------Progress Checking 317-----------------------");
         outputStream << "The file \""
                     << Defaults::settingsFilename
                     << "\" has been found. Continue with this file? Use -s for settings help" 
                     << std::endl;
     } else {
+                DEBUG_PRINT("-----------------------Progress Checking 323-----------------------");
         errorStream << "Creating default settings file \""
                         << Defaults::settingsFilename
                         << "\". Use -s for settings help."
@@ -313,10 +346,13 @@ void IOHandler::handleFileOpenError(const std::string& settingsFilename) {
     }
 
     if(promptContinue()) {
+                DEBUG_PRINT("-----------------------Progress Checking 331-----------------------");
         arguments.filename = Defaults::settingsFilename;
         if(!defaultSettingsFile.is_open()) { 
+                    DEBUG_PRINT("-----------------------Progress Checking 334-----------------------");
             writeSettingsToFile(arguments.filename);
         } else {
+                    DEBUG_PRINT("-----------------------Progress Checking 337-----------------------");
             defaultSettingsFile.close();
         }
         readSettingsFromFile();
@@ -328,21 +364,30 @@ void IOHandler::handleFileOpenError(const std::string& settingsFilename) {
 
 void IOHandler::readSettingsFromFile() {
 
+    DEBUG_PRINT("-----------------------Progress Checking 339-----------------------");
+
     if(input == nullptr) {
+                DEBUG_PRINT("-----------------------Progress Checking 342-----------------------");
         throw std::logic_error(std::string(inputNotInitializedMessage));
     }
+
+    DEBUG_PRINT("-----------------------Progress Checking 346-----------------------");
 
     std::ifstream file(arguments.filename);
 
     if (!file.is_open()) {
+        DEBUG_PRINT("-----------------------Progress Checking 351-----------------------");
         handleFileOpenError(arguments.filename);
         return;
     }
     
     std::string line;
     while (std::getline(file, line)) {
+        DEBUG_PRINT("-----------------------Progress Checking 558-----------------------");
+        DEBUG_PRINT("Line: " << line);
         std::string name, value;
         if (parseSetting(line, name, value)) {
+            DEBUG_PRINT("Name: " << name << " Value: " << value);
             if (name == "electronMode") {
                 input->setType(stringToBool(value) ? ELECTRON : ION);
             } else if (name == "electronEnergy(keV)") {

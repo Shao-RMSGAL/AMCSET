@@ -48,20 +48,37 @@ int startESRIM(
             outputStream,
             errorStream);
         
+        DEBUG_PRINT("-----------------------Progress Checking 51-----------------------");
+
+
         // Arguments must be parsed before passing to InputFields
         ioHandler->parseCommandLine(argc, argv);
+
+        DEBUG_PRINT("-----------------------Progress Checking 54-----------------------");
 
         std::shared_ptr<InputFields> input = InputFields::getInstance(ioHandler);
         ioHandler->setInput(input); // Update the input pointer
 
+        DEBUG_PRINT("-----------------------Progress Checking 59-----------------------");
+
         ioHandler->readSettingsFromFile();
+
+        DEBUG_PRINT("-----------------------Progress Checking 63-----------------------");
 
         if(ioHandler->getArguments().progress) {
             input->setProgressChecking(true);
         }
 
+        DEBUG_PRINT("-----------------------Progress Checking 69-----------------------");
+
         ioHandler->checkDisplayOption();
+        
+        DEBUG_PRINT("-----------------------Progress Checking 74-----------------------");
+
+        
         ioHandler->checkHardwareThreads();
+
+        DEBUG_PRINT("-----------------------Progress Checking 75-----------------------");
 
         // Primary simulation section
         auto start = std::chrono::high_resolution_clock::now();
@@ -75,15 +92,23 @@ int startESRIM(
             }
         }
 
+        DEBUG_PRINT("-----------------------Progress Checking 88-----------------------");
+
         std::shared_ptr<Simulation> simulation = std::make_shared<Simulation>(input);
         Particle::seedRandomGenerator();
 
+        DEBUG_PRINT("-----------------------Progress Checking 93-----------------------");
+
         simulation->initiate();
+
+        DEBUG_PRINT("-----------------------Progress Checking 97-----------------------");
 
         // Simulation complete. Cleanup code.
 
         simulation.reset();
         
+        DEBUG_PRINT("-----------------------Progress Checking 103-----------------------");
+
         if(ioHandler->getArguments().time) {
             ioHandler->clearLine();
             auto end = std::chrono::high_resolution_clock::now();
@@ -94,8 +119,11 @@ int startESRIM(
                         << std::endl;
         }
 
+        DEBUG_PRINT("-----------------------Progress Checking 115-----------------------");
+
         return 0;
     } catch (const ExitException& e) {
+        DEBUG_PRINT("-----------------------Progress Checking 119-----------------------");
         return e.status;
     }
 }

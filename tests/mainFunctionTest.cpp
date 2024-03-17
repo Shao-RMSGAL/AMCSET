@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 #include <sstream>
+#include <fstream>
 #include <filesystem>
 
 #include "eSRIM.h" // Include the header file containing your main function
@@ -24,6 +25,15 @@ class MainFunctionTest : public testing::Test {
 
         // This function will be called before each test
         static void SetUpTestSuite() {
+        
+        }
+
+        // This function will be called after each test
+        static void TearDownTestSuite() {
+            
+        }
+
+        void SetUp() override {
             // Delete the settings file if it exists and confirm that it was deleted
             
             
@@ -31,43 +41,25 @@ class MainFunctionTest : public testing::Test {
                 std::filesystem::remove("settings.txt");
             }
 
+            // Create an empty file called "settings.txt"
+            std::ofstream settingsFile("settings.txt");
+
             // Confirm that there is no file called "non-existing-settings.txt". If there is, delete it
             if(std::filesystem::exists("non-existing-settings.txt")) {
                 std::filesystem::remove("non-existing-settings.txt");
             }
 
-            const char* argv[] = {"eSRIM", nullptr};
-            const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
-
-            std::istringstream stdIn("y");
-            std::ostringstream stdOut;
-            std::ostringstream stdErr;
-            int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
-
-            // There should be output to standard error or standard output
-            EXPECT_FALSE(stdOut.str().empty());
-            EXPECT_FALSE(stdErr.str().empty());
-            EXPECT_FALSE(stdIn.good() && stdIn.tellg() == 0);
-            ASSERT_EQ(result, 0);
+            // If there is no "output" directory, create it
+            if(!std::filesystem::exists("output")) {
+                std::filesystem::create_directory("output");
+            }
         }
 
-        // This function will be called after each test
-        static void TearDownTestSuite() {
-            // Reset contents of the settings file
-            // SetUpTestSuite();
-
+        void TearDown() override {
             // Delete all the files in the /output directory.
             for(const auto& entry : std::filesystem::directory_iterator("output")) {
                 std::filesystem::remove(entry.path());
             }
-        }
-
-        void SetUp() override {
-
-        }
-
-        void TearDown() override {
-
         }
 };
 
@@ -81,7 +73,7 @@ TEST_F(MainFunctionTest, RunProgramWithNoArguments) {
     const char* argv[] = {"eSRIM", nullptr};
     const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
 
-    std::istringstream stdIn("y");
+    std::istringstream stdIn;
     std::ostringstream stdOut;
     std::ostringstream stdErr;
     int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
