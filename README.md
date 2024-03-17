@@ -195,6 +195,24 @@ bombardmentID,  particleID, depth,  x,            y,            z
 - The depth is the cascade generation number of the particle. When a particle displaces a substrate atom, that substrate particle is given a _particleID_ and a depth of 1 more than the parent particle. 
 - _x_,_y_,and _z_ are the respective coordinates.
 
+#### Graphing the Output
+
+A python script is located in the /python directory called [graphing.py](python/graphing.py). To use it, ensure you have [python](https://www.python.org/) installed. In addition, you will need to install the [pandas](https://pandas.pydata.org/) and [matplotlib](https://matplotlib.org/) libraries.
+
+Install these using
+
+```bash
+pip install pandas
+pip install matplotlib
+```
+
+After you've run eSRIM, you can generate a plot using this script like so (run this from the /build directory).
+
+```bash
+../python/graphing.py
+```
+
+
 ## Planned Features
 
 Below is a list of planned features that are not yet implemented in the program. There are three different types of planned features
