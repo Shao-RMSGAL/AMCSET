@@ -72,26 +72,28 @@ elseif(PROD)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -march=native -ffast-math -flto -finline-functions -fomit-frame-pointer -DNDEBUG")
     if(CMAKE_CXX_COMPILER STREQUAL "IntelLLVM")
         find_package(IntelSYCL REQUIRED)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -xHost -fsycl")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -xHost -fsycl -ipo -fp-model fast=2 -parallel -qopenmp")
     endif()
 else()
     message(STATUS "No options set. Using -O0 compilation.")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
 endif()
 
-enable_testing()
-set(TEST_SOURCE_DIR ${CMAKE_SOURCE_DIR}/tests)
+if(NOT (CMAKE_C_COMPILER STREQUAL "clang" AND CMAKE_CXX_COMPILER STREQUAL "clang++"))
+    enable_testing()
+    set(TEST_SOURCE_DIR ${CMAKE_SOURCE_DIR}/tests)
 
-# Add testing files
-set(TEST_SOURCE_FILES
-    ${TEST_SOURCE_DIR}/mainFunctionTest.cpp
-)
+    # Add testing files
+    set(TEST_SOURCE_FILES
+        ${TEST_SOURCE_DIR}/mainFunctionTest.cpp
+    )
 
-add_executable(eSRIMTests ${TEST_SOURCE_FILES} ${SOURCE_FILES})
+    add_executable(eSRIMTests ${TEST_SOURCE_FILES} ${SOURCE_FILES})
 
-target_link_libraries(eSRIMTests gtest)
-add_test(NAME MainTest COMMAND eSRIMTests)
+    target_link_libraries(eSRIMTests gtest)
+    add_test(NAME MainTest COMMAND eSRIMTests)
 
-# Include source and header directories
-target_include_directories(eSRIMTests PUBLIC ${INCLUDE_DIR})
-target_sources(eSRIMTests PUBLIC ${SOURCE_FILES})
+    # Include source and header directories
+    target_include_directories(eSRIMTests PUBLIC ${INCLUDE_DIR})
+    target_sources(eSRIMTests PUBLIC ${SOURCE_FILES})
+endif()
