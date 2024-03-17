@@ -320,11 +320,12 @@ void IOHandler::handleFileOpenError(const std::string& settingsFilename) {
 
     DEBUG_PRINT("-----------------------Progress Checking 309-----------------------");
 
-
     DEBUG_PRINT("File that could not be opened: " << settingsFilename);
     errorStream << "Error: Unable to open file \""
                 <<  settingsFilename << "\". ";
             // Check if the default settings file exists
+
+    DEBUG_PRINT("-----------------------Progress Checking 315-----------------------");
 
     DEBUG_PRINT("Tryng to open file:" << Defaults::settingsFilename);
     std::ifstream defaultSettingsFile(Defaults::settingsFilename);

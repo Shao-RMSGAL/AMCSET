@@ -60,6 +60,11 @@ class MainFunctionTest : public testing::Test {
             for(const auto& entry : std::filesystem::directory_iterator("output")) {
                 std::filesystem::remove(entry.path());
             }
+
+            // Delete the settings file if it exists
+            if(std::filesystem::exists("settings.txt")) {
+                std::filesystem::remove("settings.txt");
+            }
         }
 };
 
@@ -86,109 +91,90 @@ TEST_F(MainFunctionTest, RunProgramWithNoArguments) {
 }
 
 // // Test an unrecognized flag.
-// TEST_F(MainFunctionTest, RunProgramWithUnrecognizedFlag) {
-//     const char* argv[] = {"eSRIM", "-xxxx", nullptr};
-//     const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
+TEST_F(MainFunctionTest, RunProgramWithUnrecognizedFlag) {
+    const char* argv[] = {"eSRIM", "-xxxx", nullptr};
+    const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
 
-//     std::istringstream stdIn;
-//     std::ostringstream stdOut;
-//     std::ostringstream stdErr;
-//     int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
+    std::istringstream stdIn;
+    std::ostringstream stdOut;
+    std::ostringstream stdErr;
+    int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
 
-//     // There should be output to standard error
-//     EXPECT_TRUE(stdOut.str().empty());
-//     EXPECT_TRUE(stdErr.str().empty());
-//     EXPECT_TRUE(stdIn.good() && stdIn.tellg() == 0);
-//     // ASSERT_NE(result, 0);
-// }
+    // There should be output to standard error
+    EXPECT_TRUE(stdOut.str().empty());
+    EXPECT_FALSE(stdErr.str().empty());
+    EXPECT_TRUE(stdIn.good() && stdIn.tellg() == 0);
+    ASSERT_NE(result, 0);
+}
 
 // Test the -h flag
-// TEST_F(MainFunctionTest, RunProgramWithHelpFlag) {
-//     const char* argv[] = {"eSRIM", "-h", nullptr};
+TEST_F(MainFunctionTest, RunProgramWithHelpFlag) {
+    const char* argv[] = {"eSRIM", "-h", nullptr};
+    const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
+
+    std::istringstream stdIn;
+    std::ostringstream stdOut;
+    std::ostringstream stdErr;
+    int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
+
+    // There should be output to standard output
+    EXPECT_FALSE(stdOut.str().empty());
+    EXPECT_TRUE(stdErr.str().empty());
+    EXPECT_TRUE(stdIn.good() && stdIn.tellg() == 0);
+    ASSERT_EQ(result, 0);
+}
+
+// Test the --help flag
+TEST_F(MainFunctionTest, RunProgramWithDoubleDashHelpFlag) {
+    const char* argv[] = {"eSRIM", "--help", nullptr};
+    const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
+
+    std::istringstream stdIn;
+    std::ostringstream stdOut;
+    std::ostringstream stdErr;
+    int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
+
+    // There should be output to standard output
+    EXPECT_FALSE(stdOut.str().empty());
+    EXPECT_TRUE(stdErr.str().empty());
+    EXPECT_TRUE(stdIn.good() && stdIn.tellg() == 0);
+    ASSERT_EQ(result, 0);
+}
+
+// Test the -f flag with an existing settings file passed
+TEST_F(MainFunctionTest, RunProgramWithExistingSettingsFile) {
+
+    const char* argv[] = {"eSRIM", "-f", "settings.txt", nullptr};
+    const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
+
+    std::istringstream stdIn;
+    std::ostringstream stdOut;
+    std::ostringstream stdErr;
+    int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
+
+    // There should be no output to standard error or standard output
+    EXPECT_TRUE(stdOut.str().empty());
+    EXPECT_TRUE(stdErr.str().empty());
+    EXPECT_TRUE(stdIn.good() && stdIn.tellg() == 0);
+    ASSERT_EQ(result, 0);
+}
+
+// Test the -f flag with a non-existing settings file passed and "n" from the standard input
+// TEST_F(MainFunctionTest, RunProgramWithNonExistingSettingsFile) {
+//     const char* argv[] = {"eSRIM", "-f", "non-existing-settings.txt", nullptr};
 //     const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
 
-//     std::istringstream stdIn;
-//     std::ostringstream stdOut;
-//     std::ostringstream stdErr;
-//     int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
-
-//     // There should be output to standard output
-//     std::cout << "Standard output:\n" 
-//               << stdOut.str()
-//               << std::endl;
-//     std::cout << "Standard error:\n"
-//               << stdErr.str()
-//               << std::endl;
-//     EXPECT_FALSE(stdOut.str().empty());
-//     EXPECT_TRUE(stdErr.str().empty());
-//     EXPECT_TRUE(stdIn.good() && stdIn.tellg() == 0);
-//     ASSERT_EQ(result, 0);
-// }
-
-// // Test the --help flag
-// TEST_F(MainFunctionTest, RunProgramWithDoubleDashHelpFlag) {
-//     const char* argv[] = {"eSRIM", "--help"};
-//     const int argc = sizeof(argv) / sizeof(argv[0]);
-
-//     std::istringstream stdIn;
-//     std::ostringstream stdOut;
-//     std::ostringstream stdErr;
-//     int result = startESRIM(argc, const_cast<char**>(argv), stdIn, stdOut, stdErr);
-
-//     // There should be output to standard output
-//     std::cout << "Standard output:\n" 
-//               << stdOut.str()
-//               << std::endl;
-//     std::cout << "Standard error:\n"
-//               << stdErr.str()
-//               << std::endl;
-//     EXPECT_FALSE(stdOut.str().empty());
-//     EXPECT_TRUE(stdErr.str().empty());
-//     EXPECT_TRUE(stdIn.good() && stdIn.tellg() == 0);
-//     ASSERT_EQ(result, 0);
-// }
-
-// // // Test the -f flag with an existing settings file passed
-// TEST_F(MainFunctionTest, RunProgramWithExistingSettingsFile) {
-
-//     const char* argv[] = {"eSRIM", "-f", "settings.txt"};
-//     const int argc = sizeof(argv) / sizeof(argv[0]);
-
-//     std::istringstream stdIn;
-//     std::ostringstream stdOut;
-//     std::ostringstream stdErr;
-//     int result = startESRIM(argc, const_cast<char**>(argv), stdIn, stdOut, stdErr);
-
-//     // There should be no output to standard error or standard output
-//     std::cout << "Standard output:\n" 
-//               << stdOut.str()
-//               << std::endl;
-//     std::cout << "Standard error:\n"
-//               << stdErr.str()
-//               << std::endl;
-//     EXPECT_TRUE(stdOut.str().empty());
-//     EXPECT_TRUE(stdErr.str().empty());
-//     EXPECT_TRUE(stdIn.good() && stdIn.tellg() == 0);
-//     ASSERT_EQ(result, 0);
-// }
-
-// // Test the -f flag with a non-existing settings file passed and "n" from the standard input
-// TEST_F(MainFunctionTest, RunProgramWithNonExistingSettingsFile) {
-//     const char* argv[] = {"eSRIM", "-f", "non-existing-settings.txt"};
-//     const int argc = sizeof(argv) / sizeof(argv[0]);
+//     // Delete the settings file
+//     if(std::filesystem::exists("non-existing-settings.txt")) {
+//         std::filesystem::remove("non-existing-settings.txt");
+//     }
 
 //     std::istringstream stdIn("n\n");
 //     std::ostringstream stdOut;
 //     std::ostringstream stdErr;
-//     int result = startESRIM(argc, const_cast<char**>(argv), stdIn, stdOut, stdErr);
+//     int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
 
 //     // There should be output to standard error and standard output
-//     std::cout << "Standard output:\n" 
-//               << stdOut.str()
-//               << std::endl;
-//     std::cout << "Standard error:\n"
-//               << stdErr.str()
-//               << std::endl;
 //     EXPECT_FALSE(stdOut.str().empty());
 //     EXPECT_FALSE(stdErr.str().empty());
 //     EXPECT_FALSE(stdIn.good() && stdIn.tellg() == 1);
