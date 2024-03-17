@@ -60,7 +60,7 @@ There are several toggles available in the settings file that enables a user to 
 
 Building the program requires the C++ standard libraries, as well as a C++ compiler. This program was developed using the g++ and clang compiler. The compiler can be chosen by setting the ```-DCOMPILER``` flag when using cmake. On Linux, a C++ compiler and the associated standard libraries generally included with most distributions. This compiler is called g++, and it is all you will need to build and run this project.
 
-### Google gtest
+### Google gtest (Developers only)
 
 This project uses Google [gtest](https://github.com/google/googletest/) to handle test cases. The [cmake configuration file](CMakeFile.txt) automatically handles the installation of this dependency. If you encounter any gtest related issues on your system, ensure that it is installed using
 
@@ -73,6 +73,8 @@ The testing environment has been configured, but no tests have been run so far. 
 ### Supported Compilers
 
 Three compilers are supported, g++, clang++, and icpx (Intel compiler).
+
+- There is currently a linker error generated when trying to compile with clang. Please build with ipcx or g++.
 
 ## Building
 
