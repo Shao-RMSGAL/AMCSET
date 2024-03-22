@@ -23,12 +23,14 @@
 // Includes
 #include <array>
 #include <filesystem>
-#include <iostream> 
+#include <iostream>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <random>
 #include <thread>
 #include <tuple>
+#include <variant>
 #include <vector>
 
 // Local header files
@@ -45,8 +47,21 @@
 // Namespaces
 namespace fs = std::filesystem;
 
-// Class and function declarations (to be moved to a header file in a later 
-// version)
+// TODO: Make this a dynamic type that can take three coordinates (type double),
+// but can have an arbitrary number of additional fields of any data type. For example, 
+// in addition to the size_t depth variable, it could have another entry called "energy"
+// of type double. The size of the data structure should be determined at runtime depending on
+// whether the user wants to include additional fields. The commented out code below is a
+// good option. Consider enumerations instead of strings for the field names.
+// // Define the types that can be stored in the additional fields
+// using FieldValue = std::variant<size_t, double, std::string>;
+
+// // Define a field as a pair of a string (the field name) and a FieldValue
+// using Field = std::pair<std::string, FieldValue>;
+
+// // Define a point as a tuple of three doubles and a vector of fields
+// using Point = std::tuple<double, double, double, std::vector<Field>>;
+
 struct Coordinate {
     double x;
     double y;
@@ -104,6 +119,13 @@ private:
     static std::shared_ptr<InputFields> instance;
 
     // Member variables
+
+    // Varient type for storing an input option which can be a string, boolean, double, or integer
+    using InputOptionVariant = std::variant<std::string, bool, double, size_t>;
+
+    // InputOptions map that maps an InputOption to an INputOptionsVariant
+    std::map<InputOptionType, InputOptionVariant> inputOptions;
+
     double charge;
     double electronStoppingEnergy;
     double energy;
@@ -230,17 +252,10 @@ class Particle {
         std::vector<Coordinate> coordinate_vector;
         Coordinate coordinate;
         Velocity velocity;
-        bool enableDamageCascade;
         double &energy = velocity.energy;
         const double charge;
         const double mass;
-        const double substrateCharge;
-        const double substrateDensity;
-        const double substrateMass;
         const ParticleType type;
-        const double range;
-        double ionDisplacementEnergy;
-        double ionStoppingEnergy;
         std::shared_ptr<InputFields> input;
         std::weak_ptr<Bombardment> bombardment;
 
@@ -258,16 +273,9 @@ class Particle {
         Particle(
             const Coordinate& coordinate,
             const Velocity& velocity,
-            bool enableDamageCascade,
-            double charge,
             double mass,
-            double substrateCharge,
-            double substrateDensity,
-            double substrateMass,
+            double charge,
             ParticleType type,
-            double range,
-            double ionDisplacementEnergy,
-            double ionStoppingEnergy,   
             std::shared_ptr<InputFields> input,
             std::weak_ptr<Bombardment> bombardment); 
 
@@ -310,16 +318,9 @@ class Ion : public Particle {
 
         Ion(const Coordinate& coordinate,
             const Velocity& velocity,
-            bool enableDamageCascade,
             double charge,
             double mass,
-            double substrateCharge,
-            double substrateDensity,
-            double substrateMass,   
             ParticleType type,
-            double range,
-            double ionDisplacementEnergy,
-            double ionStoppingEnergy,
             std::shared_ptr<InputFields> input,
             std::weak_ptr<Bombardment> bombardment); 
 

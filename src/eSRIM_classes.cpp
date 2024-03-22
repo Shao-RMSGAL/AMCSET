@@ -3,7 +3,7 @@
  * Project:         eSRIM
  * Author:          Nathaniel Thomas
  * Date Created:    March 8, 2024
- * Date Modified:   March 8, 2024
+ * Date Modified:   March 21, 2024
  * File Version:    1.0
  * Group:           Dr. Shao's RMSLCF Group
  *
@@ -55,46 +55,25 @@ Particle::Particle(
     std::weak_ptr<Bombardment> bombardment)
     : coordinate(coordinate),
     velocity(velocity),
-    enableDamageCascade(input->getEnableDamageCascade()),
     charge(input->getCharge()),
     mass(input->getMass()),
-    substrateCharge(input->getSubstrateCharge()),
-    substrateDensity(input->getSubstrateDensity()),
-    substrateMass(input->getSubstrateMass()),
     type(input->getType()),
-    range(input->getRange()),
-    ionDisplacementEnergy(input->getIonDisplacementEnergy()),
-    ionStoppingEnergy(input->getIonStoppingEnergy()),
     input(input),
     bombardment(bombardment) {};
 
 Particle::Particle(
     const Coordinate& coordinate,
     const Velocity& velocity,
-    bool enableDamageCascade,
     double charge,
     double mass,
-    double substrateCharge,
-    double substrateDensity,
-    double substrateMass,
     ParticleType type,
-    double range,
-    double ionDisplacementEnergy,
-    double ionStoppingEnergy,
     std::shared_ptr<InputFields> input,
     std::weak_ptr<Bombardment> bombardment)
     : coordinate(coordinate),
     velocity(velocity),
-    enableDamageCascade(enableDamageCascade),
     charge(charge),
     mass(mass),
-    substrateCharge(substrateCharge),
-    substrateDensity(substrateDensity),
-    substrateMass(substrateMass),
     type(type),
-    range(range),
-    ionDisplacementEnergy(ionDisplacementEnergy),
-    ionStoppingEnergy(ionStoppingEnergy),
     input(input),
     bombardment(bombardment) {};
 
@@ -132,7 +111,7 @@ void Particle::fire() {
 };
 
 inline double Particle::atomicSpacing() const {
-    return std::pow(substrateDensity, -1.0/3.0);
+    return std::pow(input->getSubstrateDensity(), -1.0/3.0);
 };
 
 void Particle::relativeToAbsoluteVelocity (
@@ -224,31 +203,17 @@ Ion::Ion(
 Ion::Ion(
     const Coordinate& coordinate,
     const Velocity& velocity,       
-    bool enableDamageCascade,
     double charge,
     double mass,
-    double substrateCharge,
-    double substrateDensity,
-    double substrateMass,
     ParticleType type,
-    double range,
-    double ionDisplacementEnergy,
-    double ionStoppingEnergy,
     std::shared_ptr<InputFields> input,
     std::weak_ptr<Bombardment> bombardment)
     : Particle(
         coordinate,
         velocity,
-        enableDamageCascade,
         charge,
         mass,
-        substrateCharge, 
-        substrateDensity,
-        substrateMass,
         type,
-        range,
-        ionDisplacementEnergy,
-        ionStoppingEnergy,
         input,
         bombardment) {}; 
 
@@ -326,13 +291,13 @@ void Ion::recoilEnergyAndVelocity(
         Velocity& newVelocity,
         Velocity& targetVelocity) {
     // Initial parameter
-    double P = std::sqrt(random()/(M_PI*std::pow(substrateDensity, 2.0/3.0)));
-    double COLUMBIAVK = 0.0143992*charge*substrateCharge;
-    double MC = mass*substrateMass/(mass+substrateMass);
+    double P = std::sqrt(random()/(M_PI*std::pow(input->getSubstrateDensity(), 2.0/3.0)));
+    double COLUMBIAVK = 0.0143992*charge*input->getSubstrateCharge();
+    double MC = mass*input->getSubstrateMass()/(mass+input->getSubstrateMass());
     double INVLAB = std::sqrt(energy*2.0/mass);
     double EC = 0.5*MC*INVLAB*INVLAB;
     double AU = 0.8854*0.529/std::pow(std::sqrt(mass)
-                +std::sqrt(substrateCharge), 2.0/3.0);
+                +std::sqrt(input->getSubstrateCharge()), 2.0/3.0);
     double ELINHARD = EC*AU/COLUMBIAVK;
     // Find RMIN for different energy
     double AA = P*P;
@@ -389,7 +354,7 @@ void Ion::recoilEnergyAndVelocity(
         CALPHA1 = M_PI;
     }
     // Defelction angle in lab coordinator
-    double COSPLUSMASS = std::cos(CALPHA1)+mass/substrateMass;
+    double COSPLUSMASS = std::cos(CALPHA1)+mass/input->getSubstrateMass();
     double THETA1RELATIVE;
     if(COSPLUSMASS > 0.0) {
         THETA1RELATIVE = std::atan(std::sin(CALPHA1)/COSPLUSMASS);
@@ -400,7 +365,7 @@ void Ion::recoilEnergyAndVelocity(
     }
 
     // Calculate target direction and energy
-    double RE = 4.0*EC*MC/substrateMass*std::sin(CALPHA1/2.0)*std::sin(CALPHA1
+    double RE = 4.0*EC*MC/input->getSubstrateMass()*std::sin(CALPHA1/2.0)*std::sin(CALPHA1
                 /2.0);
     double THETA2RELATIVE = (M_PI-CALPHA1)/2.0;
 
@@ -413,11 +378,11 @@ void Ion::recoilEnergyAndVelocity(
 };
 
 double Ion::electronicStoppingEnergy() {
-    double stoppingEnergy = 1.212*std::pow(charge, 7.0/6.0)*substrateCharge
+    double stoppingEnergy = 1.212*std::pow(charge, 7.0/6.0)*input->getSubstrateCharge()
                 /(std::pow((std::pow(charge, 2.0/3.0) \
-                + std::pow(substrateCharge, 2.0/3.0))
+                + std::pow(input->getSubstrateCharge(), 2.0/3.0))
                 , 3.0/2.0)*std::sqrt(mass))*std::sqrt(energy*1000);
-    double energyLoss = 1.59*atomicSpacing()*substrateDensity*stoppingEnergy/1000;
+    double energyLoss = 1.59*atomicSpacing()*input->getSubstrateDensity()*stoppingEnergy/1000;
     return energyLoss;
 };
 
@@ -440,16 +405,9 @@ Substrate::Substrate(
     std::weak_ptr<Bombardment> bombardment)
     : Ion(coordinate,
         velocity,
-        input->getEnableDamageCascade(),
         input->getSubstrateCharge(),
         input->getSubstrateMass(),   
-        input->getSubstrateCharge(),
-        input->getSubstrateDensity(),
-        input->getSubstrateMass(),
         SUBSTRATE,
-        input->getRange(),
-        input->getIonDisplacementEnergy(),
-        input->getIonStoppingEnergy(),
         input,
         bombardment) {};
 
@@ -616,7 +574,7 @@ void Electron::fire() {
             }
 
             if(input->getEnableDamageCascade()
-                && targetVelocity.energy > ionDisplacementEnergy) {
+                && targetVelocity.energy > input->getIonDisplacementEnergy()) {
                 createSubstrateKnockon(coordinate, targetVelocity);
             }
 
@@ -648,11 +606,10 @@ double Electron::getMottDifferentialCrossSection(double Theta) {
     constexpr double re1 = 2.817938E-13;  // in the unit of cm)
     const double oneMinusCos = 1.0-std::cos(Theta);
     const double betaQuarted = betaSquared*betaSquared;
-    const double DSC = (substrateCharge*re1)*(substrateCharge*re1)*(1.0-betaSquared)/
+    const double DSC = (input->getSubstrateCharge()*re1)*(input->getSubstrateCharge()*re1)*(1.0-betaSquared)/
         betaQuarted/(oneMinusCos*oneMinusCos);
     const double moment = 2.0*beta*gamma*elecmass*Vc*std::sin(Theta/2.0);
     const double momentSquared = moment*moment;
-    
     
     double Rmott = 0.0;
     double alpha1;
@@ -660,19 +617,19 @@ double Electron::getMottDifferentialCrossSection(double Theta) {
         alpha1 = 0.0;
         for(size_t k = 0; k < Constants::numMottkParam; k++) {
             alpha1 = alpha1 +
-                mottScatteringParams[static_cast<size_t>(substrateCharge)][j][k]
+                mottScatteringParams[static_cast<size_t>(input->getSubstrateCharge())][j][k]
                 *std::pow(beta-betaAVE, k);
         }
-        Rmott = Rmott+alpha1*std::pow(oneMinusCos,j/2.0);
+        Rmott = Rmott+alpha1*std::pow(std::sqrt(oneMinusCos), j);
     }
     
     double Feq = 0;
     for(size_t i = 0; i < Constants::numElecScreeningPotentialParams/2; i++) {
-        Feq = Feq + elecScreeningParams[substrateCharge][i]*
-            elecScreeningParams[substrateCharge][i + 3]
-            *elecScreeningParams[substrateCharge][i + 3]
-            /(elecScreeningParams[substrateCharge][i + 3]
-            *elecScreeningParams[substrateCharge][i + 3]
+        Feq = Feq + elecScreeningParams[input->getSubstrateCharge()][i]*
+            elecScreeningParams[input->getSubstrateCharge()][i + 3]
+            *elecScreeningParams[input->getSubstrateCharge()][i + 3]
+            /(elecScreeningParams[input->getSubstrateCharge()][i + 3]
+            *elecScreeningParams[input->getSubstrateCharge()][i + 3]
             +momentSquared);
     }
 
@@ -690,11 +647,11 @@ double Electron::generateFlyingDistances(double totalMottCrossSection) {
     double distance;
     double flightGroupLength = 0;
     double crossSectionFlight = 0;
-    double atomicSpacing = std::pow(substrateDensity*1e24, -1.0/3.0);
+    double atomicSpacing = std::pow(input->getSubstrateDensity()*1e24, -1.0/3.0);
 
     for(size_t i = 0; i < input->getNumFlyingDistances(); i++) {
         crossSectionFlight = -std::log(random())
-            /(substrateDensity*1e24*totalMottCrossSection);
+            /(input->getSubstrateDensity()*1e24*totalMottCrossSection);
         distance = crossSectionFlight+atomicSpacing;
         flightGroupLength += distance;
         flyingDistances[i] = distance; 
@@ -776,11 +733,11 @@ double Electron::getElasticEnergyLoss() {
     for(size_t i = 0; i < input->getNumFlyingDistances(); i++) {
         double ElecREup = 
             ((energy+511.0)*(std::sin(scatteringAngles[i]))
-                *(std::sin(scatteringAngles[i]))+substrateMass*931.0*1000.0*(1
+                *(std::sin(scatteringAngles[i]))+input->getSubstrateMass()*931.0*1000.0*(1
                 -std::cos(scatteringAngles[i])))
             *energy*(energy+2.0*511.0);
-        double ElecREdown = (energy+substrateMass*931.5*1000.0)
-            *(energy+substrateMass*931.5*1000.0)-energy*(energy+2.0*511.0)
+        double ElecREdown = (energy+input->getSubstrateMass()*931.5*1000.0)
+            *(energy+input->getSubstrateMass()*931.5*1000.0)-energy*(energy+2.0*511.0)
             *(std::cos(scatteringAngles[i]))*(std::cos(scatteringAngles[i]));
         elasticEnergyLoss[i] = ElecREup/ElecREdown;
         totalElasticEnergyLoss += elasticEnergyLoss[i];
@@ -792,13 +749,13 @@ double Electron::getIonizationEnergyLoss() {
     double correctedEnergy = energy*correctionFactor;
     double beta = std::sqrt(1.0-1.0/((correctedEnergy/511.0+1.0)
         *(correctedEnergy/511.0+1.0)));
-    double KforLoss = 0.734*std::pow(substrateCharge, 0.037);
-    double JforLoss = (substrateCharge < 13) ? 0.0115*substrateCharge :
-                        0.00976*substrateCharge+0.0585
-                        *std::pow(substrateCharge, -0.19);
+    double KforLoss = 0.734*std::pow(input->getSubstrateCharge(), 0.037);
+    double JforLoss = (input->getSubstrateCharge() < 13) ? 0.0115*input->getSubstrateCharge() :
+                        0.00976*input->getSubstrateCharge()+0.0585
+                        *std::pow(input->getSubstrateCharge(), -0.19);
 
     JforLoss = JforLoss/(1.0+KforLoss*JforLoss/correctedEnergy);
-    double ionizationEnergy = 153.55*1E24*substrateDensity*substrateCharge
+    double ionizationEnergy = 153.55*1E24*input->getSubstrateDensity()*input->getSubstrateCharge()
         /(Constants::avogadrosNumber)/(beta*beta)*(std::log(511.0*beta*beta
         *correctedEnergy/(2.0*JforLoss*JforLoss*(1.0-beta*beta)))-std::log(2.0)
         *(2.0*std::sqrt(1.0-beta*beta)-1+beta*beta)+1-beta*beta+1.0/8.0
@@ -809,8 +766,8 @@ double Electron::getIonizationEnergyLoss() {
 
 inline double Electron::getBremsstrahlung() {
     double correctedEnergy = energy*correctionFactor;
-    double bremsstralung = 1.4e-4*1E24*substrateDensity/(Constants::avogadrosNumber)
-        *substrateCharge*(substrateCharge+1.0)*(correctedEnergy+511.0)*(4.0
+    double bremsstralung = 1.4e-4*1E24*input->getSubstrateDensity()/(Constants::avogadrosNumber)
+        *input->getSubstrateCharge()*(input->getSubstrateCharge()+1.0)*(correctedEnergy+511.0)*(4.0
         *std::log(2.0*(correctedEnergy+511.0)/511.0)-4.0/3.0);
     // Final expressio ensures a positive value
     return (bremsstralung + std::abs(bremsstralung))/2.0;
