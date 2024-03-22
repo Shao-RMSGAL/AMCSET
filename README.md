@@ -54,6 +54,10 @@ There are several toggles available in the settings file that enables a user to 
 - _logStoppingPointOnly_ - This option only logs the final resting point of each particle, and does not record the path that the particle took to get to the stopping point. 
 - _logEndOfFlyingDistance_ (__Electron only__) This option reduces the number of coordinates logged by not logging every coordinate within a local substrate interaction group, but only logging the last interaction within a group. This can reduce the data size by a factor of 
 
+### Compare Output Data to Other Sources for Validation
+
+The data output from this program needs to be validated.
+
 ## Dependencies
 
 ### C++ Compiler
@@ -80,6 +84,31 @@ Three compilers are supported, g++, clang++, and icpx (Intel compiler).
 
 
 **IMPORTANT: Please follow the build directions exactly to ensure successful compilation of the project. It is recoomended to copy and paste the instructions exactly**
+
+### Windows
+
+*Note: This is a much more complicated process than building on Linux. It is recommended to install WSL2 ([Windows Subshell for Linux](https://learn.microsoft.com/en-us/windows/wsl/install)) and [cross-compile](https://en.wikipedia.org/wiki/Cross_compiler) for Windows.*
+
+<!-- Install [MSYS2](https://www.msys2.org/) and install MingGW's version of gcc and g++. -->
+
+<!-- Go to the [CMake website](https://cmake.org/download/) website and install the latest version of CMake. -->
+
+*Work in progress* This requires development using Microsoft Visual Studio, and the project has not yet been tested using it.
+
+### Linux 
+
+*Note: You can build and run this program on Windows using Windows Subshell for Linux (WSL). Go to [https://learn.microsoft.com/en-us/windows/wsl/install](https://learn.microsoft.com/en-us/windows/wsl/install) to learn how to install WSL before moving forward.
+
+Install the latest version of cmake. Do not use the version that is currently installed on your system. It is likely not recent enough. Either visit the [CMake website](https://cmake.org/download/) or run the following:
+
+```bash
+cd ~
+wget https://github.com/Kitware/CMake/releases/download/v3.29.0-rc4/cmake-3.29.0-rc4-linux-x86_64.sh
+chmod u+x cmake-3.29.0-rc4-linux-x86_64.sh
+./cmake-3.29.0-rc4-linux-x86_64.sh
+```
+
+Scroll down and press "y" and Enter to accept the license agreement. Then press "y" to allow the installation script to make a subdirectory for your CMake installation.
 
 Please build this project using a Linux. If you are on Windows, install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) before continuing. Support for building on Windows is planned for future releases.
 
