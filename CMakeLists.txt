@@ -10,10 +10,15 @@ cmake_minimum_required(VERSION 3.23.5)
 
 project(eSRIM LANGUAGES CXX)
 
+find_package(ZLIB REQUIRED)
+
 set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_C_COMPILER "gcc" CACHE STRING "Choose the C compiler: 'gcc', 'clang', or 'icx' (default is 'gcc')")
 set(CMAKE_CXX_COMPILER "g++" CACHE STRING "Choose the C++ compiler: 'g++', 'clang++', or 'icpx' (default is 'g++')")
+
+# include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+# conan_basic_setup()
 
 cmake_policy(SET CMP0135 NEW)
 
@@ -45,7 +50,8 @@ set(MAIN_SOURCE_FILE
     ${SOURCE_DIR}/main.cpp
 )
 
-add_executable(eSRIM ${MAIN_SOURCE_FILE} ${SOURCE_FILES})
+add_executable(${PROJECT_NAME} ${MAIN_SOURCE_FILE} ${SOURCE_FILES})
+
 include_directories(${INCLUDE_DIR})
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -pedantic -pthread")
@@ -59,6 +65,7 @@ option(DEBUG_MODE "Enable debug mode. Passing -g and -O0 flags." OFF)
 option(PERF "Enable performance analysis mode. Passing -gp -O0. Use either Valgrind or gprof for performance analysis." OFF)
 option(PROD "Enable production mode. Passing  -Ofast -march=native -ffast-math -finline-functions -fomit-frame-pointer -DNDEBUG" ON)
 
+# TODO: Use built-in cmake variable for this. For example, dDCMAKE_BUILD_TYPE=Release
 if(DEBUG_MODE)
     message(STATUS "Debug mode is enabled.")
     add_compile_definitions(DEBUG_MODE)
@@ -88,12 +95,16 @@ if(NOT (CMAKE_C_COMPILER STREQUAL "clang" AND CMAKE_CXX_COMPILER STREQUAL "clang
         ${TEST_SOURCE_DIR}/mainFunctionTest.cpp
     )
 
-    add_executable(eSRIMTests ${TEST_SOURCE_FILES} ${SOURCE_FILES})
+    # Declare the PROJECT_TESTS_NAME variable
+    set(PROJECT_TESTS_NAME ${PROJECT_NAME}Tests)
 
-    target_link_libraries(eSRIMTests gtest)
-    add_test(NAME MainTest COMMAND eSRIMTests)
+    # Set the name of the test executable to ${PROJECT_NAME}Tests
+    add_executable(${PROJECT_TESTS_NAME} ${TEST_SOURCE_FILES} ${SOURCE_FILES})
+
+    target_link_libraries(${PROJECT_TESTS_NAME} gtest)
+    add_test(NAME MainTest COMMAND ${PROJECT_TESTS_NAME})
 
     # Include source and header directories
-    target_include_directories(eSRIMTests PUBLIC ${INCLUDE_DIR})
-    target_sources(eSRIMTests PUBLIC ${SOURCE_FILES})
+    target_include_directories(${PROJECT_TESTS_NAME} PUBLIC ${INCLUDE_DIR})
+    target_sources(${PROJECT_TESTS_NAME} PUBLIC ${SOURCE_FILES})
 endif()
