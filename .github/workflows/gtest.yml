@@ -1,6 +1,6 @@
 name: C/C++ CI
 
-on: [push, pull_request]
+on: [push, pull_request]  
 
 jobs:
   build:
@@ -10,13 +10,18 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Install dependencies
-      run: sudo apt-get install -y libgtest-dev cmake
+    - name: Install Conan
+      run: |
+        pip3 install conan
+        conan profile detect --force
 
+    - name: Install dependencies
+      run: conan install . --output-folder=build
+        
     - name: Build
       run: |
         cd build
-        cmake ..
+        cmake .. -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
         cmake --build .
 
     - name: Test
