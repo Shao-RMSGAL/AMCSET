@@ -15,6 +15,10 @@ bombardmentID = data['bombardmentID']
 x = data['x']
 y = data['y']
 z = data['z']
+# Remote any NaN values
+x = x.dropna()
+y = y.dropna()
+z = z.dropna()
 
 # Group data by bombardmentID
 uniqueIDs = bombardmentID.unique()
@@ -27,13 +31,13 @@ ax = fig.add_subplot(111, projection='3d')
 for uid, group in groupedData.items():
     ax.scatter(group[:, 0], group[:, 1], group[:, 2], marker='o', s=0.1, label=f'Bombardment ID {uid}')
 
-ax.set_xlim([-6E8, 6E8])
-ax.set_ylim([-6E8, 6E8])
-ax.set_zlim([0, 6E8])
+# ax.set_xlim([-6E8, 6E8])
+# ax.set_ylim([-6E8, 6E8])
+# ax.set_zlim([0, 6E8])
 ax.set_xlabel('X (angstrom)')
 ax.set_ylabel('Y (angstrom)')
 ax.set_zlabel('Z (angstrom)')
-ax.set_title('Bombardment Data for 1000 electrons (by eSRIM)')
+ax.set_title('Bombardment Data for 1000 particles (by eSRIM)')
 ax.view_init(6, 45)  # Set the viewing angle
 
 plt.tight_layout() 
