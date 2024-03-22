@@ -11,3 +11,8 @@ cmake_install.cmake
 test_files/bin
 performance_testing/*
 build/_deps
+CMake*Presets.json
+*conan*.sh
+# Ignore files without a file extension
+
+
