@@ -3,7 +3,7 @@
  * Project:         eSRIM
  * Author:          Nathaniel Thomas
  * Date Created:    March 8, 2024
- * Date Modified:   March 22, 2024
+ * Date Modified:   April 10, 2024
  * File Version:    1.0
  * Group:           Dr. Shao's RMSLCF Group
  *
@@ -37,7 +37,8 @@
 #include "constants.h"
 
 
-// Debug compiler directives 
+// TODO: Restore to only output on debug mode
+// Debug compiler directives
 #ifdef DEBUG_MODE
 #define DEBUG_PRINT(x) std::cout << x << std::endl;
 #else

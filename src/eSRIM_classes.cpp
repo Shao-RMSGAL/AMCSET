@@ -291,21 +291,21 @@ void Ion::recoilEnergyAndVelocity(
         Velocity& newVelocity,
         Velocity& targetVelocity) {
     // Initial parameter
-    double P = std::sqrt(random()/(M_PI*std::pow(input->getSubstrateDensity(), 2.0/3.0)));
-    double COLUMBIAVK = 0.0143992*charge*input->getSubstrateCharge();
-    double MC = mass*input->getSubstrateMass()/(mass+input->getSubstrateMass());
-    double INVLAB = std::sqrt(energy*2.0/mass);
-    double EC = 0.5*MC*INVLAB*INVLAB;
-    double AU = 0.8854*0.529/std::pow(std::sqrt(mass)
+    const double P = std::sqrt(random()/(M_PI*std::pow(input->getSubstrateDensity(), 2.0/3.0)));
+    const double COLUMBIAVK = 0.0143992*charge*input->getSubstrateCharge();
+    const double MC = mass*input->getSubstrateMass()/(mass+input->getSubstrateMass());
+    const double INVLAB = std::sqrt(energy*2.0/mass);
+    const double EC = 0.5*MC*INVLAB*INVLAB;
+    const double AU = 0.8854*0.529/std::pow(std::sqrt(mass)
                 +std::sqrt(input->getSubstrateCharge()), 2.0/3.0);
-    double ELINHARD = EC*AU/COLUMBIAVK;
+    const double ELINHARD = EC*AU/COLUMBIAVK;
     // Find RMIN for different energy
     double AA = P*P;
     if(AA == 0) {
         AA = .00001;
     }
-    double BB = COLUMBIAVK/EC;
-    double CC = -1;
+    const double BB = COLUMBIAVK/EC;
+    const double CC = -1;
     double COLUMRMIN = 0.5/AA*(-BB+std::sqrt(BB*BB-4*AA*CC));
     int CALTIME = 1;
     double RMINTRY1;
@@ -324,27 +324,27 @@ void Ion::recoilEnergyAndVelocity(
             break;
         }
     } while (std::abs(RMINTRY2 - RMINTRY1) <= .00001);
-    double RMIN = 0.5*(RMINTRY2+RMINTRY1);
+    const double RMIN = 0.5*(RMINTRY2+RMINTRY1);
     // Calculate deflection angle
-    double RBIERSACK = 2.0*(EC-F(RMIN, COLUMBIAVK, AU))/RMIN*RMIN
+    const double RBIERSACK = 2.0*(EC-F(RMIN, COLUMBIAVK, AU))/RMIN*RMIN
         /DF(RMIN, COLUMBIAVK, AU);
-    double BBIERSACK = P/AU;
-    double ROBIERSACK = 1.0/(RMIN*AU);
-    double RCBIERSACK = RBIERSACK/AU;
-    double C1BIERSACK = 0.6743;
-    double C2BIERSACK = 0.009611;
-    double C3BIERSACK = 0.005175;
-    double C4BIERSACK = 10.0;
-    double C5BIERSACK = 6.314;
-    double ALTHABIERSACK = 1.0+1.0/std::sqrt(C1BIERSACK*ELINHARD);
-    double BELTABIERSACK = (C2BIERSACK+std::sqrt(ELINHARD))
+    const double BBIERSACK = P/AU;
+    const double ROBIERSACK = 1.0/(RMIN*AU);
+    const double RCBIERSACK = RBIERSACK/AU;
+    const double C1BIERSACK = 0.6743;
+    const double C2BIERSACK = 0.009611;
+    const double C3BIERSACK = 0.005175;
+    const double C4BIERSACK = 10.0;
+    const double C5BIERSACK = 6.314;
+    const double ALTHABIERSACK = 1.0+1.0/std::sqrt(C1BIERSACK*ELINHARD);
+    const double BELTABIERSACK = (C2BIERSACK+std::sqrt(ELINHARD))
         /(C3BIERSACK+std::sqrt(ELINHARD));
-    double GAMABIERSACK = (C4BIERSACK+ELINHARD)/(C5BIERSACK+ELINHARD);
-    double ABIERSACK = 2.0*ALTHABIERSACK*ELINHARD
+    const double GAMABIERSACK = (C4BIERSACK+ELINHARD)/(C5BIERSACK+ELINHARD);
+    const double ABIERSACK = 2.0*ALTHABIERSACK*ELINHARD
         *std::pow(BBIERSACK, BELTABIERSACK);
-    double GBIERSACK = GAMABIERSACK*1.0
+    const double GBIERSACK = GAMABIERSACK*1.0
         /(std::sqrt((1.0+ABIERSACK*ABIERSACK))-ABIERSACK);
-    double DELTABIERSACK = ABIERSACK*(ROBIERSACK-BBIERSACK)/(1.0+GBIERSACK);
+    const double DELTABIERSACK = ABIERSACK*(ROBIERSACK-BBIERSACK)/(1.0+GBIERSACK);
     double CALPHA1;
     if(P != 0.0) {
         CALPHA1 = 2.0*std::atan(std::sqrt((ROBIERSACK+RCBIERSACK)
@@ -354,7 +354,7 @@ void Ion::recoilEnergyAndVelocity(
         CALPHA1 = M_PI;
     }
     // Defelction angle in lab coordinator
-    double COSPLUSMASS = std::cos(CALPHA1)+mass/input->getSubstrateMass();
+    const double COSPLUSMASS = std::cos(CALPHA1)+mass/input->getSubstrateMass();
     double THETA1RELATIVE;
     if(COSPLUSMASS > 0.0) {
         THETA1RELATIVE = std::atan(std::sin(CALPHA1)/COSPLUSMASS);
@@ -365,9 +365,9 @@ void Ion::recoilEnergyAndVelocity(
     }
 
     // Calculate target direction and energy
-    double RE = 4.0*EC*MC/input->getSubstrateMass()*std::sin(CALPHA1/2.0)*std::sin(CALPHA1
+    const double RE = 4.0*EC*MC/input->getSubstrateMass()*std::sin(CALPHA1/2.0)*std::sin(CALPHA1
                 /2.0);
-    double THETA2RELATIVE = (M_PI-CALPHA1)/2.0;
+    const double THETA2RELATIVE = (M_PI-CALPHA1)/2.0;
 
     newVelocity.zAngle = THETA1RELATIVE;
     newVelocity.energy = energy - RE;

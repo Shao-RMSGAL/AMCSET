@@ -164,19 +164,21 @@ TEST_F(MainFunctionTest, RunProgramWithExistingSettingsFile) {
 //     const char* argv[] = {"eSRIM", "-f", "non-existing-settings.txt", nullptr};
 //     const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
 
-//     // Delete the settings file
+//     // Delete the false settings file if it exists
 //     if(std::filesystem::exists("non-existing-settings.txt")) {
 //         std::filesystem::remove("non-existing-settings.txt");
 //     }
 
 //     std::istringstream stdIn("n\n");
 //     std::ostringstream stdOut;
-//     std::ostringstream stdErr;
-//     int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
+//     // std::ostringstream stdErr;
+//     int result = startESRIM(argc, argv, stdIn, stdOut/*, stdErr*/);
+
+//     std::cout << stdOut.str() << std::endl;
 
 //     // There should be output to standard error and standard output
 //     EXPECT_FALSE(stdOut.str().empty());
-//     EXPECT_FALSE(stdErr.str().empty());
+//     // EXPECT_FALSE(stdErr.str().empty());
 //     EXPECT_FALSE(stdIn.good() && stdIn.tellg() == 1);
 //     ASSERT_EQ(result, 0);
 // }

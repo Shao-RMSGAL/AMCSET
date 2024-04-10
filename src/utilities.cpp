@@ -320,6 +320,8 @@ void IOHandler::handleFileOpenError(const std::string& settingsFilename) {
 
     DEBUG_PRINT("-----------------------Progress Checking 309-----------------------");
 
+    // errorStream = std::cerr;
+
     DEBUG_PRINT("File that could not be opened: " << settingsFilename);
     errorStream << "Error: Unable to open file \""
                 <<  settingsFilename << "\". ";
@@ -356,7 +358,6 @@ void IOHandler::handleFileOpenError(const std::string& settingsFilename) {
                     DEBUG_PRINT("-----------------------Progress Checking 337-----------------------");
             defaultSettingsFile.close();
         }
-        readSettingsFromFile();
         return;
     } else {
         throw ExitException(EXIT_SUCCESS);
@@ -376,9 +377,10 @@ void IOHandler::readSettingsFromFile() {
 
     std::ifstream file(arguments.filename);
 
-    if (!file.is_open()) {
+    while (!file.is_open()) {
         DEBUG_PRINT("-----------------------Progress Checking 351-----------------------");
         handleFileOpenError(arguments.filename);
+        file.open(arguments.filename);
         return;
     }
     

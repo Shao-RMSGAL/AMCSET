@@ -3,11 +3,11 @@ from mayavi import mlab
 import numpy as np
 
 # User settings
-step = 1  # How many data points to skip when rendering. 1 to show all data. 
+step = 1  # How many data points to skip when rendering. 1 to show all data
 electron = False  # Is this electron data? False if ion data
-numRender = 1000  # How many simulations to render?
-scatter = False  # True for scatter plot, False for line plot
-filename = "./output/IonNoCascade.csv"  # Filename. Include directory
+numRender = 1  # How many simulations to render?
+scatter = True  # True for scatter plot, False for line plot
+filename = "./output/coordinateOutput.csv"  # Filename and directory 
 
 # Read the CSV file
 df = pd.read_csv(filename, dtype={0: str})
@@ -29,6 +29,10 @@ z = data['z'].dropna()
 uniqueIDs = bombardmentID.unique()
 groupedData = {uid: data[bombardmentID == uid][['x', 'y', 'z']].values for uid
                in uniqueIDs}
+
+# Extract data that has a depth=1 from the "data" object
+# groupedData = {uid: data[bombardmentID == uid][['x', 'y', 'z']].values for uid
+#                in uniqueIDs if data[bombardmentID == uid]['depth'].values[0] == 1}
 
 if electron:
     size = 5000000
