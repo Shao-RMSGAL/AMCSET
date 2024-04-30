@@ -1,14 +1,14 @@
 /******************************************************************************
  * Filename:        constants.cpp
- * Project:         eSRIM
+ * Project:         AMCSET
  * Author:          Nathaniel Thomas
  * Date Created:    March 8, 2024
- * Date Modified:   March 22, 2024
+ * Date Modified:   April 30, 2024
  * File Version:    1.0
  * Group:           Dr. Shao's RMSLCF Group
  *
  * Description:
- * This file contains useful constants to be used in the eSRIM program.
+ * This file contains useful constants to be used in the AMCSET program.
  * 
  *
  * Revision History

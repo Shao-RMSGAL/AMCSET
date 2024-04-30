@@ -1,15 +1,15 @@
 /******************************************************************************
- * Filename:        eSRIM_classes.h
- * Project:         eSRIM
+ * Filename:        AMCSET_classes.h
+ * Project:         AMCSET
  * Author:          Nathaniel Thomas
  * Date Created:    March 8, 2024
- * Date Modified:   April 10, 2024
+ * Date Modified:   April 30, 2024
  * File Version:    1.0
  * Group:           Dr. Shao's RMSLCF Group
  *
  * Description:
- * This file contains the class declarations for the eSRIM program. 
- * implementations are in eSRIM_classes.cpp
+ * This file contains the class declarations for the AMCSET program. 
+ * implementations are in AMCSET_classes.cpp
  * 
  *
  * Revision History
@@ -17,8 +17,8 @@
  * - File created and class declarations added
  *
  *****************************************************************************/
-#ifndef ESRIM_CLASSES_H
-#define ESRIM_CLASSES_H
+#ifndef AMCSET_CLASSES_H
+#define AMCSET_CLASSES_H
 
 // Includes
 #include <array>

@@ -14,5 +14,7 @@ build/_deps
 CMake*Presets.json
 *conan*.sh
 # Ignore files without a file extension
-
+test_files/main
+test_files/matrix_m.o
+test_files/smart_pointer
 

@@ -11,7 +11,7 @@
 #include <fstream>
 #include <filesystem>
 
-#include "eSRIM.h" // Include the header file containing your main function
+#include "AMCSET.h" // Include the header file containing your main function
 
 // Refer to https://google.github.io/googletest/
 // for proper test-case writing practices.
@@ -75,13 +75,13 @@ TEST_F(MainFunctionTest, OneEqualsZero) {
 
 // No arguments test
 TEST_F(MainFunctionTest, RunProgramWithNoArguments) {
-    const char* argv[] = {"eSRIM", nullptr};
+    const char* argv[] = {"AMCSET", nullptr};
     const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
 
     std::istringstream stdIn;
     std::ostringstream stdOut;
     std::ostringstream stdErr;
-    int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
+    int result = startAMCSET(argc, argv, stdIn, stdOut, stdErr);
 
     // There should be no output to standard error or standard output
     EXPECT_TRUE(stdOut.str().empty());
@@ -92,13 +92,13 @@ TEST_F(MainFunctionTest, RunProgramWithNoArguments) {
 
 // // Test an unrecognized flag.
 TEST_F(MainFunctionTest, RunProgramWithUnrecognizedFlag) {
-    const char* argv[] = {"eSRIM", "-xxxx", nullptr};
+    const char* argv[] = {"AMCSET", "-xxxx", nullptr};
     const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
 
     std::istringstream stdIn;
     std::ostringstream stdOut;
     std::ostringstream stdErr;
-    int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
+    int result = startAMCSET(argc, argv, stdIn, stdOut, stdErr);
 
     // There should be output to standard error
     EXPECT_TRUE(stdOut.str().empty());
@@ -109,13 +109,13 @@ TEST_F(MainFunctionTest, RunProgramWithUnrecognizedFlag) {
 
 // Test the -h flag
 TEST_F(MainFunctionTest, RunProgramWithHelpFlag) {
-    const char* argv[] = {"eSRIM", "-h", nullptr};
+    const char* argv[] = {"AMCSET", "-h", nullptr};
     const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
 
     std::istringstream stdIn;
     std::ostringstream stdOut;
     std::ostringstream stdErr;
-    int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
+    int result = startAMCSET(argc, argv, stdIn, stdOut, stdErr);
 
     // There should be output to standard output
     EXPECT_FALSE(stdOut.str().empty());
@@ -126,13 +126,13 @@ TEST_F(MainFunctionTest, RunProgramWithHelpFlag) {
 
 // Test the --help flag
 TEST_F(MainFunctionTest, RunProgramWithDoubleDashHelpFlag) {
-    const char* argv[] = {"eSRIM", "--help", nullptr};
+    const char* argv[] = {"AMCSET", "--help", nullptr};
     const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
 
     std::istringstream stdIn;
     std::ostringstream stdOut;
     std::ostringstream stdErr;
-    int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
+    int result = startAMCSET(argc, argv, stdIn, stdOut, stdErr);
 
     // There should be output to standard output
     EXPECT_FALSE(stdOut.str().empty());
@@ -144,13 +144,13 @@ TEST_F(MainFunctionTest, RunProgramWithDoubleDashHelpFlag) {
 // Test the -f flag with an existing settings file passed
 TEST_F(MainFunctionTest, RunProgramWithExistingSettingsFile) {
 
-    const char* argv[] = {"eSRIM", "-f", "settings.txt", nullptr};
+    const char* argv[] = {"AMCSET", "-f", "settings.txt", nullptr};
     const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
 
     std::istringstream stdIn;
     std::ostringstream stdOut;
     std::ostringstream stdErr;
-    int result = startESRIM(argc, argv, stdIn, stdOut, stdErr);
+    int result = startAMCSET(argc, argv, stdIn, stdOut, stdErr);
 
     // There should be no output to standard error or standard output
     EXPECT_TRUE(stdOut.str().empty());
@@ -161,7 +161,7 @@ TEST_F(MainFunctionTest, RunProgramWithExistingSettingsFile) {
 
 // Test the -f flag with a non-existing settings file passed and "n" from the standard input
 // TEST_F(MainFunctionTest, RunProgramWithNonExistingSettingsFile) {
-//     const char* argv[] = {"eSRIM", "-f", "non-existing-settings.txt", nullptr};
+//     const char* argv[] = {"AMCSET", "-f", "non-existing-settings.txt", nullptr};
 //     const int argc = sizeof(argv) / sizeof(argv[0]) - 1;
 
 //     // Delete the false settings file if it exists
@@ -172,7 +172,7 @@ TEST_F(MainFunctionTest, RunProgramWithExistingSettingsFile) {
 //     std::istringstream stdIn("n\n");
 //     std::ostringstream stdOut;
 //     // std::ostringstream stdErr;
-//     int result = startESRIM(argc, argv, stdIn, stdOut/*, stdErr*/);
+//     int result = startAMCSET(argc, argv, stdIn, stdOut/*, stdErr*/);
 
 //     std::cout << stdOut.str() << std::endl;
 

@@ -1,15 +1,15 @@
 /******************************************************************************
  * Filename:        utilities.h
- * Project:         eSRIM
+ * Project:         AMCSET
  * Author:          Nathaniel Thomas
  * Date Created:    March 12, 2024
- * Date Modified:   March 16, 2024
+ * Date Modified:   April 30, 2024
  * File Version:    1.0
  * Group:           Dr. Shao's RMSLCF Group
  *
  * Description:
  * This file contains useful utilities and constants used by the 
- * main function in the eSRIM program
+ * main function in the AMCSET program
  * 
  *
  * Revision History
@@ -26,7 +26,7 @@
 #include <iostream>
 
 // Local includes
-#include "eSRIM_classes.h"
+#include "AMCSET_classes.h"
 
 // Define a struct to store settings
 struct Arguments {
@@ -64,17 +64,17 @@ class IOHandler {
         const std::string_view inputNotInitializedMessage = "InputFields input has not been initialized.";
 
         const std::string_view helpMessage = 
-        R"(eSRIM Version 1.0
+        R"(AMCSET Version 1.0
         Author:         Nathaniel Thomas
         Contact:        nathaniel@swbell.net
         Release date:   March 12, 2024
 
-        This is a program for simulating the Stopping and Range of Ions in Matter (SRIM), with electron bombardment simulation capabilities.
+        This is a program for simulating ion and electron bombardment in materials.
 
-        Usage: ./eSRIM [options][paths...]
+        Usage: ./AMCSET [options][paths...]
 
         Options
-            -f --filename <filename>    Read settings for eSRIM from <filename>. [Default="settings.txt"]
+            -f --filename <filename>    Read settings for AMCSET from <filename>. [Default="settings.txt"]
             -t --time                   Record execution time and output to standard output.
             -s --settings               Display an example settings file.   
             -d --display                Output the active settings to the standard output.

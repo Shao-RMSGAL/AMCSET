@@ -1,6 +1,6 @@
 /******************************************************************************
  * Filename:        main.cpp
- * Project:         eSRIM
+ * Project:         AMCSET
  * Author:          Nathaniel Thomas
  * Date Created:    March 15, 2024
  * Date Modified:   March 22, 2024
@@ -8,16 +8,16 @@
  * Group:           Dr. Shao's RMSLCF Group
  *
  * Description:
- * This is the main file for the eSRIM code developed by Dr. Shao and converted
+ * This is the main file for the AMCSET code developed by Dr. Shao and converted
  * to the C++ programming language
  *
  * Revision History
  * 1.0:
  * - File created to account for testing requirements
  *****************************************************************************/
-#include "eSRIM.h"
+#include "AMCSET.h"
 
 // Main program  start
 int main(const int argc, const char* argv[]) {
-    return startESRIM(argc, argv);
+    return startAMCSET(argc, argv);
 }

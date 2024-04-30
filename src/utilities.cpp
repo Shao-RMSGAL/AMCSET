@@ -1,15 +1,15 @@
 /******************************************************************************
  * Filename:        utilities.cpp
- * Project:         eSRIM
+ * Project:         AMCSET
  * Author:          Nathaniel Thomas
  * Date Created:    March 12, 2024
- * Date Modified:   March 16, 2024
+ * Date Modified:   April 10, 2024
  * File Version:    1.0
  * Group:           Dr. Shao's RMSLCF Group
  *
  * Description:
  * This file contains useful utilities and constants used by the 
- * main function in the eSRIM program
+ * main function in the AMCSET program
  * 
  *
  * Revision History

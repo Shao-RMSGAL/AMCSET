@@ -49,10 +49,10 @@ mlab.axes(xlabel='X (Angstrom)', ylabel='Y (Angstrom)', zlabel='Z (Angstrom)')
 if electron:
     # Add a title with numberOfParticles
     mlab.title(f'Bombardment Data for {numberOfParticles}'
-               'Electrons (by eSRIM)')
+               'Electrons (by AMCSET)')
 else:
     # Add a title with numberOfParticles
-    mlab.title(f'Bombardment Data for {numberOfParticles} Ions (by eSRIM)')
+    mlab.title(f'Bombardment Data for {numberOfParticles} Ions (by AMCSET)')
 
 # Seed the random number generator with a constant
 np.random.seed(0)

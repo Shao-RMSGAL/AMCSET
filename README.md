@@ -1,4 +1,4 @@
-# eSRIM (electron Stopping and Range of Ions in Matter)
+# AMCSET (electron Stopping and Range of Ions in Matter)
 
 
 <div style="text-align:center;">
@@ -18,7 +18,7 @@
 
 ## Introduction
 
-This is eSRIM, a version of Stopping and Range of Ions in Matter (SRIM) with added capabilities for electron bombardment simulation. It is written in C++ using the GNU standard libraries. Originally conceived of and written by Dr. Lin Shao, this is a program written to implement the methods used by Dr. Shao to efficiently perform electron bombardment calculations efficiently, a traditionally computationally expensive and slow task. 
+This is AMCSET, a materials ion bombardment simulation program with capabilities for electron bombardment simulation. It is written in C++ using the GNU standard libraries. Originally conceived of and written by Dr. Lin Shao, this is a program written to implement the methods used by Dr. Shao to efficiently perform electron bombardment calculations efficiently, a traditionally computationally expensive and slow task. 
 
 Having the ability to simulate electron and ion bombardment is an invaluable tool in the field of materials science, as it enables the prediction of irradiation penetration depth, allowing researchers to correlate experimental data with simulated data.
 
@@ -50,7 +50,7 @@ The program has a built-in protection which ensures that data from previous runs
 
 ### Data Toggles
 
-There are several toggles available in the settings file that enables a user to select what data is reported by eSRIM. This is a valuable feature, as eSRIM can generate gigabytes of data if all the generated data is reported. Three toggles allow for reduction of output file size:
+There are several toggles available in the settings file that enables a user to select what data is reported by AMCSET. This is a valuable feature, as AMCSET can generate gigabytes of data if all the generated data is reported. Three toggles allow for reduction of output file size:
 - _logStoppingPointOnly_ - This option only logs the final resting point of each particle, and does not record the path that the particle took to get to the stopping point. 
 - _logEndOfFlyingDistance_ (__Electron only__) This option reduces the number of coordinates logged by not logging every coordinate within a local substrate interaction group, but only logging the last interaction within a group. This can reduce the data size by a factor of 
 
@@ -157,7 +157,7 @@ You should see an output like this
 -- Production mode is enabled.
 -- Configuring done (2.5s)
 -- Generating done (0.0s)
--- Build files have been written to: /path/to/project/eSRIM/build
+-- Build files have been written to: /path/to/project/AMCSET/build
 ```
 
 You can also set flags to configure cmake to use a different compiler. Read the [CMakeLists.txt](CMakeLists.txt) file to learn more.
@@ -186,15 +186,15 @@ once you've [built](#building) the project.
 Run the program using the following command
 
 ```bash
-./bin/eSRIM
+./bin/AMCSET
 ```
 
 By default, the program does not produce any output, it simply reads the [settings.txt](build/settings.txt) file and completes a simulation based on those settings before exiting. 
 
-eSRIM supports a number of command-line arguments. You can see all the available arguments using the _-h_ flag
+AMCSET supports a number of command-line arguments. You can see all the available arguments using the _-h_ flag
 
 ```bash
-./bin/eSRIM -h
+./bin/AMCSET -h
 ```
 
 ## Cleaning the Build Directory
@@ -237,7 +237,7 @@ pip install pandas
 pip install matplotlib
 ```
 
-After you've run eSRIM, you can generate a plot using this script like so (run this from the /build directory).
+After you've run AMCSET, you can generate a plot using this script like so (run this from the /build directory).
 
 ```bash
 ../python/graphing.py
@@ -257,7 +257,7 @@ Currently this project is only tested to build and run on Linux. Windows support
 
 ### Add Planned Features and Issues to GitHub (Development)
 
-While this file tracks planned features, they should also be added to the [GitHub](https://github.com/Shao-RMSGAL/eSRIM/issues) page as issues. Similarly, issues should also be added to GitHub.
+While this file tracks planned features, they should also be added to the [GitHub](https://github.com/Shao-RMSGAL/AMCSET/issues) page as issues. Similarly, issues should also be added to GitHub.
 
 ### Signal Handling (Required)
 
@@ -295,7 +295,7 @@ The codebase should be tested using Google gtest to ensure that the program work
 
 ### GPU Optimization (Option)
 
-The code should be able to leverage the GPU to perform parallelized calculations on a large scale. The most promising candidate for this option is the [function for generating Mott Differential Cross Sections](src/eSRIM_classes.cpp#getMottDifferentialCrossSection). This function is a major bottleneck for electron bombardment simulation (determined by performance analysis). Parallelizing this operation using a GPU may result in drastic speedups. 
+The code should be able to leverage the GPU to perform parallelized calculations on a large scale. The most promising candidate for this option is the [function for generating Mott Differential Cross Sections](src/AMCSET_classes.cpp#getMottDifferentialCrossSection). This function is a major bottleneck for electron bombardment simulation (determined by performance analysis). Parallelizing this operation using a GPU may result in drastic speedups. 
 
 Due to the non-standardized nature of GPU-Accelerated programming (NVidea uses [CUDA](https://developer.nvidia.com/cuda-toolkit), AMD uses [ROCm](https://www.amd.com/en/products/software/rocm.html), Intel uses [OpenCL](https://www.intel.com/content/www/us/en/developer/articles/tool/tools-for-opencl-applications.html)) multiple GPU-Acceleration algorithms may need to be implemented depending on the system configuration. 
 
@@ -317,7 +317,7 @@ The Mott Scattering Parameters and Electron Screening Parameters are currently r
 
 ### Clean Up Main Function Wrapping and Input Stream Handling (Development)
 
-In order to get tests to run properly, the main function was wrapped in a function called eSRIM(). and a [separate header file](include/eSRIM.h) was made for it. However, the input stream (which is passed as an argument to the wrapper) is not properly passed through the InputFields class, and is instead passed as a parameter to several functions which read the standard output, either directly or indirectly. This behavior is undesirable as it makes function signatures unnecessarily complicated and should be corrected.
+In order to get tests to run properly, the main function was wrapped in a function called AMCSET(). and a [separate header file](include/AMCSET.h) was made for it. However, the input stream (which is passed as an argument to the wrapper) is not properly passed through the InputFields class, and is instead passed as a parameter to several functions which read the standard output, either directly or indirectly. This behavior is undesirable as it makes function signatures unnecessarily complicated and should be corrected.
 
 Add the input stream reference (std::istream& inputStream) as a member in the InputFields class so that it can be better handled.
 

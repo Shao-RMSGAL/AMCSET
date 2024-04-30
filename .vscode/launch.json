@@ -5,7 +5,7 @@
             "name": "Debug with GDB",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/cpp/bin/eSRIM", // Path to your executable
+            "program": "${workspaceFolder}/cpp/bin/AMCSET", // Path to your executable
             "args": [], // Command-line arguments
             "stopAtEntry": true,
             "cwd": "${workspaceFolder}/cpp/src",
@@ -29,7 +29,7 @@
             "name": "Build and Run",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/cpp/bin/eSRIM",
+            "program": "${workspaceFolder}/cpp/bin/AMCSET",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/cpp",

@@ -8,7 +8,7 @@ endif()
 
 cmake_minimum_required(VERSION 3.23.5)
 
-project(eSRIM LANGUAGES CXX)
+project(AMCSET LANGUAGES CXX)
 
 find_package(ZLIB REQUIRED)
 
@@ -41,8 +41,8 @@ set(SOURCE_DIR ${CMAKE_SOURCE_DIR}/src)
 set(INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
 
 set(SOURCE_FILES 
-    ${SOURCE_DIR}/eSRIM.cpp
-    ${SOURCE_DIR}/eSRIM_classes.cpp
+    ${SOURCE_DIR}/AMCSET.cpp
+    ${SOURCE_DIR}/AMCSET_classes.cpp
     ${SOURCE_DIR}/utilities.cpp
 )
 

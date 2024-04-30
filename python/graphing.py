@@ -37,7 +37,7 @@ for uid, group in groupedData.items():
 ax.set_xlabel('X (angstrom)')
 ax.set_ylabel('Y (angstrom)')
 ax.set_zlabel('Z (angstrom)')
-ax.set_title('Bombardment Data for 1000 particles (by eSRIM)')
+ax.set_title('Bombardment Data for 1000 particles (by AMCSET)')
 ax.view_init(6, 45)  # Set the viewing angle
 
 plt.tight_layout() 

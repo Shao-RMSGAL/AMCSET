@@ -1,6 +1,6 @@
 /******************************************************************************
- * Filename:        eSRIM.cpp
- * Project:         eSRIM
+ * Filename:        AMCSET.cpp
+ * Project:         AMCSET
  * Author:          Nathaniel Thomas
  * Date Created:    March 8, 2024
  * Date Modified:   March 15, 2024
@@ -8,7 +8,7 @@
  * Group:           Dr. Shao's RMSLCF Group
  *
  * Description:
- * This is the main file for the eSRIM code developed by Dr. Shao and converted
+ * This is the main file for the AMCSET code developed by Dr. Shao and converted
  * to the C++ programming language
  *
  * Revision History
@@ -17,19 +17,19 @@
  * 1.1: (March 13, 2024)
  * - Added File I/O
  * 1.2: (March 15, 2024)
- * - Renamed from main.cpp to eSRIM.cpp
+ * - Renamed from main.cpp to AMCSET.cpp
  *****************************************************************************/
-#ifndef eSRIM_CXX
-#define eSRIM_CXX
+#ifndef AMCSET_CXX
+#define AMCSET_CXX
 
 // Local header files
-#include "eSRIM.h"
+#include "AMCSET.h"
 #include "utilities.h"
 
 ExitException::ExitException(int status) : status(status) {};
 
 // Main program  start
-int startESRIM(
+int startAMCSET(
         const int argc, const char* argv[],
         std::istream& inputStream,
         std::ostream& outputStream,
