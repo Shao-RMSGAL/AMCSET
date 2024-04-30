@@ -1,4 +1,4 @@
-# AMCSET (electron Stopping and Range of Ions in Matter)
+# AMCSET (Aggie Monte Carlo Simulation of Electron and Ion Transport)
 
 
 <div style="text-align:center;">
