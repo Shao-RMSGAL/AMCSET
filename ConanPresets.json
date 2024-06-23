@@ -1,0 +1,16 @@
+{
+    "version": 4,
+    "vendor": {
+        "conan": {}
+    },
+    "configurePresets": [
+        {
+            "name": "conan-default"
+        }
+    ],
+    "buildPresets": [],
+    "include": [
+        "build/Release/generators/CMakePresets.json",
+        "build/Debug/generators/CMakePresets.json"
+    ]
+}
