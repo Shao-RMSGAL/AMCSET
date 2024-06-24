@@ -7,4 +7,4 @@ target_include_directories(amcset_server PRIVATE
     ${PROJECT_SOURCE_DIR}/server/include/
     )
 
-target_link_libraries(amcset_server PUBLIC compiler_flags)
+target_link_libraries(amcset_server PRIVATE compiler_flags)

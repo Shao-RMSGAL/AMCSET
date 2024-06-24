@@ -16,8 +16,9 @@ RUN apt-get update \
         wget \
         coreutils \
         build-essential \
+        gimp \
     && rm -rf /var/lib/apt/lists/*
-     
+
 RUN echo "developer ALL=(ALL) NOPASSWD: /usr/bin/chown, /usr/bin/dpkg" >> /etc/sudoers
 
 RUN echo "root:rootpassword" | chpasswd \
@@ -35,12 +36,8 @@ RUN sudo chown -R developer:developer /home/developer/
 
 ENV PATH="/home/developer/.local/bin:${PATH}"
 
-COPY pip_requirements.txt /tmp/
-
-# Download the Conan Debian package from the specified URL
-RUN wget https://github.com/conan-io/conan/releases/download/2.4.0/conan-2.4.0-amd64.deb \
-    && sudo dpkg -i conan-2.4.0-amd64.deb \
-    && rm conan-2.4.0-amd64.deb 
+ADD requirements.txt /tmp/
+RUN pip install -r /tmp/requirements.txt
 
 RUN conan profile detect --force \
     && cd AMCSET \

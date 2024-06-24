@@ -15,9 +15,12 @@
 #include "amcset_common.h"
 
 #include <iostream>
+#include <boost/math/constants/constants.hpp>
 
 int main(const int argc, const char* argv[]) {
     std::cout << amcset::server::server_greeting() << std::endl;
     std::cout << amcset::common::common_greeting() << std::endl;
+    std::cout << "Value of pi: " << boost::math::constants::pi<double>() 
+              << std::endl;
     return 0;
 }

@@ -5,8 +5,8 @@
 # times, unless you have deleted the contents of the /build directory or
 # restarted your terminal
 
-conan install .
-conan install . -s build_type=Debug
+conan install . --build=missing
+conan install . -s build_type=Debug --build=missing
 
 source ./build/Debug/generators/conanbuild.sh
 

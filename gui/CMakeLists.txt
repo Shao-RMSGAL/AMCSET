@@ -7,4 +7,4 @@ target_include_directories(amcset_gui PRIVATE
     ${PROJECT_SOURCE_DIR}/gui/include/
     )
 
-target_link_libraries(amcset_gui PUBLIC compiler_flags)
+target_link_libraries(amcset_gui PRIVATE compiler_flags)

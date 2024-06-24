@@ -39,5 +39,8 @@ class fooRecipe(ConanFile):
         cmake = CMake(self)
         cmake.install()
 
+    def requirements(self):
+        self.requires("boost/1.85.0")
+
     def build_requirements(self):
             self.tool_requires("cmake/[>3.23]")
