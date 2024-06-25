@@ -24,7 +24,8 @@ add_subdirectory(gui)
 add_subdirectory(common)
 
 # Packages
-find_package(Boost 1.85.0)
+find_package(Boost 1.85.0 REQUIRED COMPONENTS
+    )
 
 # Add package includes and link common
 target_include_directories(amcset_common PUBLIC ${Boost_INCLUDE_DIRS})

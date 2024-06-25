@@ -34,6 +34,8 @@ class fooRecipe(ConanFile):
         cmake = CMake(self)
         cmake.configure()
         cmake.build()
+        self.conf["tools.system.package_manager:mode"] = "install"
+        self.conf["tools.system.package_manager:sudo"] = True
 
     def package(self):
         cmake = CMake(self)
@@ -41,6 +43,7 @@ class fooRecipe(ConanFile):
 
     def requirements(self):
         self.requires("boost/1.85.0")
+        self.requires("qt/6.7.1")
 
     def build_requirements(self):
             self.tool_requires("cmake/[>3.23]")
