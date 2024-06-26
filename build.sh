@@ -18,8 +18,15 @@ else
 fi
 source ./build/Debug/generators/conanbuild.sh
 
-cmake --preset debug
+$HOME/Qt/Tools/CMake/bin/cmake -G Ninja \
+    --preset debug \
+    -DQt6_DIR=$HOME/Qt/6.7.2/gcc_64/lib/cmake/Qt6 \
+    -DCMAKE_PREFIX_PATH=$HOME/Qt/6.7.2/gcc_64
+
 cmake --build --preset debug
+
+# /home/nathaniel/Qt/6.7.2/gcc_64/bin/qt-cmake --build --preset debug
+# cmake --preset debug
 
 # Commands for release build
 # cmake --preset release

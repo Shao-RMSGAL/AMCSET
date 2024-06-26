@@ -2,7 +2,7 @@ from conan import ConanFile
 from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout, CMakeDeps
 
 
-class fooRecipe(ConanFile):
+class amcsetRecipe(ConanFile):
     name = "amcset"
     version = "1.0"
     package_type = "application"
@@ -46,4 +46,5 @@ class fooRecipe(ConanFile):
         self.requires("qt/6.7.1")
 
     def build_requirements(self):
-            self.tool_requires("cmake/[>3.23]")
+        self.tool_requires("cmake/[>3.23]")
+        # self.tool_requires("ninja/[>1.12]")
