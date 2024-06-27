@@ -1,4 +1,4 @@
-#include "amcset_main_window.h"
+#include "mainwindow.h"
 
 #include <QApplication>
 #include <QLocale>
@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
             break;
         }
     }
-    amcset_main_window w;
+    MainWindow w;
     w.show();
     return a.exec();
 }

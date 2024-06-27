@@ -5,12 +5,14 @@
     },
     "configurePresets": [
         {
-            "name": "conan-default"
+            "name": "conan-release"
+        },
+        {
+            "name": "conan-debug"
         }
     ],
     "buildPresets": [],
     "include": [
-        "build/Debug/generators/CMakePresets.json",
-        "build/Release/generators/CMakePresets.json"
+        "build\\generators\\CMakePresets.json"
     ]
 }

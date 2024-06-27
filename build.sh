@@ -31,3 +31,5 @@ cmake --build --preset debug
 # Commands for release build
 # cmake --preset release
 # cmake --build --preset release
+
+C:\Qt\Tools\CMake_64\bin\cmake -G Ninja --preset debug -DQt6_DIR=C:\Qt\6.7.2\mingw_64\lib\cmake\Qt6 -DCMAKE_PREFIX_PATH=C:\Qt\6.7.2\mingw_64
