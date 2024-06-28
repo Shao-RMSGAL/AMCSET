@@ -32,7 +32,7 @@ MainWindow::~MainWindow()
 
 void MainWindow::on_promptServer_clicked()
 {
-    std::cout << "Hello" << std::endl;
+    std::cout << "Hello!" << std::endl;
     boost::interprocess::message_queue client_to_server_queue(boost::interprocess::open_only, "client_to_server_message_queue");
     boost::interprocess::message_queue server_to_client_queue(boost::interprocess::open_only, "server_to_client_message_queue");
 

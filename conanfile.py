@@ -24,7 +24,7 @@ class amcsetRecipe(ConanFile):
         cmake_layout(self)
 
     def generate(self):
-        # deps = CMakeDeps(self)
+        # deps = CMakeDeps(self) # Not needed for QtCreator
         # deps.generate()
         tc = CMakeToolchain(self)
         tc.user_presets_path = 'ConanPresets.json'
@@ -43,7 +43,9 @@ class amcsetRecipe(ConanFile):
 
     def requirements(self):
         self.requires("boost/1.85.0")
-        # self.requires("qt/6.7.1")
+        self.requires("gtest/1.14.0")
+        self.requires("glog/0.7.1")
+        # self.requires("qt/6.7.1") # Not needed when using QtCreator.
 
     def build_requirements(self):
         self.tool_requires("cmake/[>3.23]")

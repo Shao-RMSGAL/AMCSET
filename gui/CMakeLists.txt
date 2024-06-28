@@ -19,25 +19,25 @@ set(PROJECT_SOURCES
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
-    qt_add_executable(amcset_gui
+    qt_add_executable(amcset-gui
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
     )
 # Define target properties for Android with Qt 6 as:
-#    set_property(TARGET amcset_gui APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
+#    set_property(TARGET amcset-gui APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
 #                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
 # For more information, see https://doc.qt.io/qt-6/qt-add-executable.html#target-creation
 
     qt_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
 else()
     if(ANDROID)
-        add_library(amcset_gui SHARED
+        add_library(amcset-gui SHARED
             ${PROJECT_SOURCES}
         )
 # Define properties for Android with Qt 5 after find_package() calls as:
 #    set(ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
     else()
-        add_executable(amcset_gui
+        add_executable(amcset-gui
             ${PROJECT_SOURCES}
         )
     endif()
@@ -45,19 +45,19 @@ else()
     qt5_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
 endif()
 
-target_link_libraries(amcset_gui PRIVATE compiler_flags)
-target_link_libraries(amcset_gui PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+target_link_libraries(amcset-gui PRIVATE compiler_flags)
+target_link_libraries(amcset-gui PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 if(WIN32)
-    target_link_libraries(amcset_gui PRIVATE ws2_32)
+    target_link_libraries(amcset-gui PRIVATE ws2_32)
 endif()
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
 # explicit, fixed bundle identifier manually though.
 if(${QT_VERSION} VERSION_LESS 6.1.0)
-  set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.amcset_gui)
+  set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.amcset-gui)
 endif()
-set_target_properties(amcset_gui PROPERTIES
+set_target_properties(amcset-gui PROPERTIES
     ${BUNDLE_ID_OPTION}
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
@@ -66,12 +66,12 @@ set_target_properties(amcset_gui PROPERTIES
 )
 
 include(GNUInstallDirs)
-install(TARGETS amcset_gui
+install(TARGETS amcset-gui
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 if(QT_VERSION_MAJOR EQUAL 6)
-    qt_finalize_executable(amcset_gui)
+    qt_finalize_executable(amcset-gui)
 endif()

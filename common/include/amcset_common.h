@@ -13,7 +13,7 @@
 
 
 #if defined(_WIN32)
-#  if defined(EXPORTING_MYMATH)
+#  if defined(EXPORTING_AMCSET)
 #    define DECLSPEC __declspec(dllexport)
 #  else
 #    define DECLSPEC __declspec(dllimport)
@@ -25,9 +25,26 @@
 #pragma once
 
 #include <string>
+#include <boost/random/uniform_01.hpp>
+#include <boost/random/niederreiter_base2.hpp> 
 
 namespace amcset {
     namespace common {
         std::string common_greeting();
+
+        struct Coordinate {
+            double x;
+            double y;
+            double z;
+
+            Coordinate(double x_, double y_, double z_) : x(x_), y(y_), z(z_) {}
+        };
+
+        struct Velocity {
+            double z_angle;
+            double x_angle;
+            double energy;
+        };        
+
     }
 }

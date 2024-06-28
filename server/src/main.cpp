@@ -19,7 +19,7 @@
 #include <boost/math/constants/constants.hpp>
 #include <boost/interprocess/ipc/message_queue.hpp>
 
-int main(const int argc, const char* argv[]) {
+int main(/* const int argc, const char* argv[] */) {
     std::cout << amcset::server::server_greeting() << std::endl;
     std::cout << amcset::common::common_greeting() << std::endl;
     std::cout << "Value of pi: " << boost::math::constants::pi<double>()
