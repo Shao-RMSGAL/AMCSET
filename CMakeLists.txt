@@ -25,7 +25,7 @@ configure_file(common/include/config.h.in config.h)
 # Configure subdirectories
 add_subdirectory(server)
 add_subdirectory(common)
-add_subdirectory(amcset_gui)
+add_subdirectory(gui)
 
 # # Packages
 find_package(Boost 1.85.0 REQUIRED COMPONENTS)
