@@ -24,8 +24,8 @@ class amcsetRecipe(ConanFile):
         cmake_layout(self)
 
     def generate(self):
-        deps = CMakeDeps(self)
-        deps.generate()
+        # deps = CMakeDeps(self)
+        # deps.generate()
         tc = CMakeToolchain(self)
         tc.user_presets_path = 'ConanPresets.json'
         tc.generate()
@@ -43,8 +43,8 @@ class amcsetRecipe(ConanFile):
 
     def requirements(self):
         self.requires("boost/1.85.0")
-        self.requires("qt/6.7.1")
+        # self.requires("qt/6.7.1")
 
     def build_requirements(self):
         self.tool_requires("cmake/[>3.23]")
-        # self.tool_requires("ninja/[>1.12]")
+        self.tool_requires("ninja/[>1.12]")

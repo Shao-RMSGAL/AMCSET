@@ -1,5 +1,9 @@
-#include "amcset_main_window.h"
-#include "./ui_amcset_main_window.h"
+#include "mainwindow.h"
+#include "./ui_mainwindow.h"
+
+#include <iostream>
+#include <exception>
+#include <QCoreApplication>
 #include <boost/interprocess/ipc/message_queue.hpp>
 #include <boost/process.hpp>
 #include <filesystem>
@@ -7,30 +11,28 @@
 #include <cstdlib>
 #include <iostream>
 
-amcset_main_window::amcset_main_window(QWidget *parent)
+MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
-    , ui(new Ui::amcset_main_window)
+    , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
     try {
         std::filesystem::path currentPath = std::filesystem::current_path();
         std::cout << "Directory: " << currentPath.string() << std::endl;
-        std::string executable = "../server/amcset_server";
-        std::vector<std::string> args = {};
-        boost::process::spawn(executable, args);
     } catch (std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         std::exit(1);
     }
 }
 
-amcset_main_window::~amcset_main_window()
+MainWindow::~MainWindow()
 {
     delete ui;
 }
 
-void amcset_main_window::on_pushButton_clicked()
+void MainWindow::on_promptServer_clicked()
 {
+    std::cout << "Hello" << std::endl;
     boost::interprocess::message_queue client_to_server_queue(boost::interprocess::open_only, "client_to_server_message_queue");
     boost::interprocess::message_queue server_to_client_queue(boost::interprocess::open_only, "server_to_client_message_queue");
 
@@ -44,7 +46,7 @@ void amcset_main_window::on_pushButton_clicked()
     recieved_message[recieved_size] = '\0';
 
     if(std::string(recieved_message) == "exit") {
-        std::exit(0);
+        QCoreApplication::quit();
     }
 
     QString displayMessage(recieved_message);
@@ -53,12 +55,12 @@ void amcset_main_window::on_pushButton_clicked()
     cursor.movePosition(QTextCursor::Start, QTextCursor::MoveAnchor, 1);
 }
 
-void amcset_main_window::on_pushButton_2_clicked()
+
+void MainWindow::on_exitButton_clicked()
 {
     boost::interprocess::message_queue client_to_server_queue(boost::interprocess::open_only, "client_to_server_message_queue");
 
     std::string exit_message("exit");
     client_to_server_queue.send(exit_message.c_str(), exit_message.size(), 0);
-    std::exit(0);
+    QCoreApplication::quit();
 }
-

@@ -22,7 +22,7 @@
 int main(const int argc, const char* argv[]) {
     std::cout << amcset::server::server_greeting() << std::endl;
     std::cout << amcset::common::common_greeting() << std::endl;
-    std::cout << "Value of pr: " << boost::math::constants::pi<double>()
+    std::cout << "Value of pi: " << boost::math::constants::pi<double>()
               << std::endl;
 
     boost::interprocess::message_queue::remove("server_to_client_message_queue");

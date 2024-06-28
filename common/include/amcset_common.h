@@ -11,6 +11,17 @@
 // You should have received a copy of the GNU General Public License along with AMCSET.
 // If not, see <https://www.gnu.org/licenses/>.
 
+
+#if defined(_WIN32)
+#  if defined(EXPORTING_MYMATH)
+#    define DECLSPEC __declspec(dllexport)
+#  else
+#    define DECLSPEC __declspec(dllimport)
+#  endif
+#else // non windows
+#  define DECLSPEC
+#endif
+
 #pragma once
 
 #include <string>
