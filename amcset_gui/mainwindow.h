@@ -18,7 +18,7 @@ public:
     ~MainWindow();
 
 private slots:
-    void on_pushButton_clicked();
+    void on_promptServer_clicked();
 
     void on_exitButton_clicked();
 

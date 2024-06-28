@@ -1,1 +1,3 @@
 build/
+ConanPresets.json
+CMakeLists.txt.user

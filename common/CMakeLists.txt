@@ -1,5 +1,6 @@
 add_library(amcset_common STATIC
     ${PROJECT_SOURCE_DIR}/common/src/amcset_common.cpp
+    ${PROJECT_SOURCE_DIR}/common/include/amcset_common.h
     )
 
 # state that common need PIC when the default is shared libraries
