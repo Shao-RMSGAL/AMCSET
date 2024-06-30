@@ -5,18 +5,19 @@ build_dir="$project_dir/build/Debug"
 src_dir="$project_dir"
 cmake_cmd="$HOME/Qt/Tools/CMake/bin/cmake"
 test_dir="$project_dir/build/Debug/test"
+cmake_flags="-DCMAKE_EXPORT_COMPILE_COMMANDS=1"
 export TESTDIR="$build_dir/log"
 
 build() {
     cd $build_dir
-    $cmake_cmd -S $src_dir -B $build_dir
+    $cmake_cmd -S $src_dir -B $build_dir $cmake_flags
     $cmake_cmd --build $build_dir --target all 
     cd -
 }
 
 test() {
     cd $test_dir
-    ctest
+    ctest -V
 }
 
 run() {

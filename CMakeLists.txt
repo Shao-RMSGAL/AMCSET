@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.23)
 project(amcset VERSION 1.0)
 
+# For clangd lsp
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Require C++ 20
 add_library(compiler_flags INTERFACE)
 target_compile_features(compiler_flags INTERFACE cxx_std_20)
@@ -28,8 +31,8 @@ find_package(GTest 1.14.0 REQUIRED)
 find_package(glog 0.7.1 REQUIRED)
 
 # Configure subdirectories
-add_subdirectory(server)
 add_subdirectory(common)
+add_subdirectory(server)
 add_subdirectory(gui)
 add_subdirectory(test)
 
