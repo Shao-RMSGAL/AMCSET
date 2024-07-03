@@ -14,29 +14,45 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
+/*!
+ * \file common_test.cpp
+ *
+ * \brief The testing code for the amcset_common library.
+ *
+ * This testing suite verifies the functionality and correctness of the AMCSET
+ * library. It is designed for close to 100% code coverage.
+ */
+
 #include <gtest/gtest.h>
 
 #include "amcset_common.h"
 
 using namespace amcset::common;
 
+/*!
+ * \brief The testing fixture class for the amcset_common tests.
+ *
+ * This test fixture allows tests which utilize this fixture to run the same
+ * setup code (contained within the member functions defined in CommonTest).
+ */
 class CommonTest : public testing::Test {
  protected:
+  //! The constructor for CommonTest
   CommonTest() {}
-
+  //! The override for the SetUp() function
   void SetUp() override {}
-
+  //! The override for the TearDown() function
   void TearDown() override {}
 };
 
-// Template test
+//! Template test. Does not test the library, just a simple demonstration.
 TEST_F(CommonTest, common_assertions) {
   EXPECT_STRNE("hello", "world");
   EXPECT_EQ(7 * 6, 42);
   std::cout << "Hi!" << std::endl;
 }
 
-// Coordinate struct test
+//! Coordinate struct test.
 TEST_F(CommonTest, coordinate_constructor_test) {
   Coordinate coordinate(-1.0, 0, 1.0);
 
@@ -45,7 +61,7 @@ TEST_F(CommonTest, coordinate_constructor_test) {
   ASSERT_EQ(to_string(coordinate.z_), "1e-10 m");
 }
 
-// Velocity struct test
+//! Velocity struct test.
 TEST_F(CommonTest, velocity_constructor_test) {
   Velocity velocity(-pi, pi, 10000);
 
@@ -54,7 +70,7 @@ TEST_F(CommonTest, velocity_constructor_test) {
   ASSERT_EQ(to_string(velocity.energy_), "1.60218e-12 m^2 kg s^-2");
 }
 
-// TODO: Simulation class test
+//! TODO: Simulation class test
 TEST_F(CommonTest, simulation_test) {
   // Simulation simulation({
   //     .bombardment_count = 100,
@@ -66,7 +82,7 @@ TEST_F(CommonTest, simulation_test) {
   // 100);
 }
 
-// Isotope data test
+//! Isotope data test
 TEST_F(CommonTest, isotope_data_get_isotope_mass_test) {
   ASSERT_EQ(IsotopeData::getIsotopeMass(50, 132),
             double(131.9178267) * atomic_mass_unit);
@@ -78,3 +94,4 @@ TEST_F(CommonTest, isotope_data_get_isotope_mass_test) {
   ASSERT_THROW(IsotopeData::getIsotopeMass(1, 0), std::out_of_range);
   ASSERT_THROW(IsotopeData::getIsotopeMass(1, 100), std::invalid_argument);
 }
+

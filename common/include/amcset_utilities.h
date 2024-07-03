@@ -49,17 +49,24 @@ namespace constants = boost::units::si::constants::codata;
 
 using namespace boost::math::double_constants;
 
-using length_quantity = quantity<si::length>;           // Meter
-using energy_quantity = quantity<si::energy>;           // Joule
-using angle_quantity = quantity<si::plane_angle>;       // Radian
-using mass_quantity = quantity<si::mass>;               // Kilogram
-using charge_quantity = quantity<si::electric_charge>;  // Coulomb
+using length_quantity = quantity<si::length>;  //!< SI type for length (meter)
+using energy_quantity = quantity<si::energy>;  //!< SI type for energy (Joule)
+using angle_quantity =
+    quantity<si::plane_angle>;             //!< SI type for plane angle (Radian)
+using mass_quantity = quantity<si::mass>;  //!< SI type for mass (Kilogram)
+using charge_quantity =
+    quantity<si::electric_charge>;  //!< SI type for charge (Coulomb)
 
-constexpr auto kilo_electron_volt = double(1000) * constants::e * si::volt;
-constexpr auto angstrom = metric::angstrom_base_unit::unit_type();
-constexpr auto radian = angle::radian_base_unit::unit_type();
-constexpr auto atomic_mass_unit = constants::m_u;
-constexpr auto elementary_charge = constants::e;
+constexpr auto kilo_electron_volt =
+    double(1000) * constants::e * si::volt;  //!< Quantity for kiloelectron volt
+constexpr auto angstrom =
+    metric::angstrom_base_unit::unit_type();  //!< Quantity for angstrom
+constexpr auto radian =
+    angle::radian_base_unit::unit_type();  //!< Quantity for radian
+constexpr auto atomic_mass_unit =
+    constants::m_u;  //!< Quantity for atomic mass unit
+constexpr auto elementary_charge =
+    constants::e;  //!< Quantity for the elementary charge
 
 }  // namespace common
 }  // namespace amcset

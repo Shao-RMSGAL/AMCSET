@@ -14,14 +14,13 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
-/*! \file isotopic_data.h
- *  \brief Isotopic information for elements up to Z number 118.
+/*! \file isotope_data.h
+ * \brief Isotopic information for elements up to Z number 118.
  *
  * This information was taken from the National Institute of Science and
  * Technology (NIST) Atomic Weights and Isotopic Compositions with Relative
  * Atomic Masses database. At the time of writing, the data was aquired from
  * https://www.nist.gov/pml/atomic-weights-and-isotopic-compositions-relative-atomic-masses.
- *
  */
 
 // Standard library
@@ -36,6 +35,7 @@
 namespace amcset {
 namespace common {
 /*!
+ * \class IsotopeData
  * \brief Class for allowing static access to isotopic data given a mass and z
  * number.
  *
@@ -45,9 +45,11 @@ namespace common {
  */
 class IsotopeData {
  public:
-  static constexpr unsigned int MAX_Z = 118;  //! The maximum allowed Z number
+  static constexpr unsigned int MAX_Z =
+      118;  //!< The maximum allowed atomic number
+
   static constexpr unsigned int MAX_A =
-      295;  //! The maximum allowed mass number
+      295;  //!< The maximum allowed mass number
 
   /*!
    * \brief A function that takes a Z number and mass number, and returns the
@@ -85,12 +87,10 @@ class IsotopeData {
   };
 
  private:
+  // Fancy way for instantiating a compile-time static data structure.
   static constexpr std::array<std::array<mass_quantity, MAX_A>, MAX_Z>
       isotopic_masses = []() {
         std::array<std::array<mass_quantity, MAX_A>, MAX_Z> masses = {};
-
-        // Initialize with your isotopic mass data
-        
         GENERATE_ISOTOPE_MASS_DATA(masses, atomic_mass_unit);
         return masses;
       }();

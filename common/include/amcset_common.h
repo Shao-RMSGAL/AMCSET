@@ -53,7 +53,6 @@ namespace amcset {
 /*!
  * \brief The namespace specific to AMCSET common.
  *
- * \detail
  * Only code within the AMCSET common library is included in this namespace.
  * For example, all code within amcset_common.h is contained within this
  * namespace.
@@ -62,9 +61,9 @@ namespace common {
 
 //! A struct to store 3D coordinate data
 struct Coordinate {
-  length_quantity x_;  //! X position in angstroms
-  length_quantity y_;  //! Y position in angstroms
-  length_quantity z_;  //! Z position in angstroms
+  length_quantity x_;  //!< X position in angstroms
+  length_quantity y_;  //!< Y position in angstroms
+  length_quantity z_;  //!< Z position in angstroms
 
   /*!
    * \brief Construct a Coordinate struct with \c double parameters.
@@ -82,9 +81,9 @@ struct Coordinate {
 
 //! A struct for storing velocity information.
 struct Velocity {
-  angle_quantity x_angle_;  //* Angle relative to the x-axis in radians
-  angle_quantity z_angle_;  //* Angle relative to the z-axis in  radians
-  energy_quantity energy_;  //* Energy of the particle in keV
+  angle_quantity x_angle_;  //!< Angle relative to the x-axis in radians
+  angle_quantity z_angle_;  //!< Angle relative to the z-axis in  radians
+  energy_quantity energy_;  //!< Energy of the particle in keV
 
   /*!
    * \brief Construct a Velocity struct with \c double parameters
@@ -114,6 +113,7 @@ struct Velocity {
 class Particle {
  public:
   /*!
+   * \struct Properties
    * \brief A struct for storing property information associated with a
    * particle.
    *
@@ -122,8 +122,8 @@ class Particle {
    */
   struct Properties {
     const charge_quantity
-        charge_;  //! The charge of the particle (Elementary charge)
-    const mass_quantity mass_;  //! The exact mass of the particle (amu)
+        charge_;  //!< The charge of the particle (Elementary charge)
+    const mass_quantity mass_;  //!< The exact mass of the particle (amu)
 
     /*!
      * \brief Constructs a Properties struct using a z number and mass number.
@@ -159,14 +159,37 @@ class Particle {
  */
 class Simulation final {
  public:
+  /*!
+   * \brief A struct for storing settings information for instantiation of a
+   * Simulation.
+   *
+   * The Settings struct is used to determine a variety of properties of a
+   * simulation, including settings such as the incident particle properties,
+   * the incident energy, the substrate composition, cascade information, and
+   * many other settings.
+   */
   struct Settings {};
 
  private:
   const Settings settings;
 
  public:
+  /*!
+   * \brief The constructor for the Simulation class. Accepts a Settings struct
+   * to describe simulation settings.
+   *
+   * This constructor is used to construct a Simulation object. It accepts a
+   * Settings struct to configure the simulation.
+   *
+   * \param s This is the struct that describes the configuration of the
+   * Simulation.
+   */
   constexpr Simulation(Settings s) : settings(std::move(s)) {};
 
+  /*!
+   * \brief A function to retrieve a \c const reference to the
+   * settings member variable.
+   */
   template <typename T>
   constexpr const T& getSettings(T Settings::* member) const noexcept {
     return settings.*member;
