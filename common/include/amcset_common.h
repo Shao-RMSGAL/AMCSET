@@ -25,6 +25,8 @@
  */
 
 #include <boost/units/base_units/angle/radian.hpp>
+#include <boost/units/systems/si/mass.hpp>
+#include <string_view>
 #if defined(_WIN32)
 #if defined(EXPORTING_AMCSET)
 #define DECLSPEC __declspec(dllexport)
@@ -41,17 +43,8 @@
 #include <boost/random/niederreiter_base2.hpp>
 #include <boost/random/uniform_01.hpp>
 
-// Boost units
-#include <boost/units/base_units/metric/angstrom.hpp>
-#include <boost/units/io.hpp>
-#include <boost/units/physical_dimensions/energy.hpp>
-#include <boost/units/systems/si/codata/electromagnetic_constants.hpp>
-#include <boost/units/systems/si/electric_potential.hpp>
-#include <boost/units/systems/si/length.hpp>
-#include <boost/units/systems/si/plane_angle.hpp>
-
-// Boost math
-#include <boost/math/constants/constants.hpp>
+#include "amcset_utilities.h"
+#include "isotope_data.h"
 
 /*!
  * \brief The namespace used for all library code related to AMCSET.
@@ -67,28 +60,11 @@ namespace amcset {
  */
 namespace common {
 
-using namespace boost::units;
-namespace si = boost::units::si;
-namespace metric = boost::units::metric;
-namespace constants = boost::units::si::constants::codata;
-
-using namespace boost::math::double_constants;
-
-using length_quantity = quantity<si::length>;      // Meter
-using energy_quantity = quantity<si::energy>;      // Joule
-using angle_quantity = quantity<si::plane_angle>;  // Radian
-
-constexpr auto kilo_electron_volt = double(1000) * constants::e * si::volt;
-constexpr auto angstrom = metric::angstrom_base_unit::unit_type();
-constexpr auto radian = angle::radian_base_unit::unit_type();
-
-std::string common_greeting();  // TODO: Remove this
-
 //! A struct to store 3D coordinate data
 struct Coordinate {
-  length_quantity x_;  //* X position in angstroms
-  length_quantity y_;  //* Y position in angstroms
-  length_quantity z_;  //* Z position in angstroms
+  length_quantity x_;  //! X position in angstroms
+  length_quantity y_;  //! Y position in angstroms
+  length_quantity z_;  //! Z position in angstroms
 
   /*!
    * \brief Construct a Coordinate struct with \c double parameters.
@@ -104,7 +80,7 @@ struct Coordinate {
       : x_(x * angstrom), y_(y * angstrom), z_(z * angstrom) {}
 };
 
-//! \brief A struct for storing velocity information.
+//! A struct for storing velocity information.
 struct Velocity {
   angle_quantity x_angle_;  //* Angle relative to the x-axis in radians
   angle_quantity z_angle_;  //* Angle relative to the z-axis in  radians
@@ -116,8 +92,8 @@ struct Velocity {
    * Pass three parameters, two angle parameters (in radians) and one
    * energy (in kiloelectron volts) parameter, to describe velocity.
    *
-   * \param x_angle The value to set to x_angle
-   * \param z_angle The value to set to z_angle
+   * \param x_angle The value to set to x_angle_
+   * \param z_angle The value to set to z_angle_
    * \param energy The value to set to energy_
    */
   constexpr Velocity(double x_angle, double z_angle, double energy)
@@ -126,10 +102,76 @@ struct Velocity {
         energy_(energy * kilo_electron_volt) {};
 };
 
-class Simulation;
-class Particle;
-class Ion;
-class Electron;
+/*!
+ * \brief A class for representing simulation particles.
+ *
+ * A Particle will store its velocity, current coordinate, and a vector with
+ * all the coordinates that it has occupied throughout a simulation. In
+ * addition, it also contains a Properties struct that stores information
+ * about the properties of the particle, including the charge and the mass of
+ * the particle.
+ */
+class Particle {
+ public:
+  /*!
+   * \brief A struct for storing property information associated with a
+   * particle.
+   *
+   * A partcle has two pieces of information of interest, a charge (Z number)
+   * and a mass. Both of these pieces of information are stored as
+   */
+  struct Properties {
+    const charge_quantity
+        charge_;  //! The charge of the particle (Elementary charge)
+    const mass_quantity mass_;  //! The exact mass of the particle (amu)
+
+    /*!
+     * \brief Constructs a Properties struct using a z number and mass number.
+     *
+     * This constructor uses the z number and mass number to determine the
+     * charge number and exact isotopic mass to the  charge_ and mass_ fields in
+     * the Properties struct.
+     *
+     * \param z_number The atomic (Z) number of the particle.
+     * \param mass_number The mass number of the particle
+     */
+    constexpr Properties(unsigned int z_number, unsigned int mass_number)
+        : charge_(double(z_number) * elementary_charge),
+          mass_(IsotopeData::getIsotopeMass(z_number, mass_number)) {};
+  };
+
+ private:
+  // const struct Properties properties;
+  // const struct Coordinate coordinate;
+  // const struct Velocity veloicty;
+};
+
+/*!
+ * \brief A class for initating, running, and terminating a multi-bombardment
+ * simulation.
+ *
+ * This simulation class mangages particle simulations. It accepts a number of
+ * settings for a simulation, and then performs those simulations, before
+ * reporting the results to the front end. For example, the front end may
+ * request a 1,000 electron bombardment in Iron, which will cause the back-end
+ * to construct a new Simulation with the requested settings (1,000 electrons
+ * into Iron) and run it, before returning the results to the front end.
+ */
+class Simulation final {
+ public:
+  struct Settings {};
+
+ private:
+  const Settings settings;
+
+ public:
+  constexpr Simulation(Settings s) : settings(std::move(s)) {};
+
+  template <typename T>
+  constexpr const T& getSettings(T Settings::* member) const noexcept {
+    return settings.*member;
+  };
+};
 
 }  // namespace common
 }  // namespace amcset

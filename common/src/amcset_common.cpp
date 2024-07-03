@@ -17,9 +17,5 @@
 #include "amcset_common.h"
 
 namespace amcset {
-namespace common {
-std::string common_greeting() {  // TODO: Remove this
-  return "Hello from the common library!";
-}
-}  // namespace common
+namespace common {}  // namespace common
 }  // namespace amcset

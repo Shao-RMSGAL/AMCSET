@@ -1,6 +1,8 @@
 add_library(amcset-common STATIC
     ${PROJECT_SOURCE_DIR}/common/src/amcset_common.cpp
     ${PROJECT_SOURCE_DIR}/common/include/amcset_common.h
+    ${PROJECT_SOURCE_DIR}/common/include/isotope_data.h
+    ${PROJECT_SOURCE_DIR}/common/include/amcset_utilities.h
     )
 
 # state that common need PIC when the default is shared libraries

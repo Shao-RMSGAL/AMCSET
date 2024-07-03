@@ -1,5 +1,6 @@
 enable_testing()
 
+# Common test
 add_executable( common-test
     ${PROJECT_SOURCE_DIR}/test/common/common_test.cpp
     )
