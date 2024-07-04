@@ -16,6 +16,47 @@
 
 #include "amcset_common.h"
 
+#include <algorithm>
+#include <iterator>
+#include <numeric>
+#include <stdexcept>
+
 namespace amcset {
-namespace common {}  // namespace common
+namespace common {
+const std::vector<double> Volume::Layer::get_relative_compositions() const {
+  std::vector<double> doubles;
+  doubles.reserve(material_.size());
+  std::transform(material_.begin(), material_.end(),
+                 std::back_inserter(doubles),
+                 [](const std::pair<double, Particle::Properties>& pair) {
+                   return pair.first;
+                 });
+  return doubles;
+}
+
+Volume::Layer::Layer(const material_vector&& material, length_quantity depth)
+    : material_(std::move(material)), depth_(depth) {
+  if (depth < length_quantity(0)) {
+    throw std::invalid_argument("Depth: " + std::to_string(depth.value()) +
+                                " is less than zero.");
+  }
+
+  if (material.size() == 0) {
+    throw std::invalid_argument("Cannot pass a vector of size 0");
+  }
+
+  auto relative_compositions = get_relative_compositions();
+  double sum = std::accumulate(relative_compositions.begin(),
+                               relative_compositions.end(), 0);
+
+  for (auto& arg : material_) {
+    if (arg.first < 0) {
+      throw std::invalid_argument(
+          "Relative composition: " + std::to_string(arg.first) +
+          " is less than zero.");
+    }
+    arg.first /= sum;
+  }
+}
+}  // namespace common
 }  // namespace amcset

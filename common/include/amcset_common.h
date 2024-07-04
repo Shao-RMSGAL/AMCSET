@@ -24,9 +24,6 @@
  *
  */
 
-#include <boost/units/base_units/angle/radian.hpp>
-#include <boost/units/systems/si/mass.hpp>
-#include <string_view>
 #if defined(_WIN32)
 #if defined(EXPORTING_AMCSET)
 #define DECLSPEC __declspec(dllexport)
@@ -39,8 +36,12 @@
 
 #pragma once
 
+#include <boost/units/base_units/angle/radian.hpp>
+#include <boost/units/systems/si/mass.hpp>
+#include <string_view>
+#include <vector>
+
 // Boost random numbers
-#include <boost/random/niederreiter_base2.hpp>
 #include <boost/random/uniform_01.hpp>
 
 #include "amcset_utilities.h"
@@ -61,9 +62,9 @@ namespace common {
 
 //! A struct to store 3D coordinate data
 struct Coordinate {
-  length_quantity x_;  //!< X position in angstroms
-  length_quantity y_;  //!< Y position in angstroms
-  length_quantity z_;  //!< Z position in angstroms
+  const length_quantity x_;  //!< X position in angstroms
+  const length_quantity y_;  //!< Y position in angstroms
+  const length_quantity z_;  //!< Z position in angstroms
 
   /*!
    * \brief Construct a Coordinate struct with \c double parameters.
@@ -81,9 +82,9 @@ struct Coordinate {
 
 //! A struct for storing velocity information.
 struct Velocity {
-  angle_quantity x_angle_;  //!< Angle relative to the x-axis in radians
-  angle_quantity z_angle_;  //!< Angle relative to the z-axis in  radians
-  energy_quantity energy_;  //!< Energy of the particle in keV
+  const angle_quantity x_angle_;  //!< Angle relative to the x-axis in radians
+  const angle_quantity z_angle_;  //!< Angle relative to the z-axis in  radians
+  const energy_quantity energy_;  //!< Energy of the particle in keV
 
   /*!
    * \brief Construct a Velocity struct with \c double parameters
@@ -135,7 +136,7 @@ class Particle {
      * \param z_number The atomic (Z) number of the particle.
      * \param mass_number The mass number of the particle
      */
-    constexpr Properties(unsigned int z_number, unsigned int mass_number)
+    constexpr Properties(size_t z_number, size_t mass_number)
         : charge_(double(z_number) * elementary_charge),
           mass_(IsotopeData::getIsotopeMass(z_number, mass_number)) {};
   };
@@ -144,6 +145,85 @@ class Particle {
   // const struct Properties properties;
   // const struct Coordinate coordinate;
   // const struct Velocity veloicty;
+};
+
+/*!
+ * \brief A class for representing the simulation environment.
+ *
+ * This class allows for one or more layers of materials to be
+ * simulated. A material is composed of reltiave fractions of one or more
+ * isotopes of any element.
+ */
+class Volume final {
+ public:
+  /*!
+   * \brief A class for representing a single layer of material in the Volume
+   * class.
+   *
+   * A Layer can consist of a single isotope, or many isotopes present at a
+   * relative fraction. The layer is asssumed to be homogenous, so the
+   * probability of interaction with a particular isotope solely depends on the
+   * relative fraction.
+   */
+  class Layer final {
+   public:
+    using material_vector =
+        std::vector<std::pair<double,
+                              Particle::Properties>>;  //!< Type for storing
+                                                       //!< material information
+
+    /*!
+     * \brief Constructor for a Layer that accepts a material_vector
+     *
+     * Accepts a vector and efficiently moves it into the material member.
+     *
+     * \param material the material_vector containing the Layer information of
+     * interest.
+     *
+     */
+    Layer(const material_vector&& material, length_quantity depth);
+
+    /*!
+     * \brief Return relative compositions of isotopes in the layer
+     *
+     * This function returns a vector which is a copy of the first elements in
+     * each std::pair which makes up the elements in material_.
+     *
+     * \return A vector of doubles representing the relative compositions of the
+     * layer
+     *u
+     * TODO: Reimplement to return references to the data inside of material_
+     * instead of copying it. This can be done with custom iterators, but
+     * requires working with raw pointers, as well as other unpleasant low level
+     * C++ stuff. However, it would be more efficient.
+     */
+    const std::vector<double> get_relative_compositions() const;
+
+    /*!
+     *  \brief Returns a property at the corresponding index
+     *
+     *  \param index The index of the property to return
+     */
+    const Particle::Properties& get_property(size_t index) const {
+      return material_.at(index).second;
+    };
+
+    /*!
+     * \brief Returns a relative composition at the corresponding index
+     *
+     * \param index The index of the property to return
+     */
+    double get_relative_composition(size_t index) const {
+      return material_.at(index).first;
+    }
+
+   private:
+    material_vector material_;
+    const length_quantity depth_;
+  };
+
+ private:
+  const std::vector<Layer> layers;
 };
 
 /*!
@@ -168,7 +248,34 @@ class Simulation final {
    * the incident energy, the substrate composition, cascade information, and
    * many other settings.
    */
-  struct Settings {};
+  struct Settings {
+    const energy_quantity
+        electron_stopping_energy;  //!< Threshold electron stopping energy
+                                   /*!< The energy at which precision of
+                                    * electron stopping calculations should be increased
+                                    */
+    const struct Particle::Properties
+        incident_particle_properties;  //!< Properties of the incident particle
+    const bool
+        enable_damage_cascade;  //!< Control whether damange cascade is enabled
+    const energy_quantity ion_stopping_energy;  //!< Energy at which ions stop
+    const energy_quantity ion_displacement_energy;  //!< Energy to displace ions
+    const bool log_single_displacement;  //!< Track single displacements
+    /*!< Determine whether to log when a substrate atom is displaced only once.
+     */
+    const size_t divisor_angle_number;  //!< Angle segment count
+    /*!< used for cross-section calculations, higher value means finer
+     * granularity for cross-section integration, but also more computation.
+     */
+    const size_t
+        flying_distance_number;  //!< Number of flying distances per group
+    /*!< Used for electron bombardment simulation optimization. Allows for the
+     * use of cross-section calculations on many electron interactions at
+     * similar energies.
+     */
+    const length_quantity range;     //!< Maximum range of particles
+    const size_t bombardment_count;  //!< Number of bombardments to simulate
+  };
 
  private:
   const Settings settings;
@@ -187,8 +294,23 @@ class Simulation final {
   constexpr Simulation(Settings s) : settings(std::move(s)) {};
 
   /*!
-   * \brief A function to retrieve a \c const reference to the
-   * settings member variable.
+   * \brief A function to access settings.
+   *
+   * This templated function can be used to access member variables of the
+   * Settings settings member variable.
+   *
+   * \param member The settings field to be accessed.
+   * \return A reference to the requested setting.
+   *
+   * \code{.cpp}
+   * Simulation simulation;
+   * Simulation::Settings settings;
+   *
+   * // Configure settings
+   *
+   * auto electron_stopping_energy =
+   * simulation.getSettings(&Simulation::Settings::electron_stopping_energy);
+   * \endcode
    */
   template <typename T>
   constexpr const T& getSettings(T Settings::* member) const noexcept {

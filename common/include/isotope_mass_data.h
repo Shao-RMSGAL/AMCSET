@@ -3389,5 +3389,4 @@
   masses[116][293] = double(294.21046) * atomic_mass_unit;     /* Ts294 */ \
   masses[117][292] = double(293.21356) * atomic_mass_unit;     /* Og293 */ \
   masses[117][293] = double(294.21392) * atomic_mass_unit;     /* Og294 */ \
-  masses[117][294] = double(295.21624) * atomic_mass_unit;     /* Og295 */ \
-  \
+  masses[117][294] = double(295.21624) * atomic_mass_unit;     /* Og295 */

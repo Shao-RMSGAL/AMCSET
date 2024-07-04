@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
-/*!
+/bin/bash: line 1: The: command not found
  * \file common_test.cpp
  *
  * \brief The testing code for the amcset_common library.
@@ -54,7 +54,7 @@ TEST_F(CommonTest, common_assertions) {
 
 //! Coordinate struct test.
 TEST_F(CommonTest, coordinate_constructor_test) {
-  Coordinate coordinate(-1.0, 0, 1.0);
+  constexpr Coordinate coordinate(-1.0, 0, 1.0);
 
   ASSERT_EQ(to_string(coordinate.x_), "-1e-10 m");
   ASSERT_EQ(to_string(coordinate.y_), "0 m");
@@ -63,7 +63,7 @@ TEST_F(CommonTest, coordinate_constructor_test) {
 
 //! Velocity struct test.
 TEST_F(CommonTest, velocity_constructor_test) {
-  Velocity velocity(-pi, pi, 10000);
+  constexpr Velocity velocity(-pi, pi, 10000);
 
   ASSERT_EQ(to_string(velocity.x_angle_), "-3.14159 rad");
   ASSERT_EQ(to_string(velocity.z_angle_), "3.14159 rad");
@@ -93,5 +93,27 @@ TEST_F(CommonTest, isotope_data_get_isotope_mass_test) {
   ASSERT_THROW(IsotopeData::getIsotopeMass(0, 1), std::out_of_range);
   ASSERT_THROW(IsotopeData::getIsotopeMass(1, 0), std::out_of_range);
   ASSERT_THROW(IsotopeData::getIsotopeMass(1, 100), std::invalid_argument);
+}
+
+//! Layer class test
+TEST_F(CommonTest, layer_constructor_test) {
+  constexpr Particle::Properties hydrogen(1, 1);
+  constexpr Particle::Properties oxygen(8, 16);
+  const Volume::Layer::material_vector water{{2.0, hydrogen}, {1.0, oxygen}};
+  constexpr auto depth = length_quantity(1.0 * angstrom);
+  const Volume::Layer water_layer(std::move(water), depth);
+
+  ASSERT_EQ(water_layer.get_relative_compositions(),
+            std::vector<double>({2.0 / 3.0, 1.0 / 3.0}));
+  ASSERT_EQ(water_layer.get_property(0).mass_, hydrogen.mass_);
+  ASSERT_EQ(water_layer.get_relative_composition(0), 2.0 / 3.0);
+  ASSERT_EQ(water_layer.get_property(1).mass_, oxygen.mass_);
+  ASSERT_EQ(water_layer.get_relative_composition(1), 1.0 / 3.0);
+
+  const Volume::Layer::material_vector empty_vec{};
+  ASSERT_THROW(Volume::Layer(std::move(empty_vec), depth),
+               std::invalid_argument);
+  ASSERT_THROW(Volume::Layer(std::move(empty_vec), double(-1.0) * depth),
+               std::invalid_argument);
 }
 

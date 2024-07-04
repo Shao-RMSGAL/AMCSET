@@ -56,6 +56,8 @@ using angle_quantity =
 using mass_quantity = quantity<si::mass>;  //!< SI type for mass (Kilogram)
 using charge_quantity =
     quantity<si::electric_charge>;  //!< SI type for charge (Coulomb)
+using dimensionless_quantity =
+    quantity<si::dimensionless>;  //!< Type for dimensionless quantity
 
 constexpr auto kilo_electron_volt =
     double(1000) * constants::e * si::volt;  //!< Quantity for kiloelectron volt
