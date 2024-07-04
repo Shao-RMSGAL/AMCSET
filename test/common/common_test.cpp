@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
-/bin/bash: line 1: The: command not found
+/*!
  * \file common_test.cpp
  *
  * \brief The testing code for the amcset_common library.
@@ -84,15 +84,15 @@ TEST_F(CommonTest, simulation_test) {
 
 //! Isotope data test
 TEST_F(CommonTest, isotope_data_get_isotope_mass_test) {
-  ASSERT_EQ(IsotopeData::getIsotopeMass(50, 132),
+  ASSERT_EQ(IsotopeData::get_isotope_mass(50, 132),
             double(131.9178267) * atomic_mass_unit);
-  ASSERT_EQ(IsotopeData::getIsotopeMass(2, 4),
+  ASSERT_EQ(IsotopeData::get_isotope_mass(2, 4),
             double(4.00260325413) * atomic_mass_unit);
-  ASSERT_EQ(IsotopeData::getIsotopeMass(118, 295),
+  ASSERT_EQ(IsotopeData::get_isotope_mass(118, 295),
             double(295.21624) * atomic_mass_unit);
-  ASSERT_THROW(IsotopeData::getIsotopeMass(0, 1), std::out_of_range);
-  ASSERT_THROW(IsotopeData::getIsotopeMass(1, 0), std::out_of_range);
-  ASSERT_THROW(IsotopeData::getIsotopeMass(1, 100), std::invalid_argument);
+  ASSERT_THROW(IsotopeData::get_isotope_mass(0, 1), std::out_of_range);
+  ASSERT_THROW(IsotopeData::get_isotope_mass(1, 0), std::out_of_range);
+  ASSERT_THROW(IsotopeData::get_isotope_mass(1, 100), std::invalid_argument);
 }
 
 //! Layer class test
@@ -103,17 +103,31 @@ TEST_F(CommonTest, layer_constructor_test) {
   constexpr auto depth = length_quantity(1.0 * angstrom);
   const Volume::Layer water_layer(std::move(water), depth);
 
-  ASSERT_EQ(water_layer.get_relative_compositions(),
-            std::vector<double>({2.0 / 3.0, 1.0 / 3.0}));
+  // Testing get_relative_compositions()
+  auto composition_view = water_layer.get_relative_compositions();
+  std::vector<double> compare_doubles = {2.0 / 3.0, 1.0 / 3.0};
+  ASSERT_TRUE(std::equal(composition_view.begin(), composition_view.end(),
+                         compare_doubles.begin(), compare_doubles.end()));
+  compare_doubles.at(0) = 4.0;
+  ASSERT_FALSE(std::equal(composition_view.begin(), composition_view.end(),
+                          compare_doubles.begin(), compare_doubles.end()));
+
+  // Testing get_property
   ASSERT_EQ(water_layer.get_property(0).mass_, hydrogen.mass_);
-  ASSERT_EQ(water_layer.get_relative_composition(0), 2.0 / 3.0);
   ASSERT_EQ(water_layer.get_property(1).mass_, oxygen.mass_);
+
+  // Testing get_relative_composition
+  ASSERT_EQ(water_layer.get_relative_composition(0), 2.0 / 3.0);
   ASSERT_EQ(water_layer.get_relative_composition(1), 1.0 / 3.0);
 
+  // Testing contructor
   const Volume::Layer::material_vector empty_vec{};
   ASSERT_THROW(Volume::Layer(std::move(empty_vec), depth),
                std::invalid_argument);
   ASSERT_THROW(Volume::Layer(std::move(empty_vec), double(-1.0) * depth),
                std::invalid_argument);
+
+  // Testing get_depth
+  ASSERT_EQ(water_layer.get_depth(), length_quantity(1.0 * angstrom));
 }
 

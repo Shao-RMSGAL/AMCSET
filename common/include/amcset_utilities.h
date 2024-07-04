@@ -37,6 +37,7 @@
 
 // Boost math
 #include <boost/math/constants/constants.hpp>
+#include <string>
 
 namespace amcset {
 namespace common {
@@ -69,6 +70,21 @@ constexpr auto atomic_mass_unit =
     constants::m_u;  //!< Quantity for atomic mass unit
 constexpr auto elementary_charge =
     constants::e;  //!< Quantity for the elementary charge
+
+/*!
+ * \brief A helper function that converts a quantity to a string with the value
+ * and units.
+ *
+ * \param quantity The quantity to convert to a string
+ *
+ * \return A string containing the value and unit.
+ */
+template <typename Unit, typename T>
+std::string to_string_with_unit(const quantity<Unit, T>& quantity) {
+  std::ostringstream oss;
+  oss << quantity;
+  return oss.str();
+}
 
 }  // namespace common
 }  // namespace amcset

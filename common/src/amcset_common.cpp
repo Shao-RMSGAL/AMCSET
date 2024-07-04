@@ -23,21 +23,11 @@
 
 namespace amcset {
 namespace common {
-const std::vector<double> Volume::Layer::get_relative_compositions() const {
-  std::vector<double> doubles;
-  doubles.reserve(material_.size());
-  std::transform(material_.begin(), material_.end(),
-                 std::back_inserter(doubles),
-                 [](const std::pair<double, Particle::Properties>& pair) {
-                   return pair.first;
-                 });
-  return doubles;
-}
 
 Volume::Layer::Layer(const material_vector&& material, length_quantity depth)
     : material_(std::move(material)), depth_(depth) {
   if (depth < length_quantity(0)) {
-    throw std::invalid_argument("Depth: " + std::to_string(depth.value()) +
+    throw std::invalid_argument("Depth: " + to_string_with_unit(depth) +
                                 " is less than zero.");
   }
 
@@ -58,5 +48,29 @@ Volume::Layer::Layer(const material_vector&& material, length_quantity depth)
     arg.first /= sum;
   }
 }
+
+const Volume::Layer& Volume::get_layer(length_quantity depth) const {
+  if (depth < length_quantity(0.0 * angstrom)) {
+    throw std::invalid_argument("Depth: " + to_string_with_unit(depth) +
+                                " cannot be less than zero.");
+  }
+
+  if (depth > layers.back().get_depth()) {
+    throw std::out_of_range("Depth: " + to_string_with_unit(depth) +
+                            " is deeper than the deepest layer.");
+  }
+
+  for (size_t i = 0; i < layers.size(); i++) {
+    if (layers[i].get_depth() > depth) {
+      return layers[i - 1];
+    }
+  }
+
+  throw std::runtime_error(
+      "End of layer vector vector reached. Maximum depth: " +
+      to_string_with_unit(layers.back().get_depth()) +
+      ". Provided depth: " + to_string_with_unit(depth));
+}
+
 }  // namespace common
 }  // namespace amcset

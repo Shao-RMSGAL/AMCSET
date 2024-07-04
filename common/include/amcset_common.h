@@ -21,9 +21,9 @@
  *  This file contains all of the major structs and classes in AMCSET.
  *  This includes objects for simulation, as well as objects used for
  *  interfacing with the front-end gui.
- *
  */
 
+#include <ranges>
 #if defined(_WIN32)
 #if defined(EXPORTING_AMCSET)
 #define DECLSPEC __declspec(dllexport)
@@ -138,13 +138,10 @@ class Particle {
      */
     constexpr Properties(size_t z_number, size_t mass_number)
         : charge_(double(z_number) * elementary_charge),
-          mass_(IsotopeData::getIsotopeMass(z_number, mass_number)) {};
+          mass_(IsotopeData::get_isotope_mass(z_number, mass_number)) {};
   };
 
  private:
-  // const struct Properties properties;
-  // const struct Coordinate coordinate;
-  // const struct Velocity veloicty;
 };
 
 /*!
@@ -176,9 +173,14 @@ class Volume final {
      * \brief Constructor for a Layer that accepts a material_vector
      *
      * Accepts a vector and efficiently moves it into the material member.
+     * Maximum depth of the layer is also specified.
      *
      * \param material the material_vector containing the Layer information of
      * interest.
+     *
+     * \param depth The maximum depth the layer extends into the material. This
+     * is not the thickness of the material, but rather the maximum depth that
+     * the layer extends from the bombardment surface of the volume.
      *
      */
     Layer(const material_vector&& material, length_quantity depth);
@@ -186,41 +188,64 @@ class Volume final {
     /*!
      * \brief Return relative compositions of isotopes in the layer
      *
-     * This function returns a vector which is a copy of the first elements in
+     * This function returns a transform which is view of the first elements in
      * each std::pair which makes up the elements in material_.
      *
-     * \return A vector of doubles representing the relative compositions of the
-     * layer
-     *u
-     * TODO: Reimplement to return references to the data inside of material_
-     * instead of copying it. This can be done with custom iterators, but
-     * requires working with raw pointers, as well as other unpleasant low level
-     * C++ stuff. However, it would be more efficient.
+     * \return A transform of the doubles representing the relative compositions
+     * of the layer
      */
-    const std::vector<double> get_relative_compositions() const;
+    auto get_relative_compositions() const
+        -> decltype(std::declval<const material_vector&>() |
+                    std::views::transform(
+                        &std::pair<double, Particle::Properties>::first)) {
+      return material_ | std::views::transform(
+                             &std::pair<double, Particle::Properties>::first);
+    };
 
     /*!
      *  \brief Returns a property at the corresponding index
      *
      *  \param index The index of the property to return
+     *  \return A reference to the Properties struct at the specified index
      */
     const Particle::Properties& get_property(size_t index) const {
       return material_.at(index).second;
     };
 
     /*!
-     * \brief Returns a relative composition at the corresponding index
+     * \brief Returns a relative composition at the corresponding index.
      *
-     * \param index The index of the property to return
+     * \param index The index of the property to return.
+     *
+     * \return The relative composition of the component at the index.
      */
     double get_relative_composition(size_t index) const {
       return material_.at(index).first;
     }
 
+    /*!
+     * \brief Get the maximum depth of the layer.
+     *
+     * \return The depth of the layer.
+     */
+    length_quantity get_depth() const noexcept { return depth_; };
+
    private:
     material_vector material_;
     const length_quantity depth_;
   };
+
+  /*!
+   * \brief A function to retrieve the layer corresponding to the depth
+   * provided.
+   *
+   * Provides a reference to the layer corresponding to the provided depth.
+   *
+   * \param depth The depth at which to return the corresponding layer.
+   *
+   * \return A reference to the Layer at which depth falls into.
+   */
+  const Layer& get_layer(length_quantity depth) const;
 
  private:
   const std::vector<Layer> layers;
@@ -255,13 +280,15 @@ class Simulation final {
                                     * electron stopping calculations should be increased
                                     */
     const struct Particle::Properties
-        incident_particle_properties;  //!< Properties of the incident particle
-    const bool
-        enable_damage_cascade;  //!< Control whether damange cascade is enabled
+        incident_particle_properties;  //!< Properties of the incident
+                                       //!< particle
+    const bool enable_damage_cascade;  //!< Control whether damange cascade is
+                                       //!< enabled
     const energy_quantity ion_stopping_energy;  //!< Energy at which ions stop
     const energy_quantity ion_displacement_energy;  //!< Energy to displace ions
     const bool log_single_displacement;  //!< Track single displacements
-    /*!< Determine whether to log when a substrate atom is displaced only once.
+    /*!< Determine whether to log when a substrate atom is displaced only
+     * once.
      */
     const size_t divisor_angle_number;  //!< Angle segment count
     /*!< used for cross-section calculations, higher value means finer
@@ -282,8 +309,8 @@ class Simulation final {
 
  public:
   /*!
-   * \brief The constructor for the Simulation class. Accepts a Settings struct
-   * to describe simulation settings.
+   * \brief The constructor for the Simulation class. Accepts a Settings
+   * struct to describe simulation settings.
    *
    * This constructor is used to construct a Simulation object. It accepts a
    * Settings struct to configure the simulation.

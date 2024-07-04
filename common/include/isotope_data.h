@@ -60,8 +60,8 @@ class IsotopeData {
    * \param mass_number The mass number of the isotope
    * \return The exact mass of the corresponding isotope in Relative Atomic Mass
    */
-  static constexpr mass_quantity getIsotopeMass(size_t atomic_number,
-                                                size_t mass_number) {
+  static constexpr mass_quantity get_isotope_mass(size_t atomic_number,
+                                                  size_t mass_number) {
     if (atomic_number < 1 || atomic_number > MAX_Z) {
       throw std::out_of_range(
           "Invalid atomic number: " + std::to_string(atomic_number) +
