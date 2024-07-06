@@ -37,6 +37,7 @@
 
 // Boost math
 #include <boost/math/constants/constants.hpp>
+#include <iostream>
 #include <string>
 
 namespace amcset {
@@ -72,6 +73,16 @@ constexpr auto elementary_charge =
     constants::e;  //!< Quantity for the elementary charge
 
 /*!
+ * \brief A macro to provide debugging details for exception messages.
+ *
+ * This macro takes a message and appends the function name, file name, and line
+ * number to the end of the message.
+ */
+#define EXCEPTION_MESSAGE(msg)                                           \
+  std::string(msg) + " [Function: " + __func__ + ", File: " + __FILE__ + \
+      ", Line: " + std::to_string(__LINE__) + "]"
+
+/*!
  * \brief A helper function that converts a quantity to a string with the value
  * and units.
  *
@@ -84,6 +95,57 @@ std::string to_string_with_unit(const quantity<Unit, T>& quantity) {
   std::ostringstream oss;
   oss << quantity;
   return oss.str();
+}
+
+/*!
+ * \brief A nested exception handling throwing function.
+ *
+ * This will show the trace of functions which catch and throw exceptions as
+ * they propogate through the call stack. It is useful for debugging, as it
+ * shows the call stack of functions in a human-readable way.
+ *
+ * Code taken from Richard Hodges:
+ * https://stackoverflow.com/questions/37227300/why-doesnt-c-use-stdnested-exception-to-allow-throwing-from-destructor/37227893#37227893
+ *
+ * \param args Messages to include in the exception invocation.
+ */
+template <class... Args>
+[[noreturn]] void rethrow(Args&&... args) {
+  std::ostringstream ss;
+  using expand = int[];
+  std::string sep;
+  void(expand{0, ((ss << sep << args), sep = ", ", 0)...});
+  try {
+    std::rethrow_exception(std::current_exception());
+  } catch (const std::invalid_argument& e) {
+    std::throw_with_nested(std::invalid_argument(ss.str()));
+  } catch (const std::out_of_range& e) {
+    std::throw_with_nested(std::out_of_range(ss.str()));
+  } catch (const std::logic_error& e) {
+    std::throw_with_nested(std::logic_error(ss.str()));
+  } catch (...) {
+    std::throw_with_nested(std::runtime_error(ss.str()));
+  }
+}
+
+/*!
+ * \brief A helper function that prints out nested exceptions.
+ *
+ * Code taken from Richard Hodges:
+ * https://stackoverflow.com/questions/37227300/why-doesnt-c-use-stdnested-exception-to-allow-throwing-from-destructor/37227893#37227893
+ *
+ * \param e The exception to print out.
+ *
+ * \param depth The depth of exception messages. This starts out at for the
+ * top-leve exception.
+ */
+inline void print_exception(const std::exception& e, std::size_t depth = 0) {
+  std::cerr << "exception: " << std::string(depth, ' ') << e.what() << '\n';
+  try {
+    std::rethrow_if_nested(e);
+  } catch (const std::exception& nested) {
+    print_exception(nested, depth + 1);
+  }
 }
 
 }  // namespace common

@@ -9,11 +9,19 @@ class MainWindow;
 }
 QT_END_NAMESPACE
 
+// TODO: Do proper documentation
+
+/*!
+ * \brief Main window of the GUI
+ */
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
+        /*!
+         * \brief Constructor for MainWindow
+         */
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 

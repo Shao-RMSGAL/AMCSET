@@ -27,6 +27,7 @@
 #include <array>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 // AMCSET includes
 #include "amcset_utilities.h"
@@ -61,28 +62,42 @@ class IsotopeData {
    * \return The exact mass of the corresponding isotope in Relative Atomic Mass
    */
   static constexpr mass_quantity get_isotope_mass(size_t atomic_number,
-                                                  size_t mass_number) {
+                                                  size_t mass_number) try {
     if (atomic_number < 1 || atomic_number > MAX_Z) {
-      throw std::out_of_range(
+      throw std::out_of_range(EXCEPTION_MESSAGE(
           "Invalid atomic number: " + std::to_string(atomic_number) +
-          ". Allowed range is 1 to " + std::to_string(MAX_Z) + ".");
+          ". Allowed range is 1 to " + std::to_string(MAX_Z) + "."));
     }
     if (mass_number < 1 || mass_number > MAX_A) {
-      throw std::out_of_range(
+      throw std::out_of_range(EXCEPTION_MESSAGE(
           "Invalid mass number: " + std::to_string(atomic_number) +
-          ". Allowed range is 1 to " + std::to_string(MAX_Z) + ".");
+          ". Allowed range is 1 to " + std::to_string(MAX_Z) + "."));
     }
 
     mass_quantity mass = isotopic_masses[atomic_number - 1][mass_number - 1];
 
     if (mass == double(0.0) * atomic_mass_unit) {
-      throw std::invalid_argument(
+      throw std::invalid_argument(EXCEPTION_MESSAGE(
           "Isotope does not exist. Atomic number: " +
           std::to_string(atomic_number) +
-          ". Mass number: " + std::to_string(mass_number) + ".");
+          ". Mass number: " + std::to_string(mass_number) + "."));
     }
     return mass;
+  } catch (...) {
+    rethrow();
   };
+
+  /*!
+   * \brief Return a material_vector of a natural sample of an element.
+   *
+   * A function for returning a Volume::Layer::material_vector which represents
+   * the natural abundance of each isotope of a single element
+   *
+   * TODO: Implement this function
+   */
+  // static constexpr std::vector<std::pair<double, size_t>>
+  // get_relative_abundance(size_t atomic_number) {
+  // }
 
  private:
   // Fancy way for instantiating a compile-time static data structure.

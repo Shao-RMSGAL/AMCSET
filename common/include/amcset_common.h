@@ -38,7 +38,6 @@
 
 #include <boost/units/base_units/angle/radian.hpp>
 #include <boost/units/systems/si/mass.hpp>
-#include <string_view>
 #include <vector>
 
 // Boost random numbers
@@ -66,6 +65,8 @@ struct Coordinate {
   const length_quantity y_;  //!< Y position in angstroms
   const length_quantity z_;  //!< Z position in angstroms
 
+  Coordinate() = delete;
+
   /*!
    * \brief Construct a Coordinate struct with \c double parameters.
    *
@@ -76,7 +77,7 @@ struct Coordinate {
    * \param y The value to set to y_
    * \param z The value to set to z_
    */
-  constexpr Coordinate(double x, double y, double z)
+  constexpr Coordinate(double x, double y, double z) noexcept
       : x_(x * angstrom), y_(y * angstrom), z_(z * angstrom) {}
 };
 
@@ -85,6 +86,8 @@ struct Velocity {
   const angle_quantity x_angle_;  //!< Angle relative to the x-axis in radians
   const angle_quantity z_angle_;  //!< Angle relative to the z-axis in  radians
   const energy_quantity energy_;  //!< Energy of the particle in keV
+
+  Velocity() = delete;
 
   /*!
    * \brief Construct a Velocity struct with \c double parameters
@@ -96,7 +99,7 @@ struct Velocity {
    * \param z_angle The value to set to z_angle_
    * \param energy The value to set to energy_
    */
-  constexpr Velocity(double x_angle, double z_angle, double energy)
+  constexpr Velocity(double x_angle, double z_angle, double energy) noexcept
       : x_angle_(x_angle * radian),
         z_angle_(z_angle * radian),
         energy_(energy * kilo_electron_volt) {};
@@ -126,6 +129,8 @@ class Particle {
         charge_;  //!< The charge of the particle (Elementary charge)
     const mass_quantity mass_;  //!< The exact mass of the particle (amu)
 
+    Properties() = delete;
+
     /*!
      * \brief Constructs a Properties struct using a z number and mass number.
      *
@@ -136,12 +141,18 @@ class Particle {
      * \param z_number The atomic (Z) number of the particle.
      * \param mass_number The mass number of the particle
      */
-    constexpr Properties(size_t z_number, size_t mass_number)
+    constexpr Properties(size_t z_number, size_t mass_number) try
         : charge_(double(z_number) * elementary_charge),
-          mass_(IsotopeData::get_isotope_mass(z_number, mass_number)) {};
+          mass_(IsotopeData::get_isotope_mass(z_number, mass_number)) {
+    } catch (...) {
+      rethrow(EXCEPTION_MESSAGE(""));
+    };
   };
 
+  Particle() = delete;
+  // TODO: Implement Particle public members
  private:
+  // TODO: Implement Particle private members
 };
 
 /*!
@@ -169,21 +180,24 @@ class Volume final {
                               Particle::Properties>>;  //!< Type for storing
                                                        //!< material information
 
+    Layer() = delete;
+
     /*!
      * \brief Constructor for a Layer that accepts a material_vector
      *
      * Accepts a vector and efficiently moves it into the material member.
      * Maximum depth of the layer is also specified.
      *
-     * \param material the material_vector containing the Layer information of
-     * interest.
+     * \param material the material_vector containing the Layer information
+     * of interest.
      *
-     * \param depth The maximum depth the layer extends into the material. This
-     * is not the thickness of the material, but rather the maximum depth that
-     * the layer extends from the bombardment surface of the volume.
+     * \param depth The maximum depth the layer extends into the material.
+     * This is not the thickness of the material, but rather the maximum
+     * depth that the layer extends from the bombardment surface of the
+     * volume.
      *
      */
-    Layer(const material_vector&& material, length_quantity depth);
+    Layer(material_vector&& material, length_quantity depth);
 
     /*!
      * \brief Return relative compositions of isotopes in the layer
@@ -197,10 +211,7 @@ class Volume final {
     auto get_relative_compositions() const
         -> decltype(std::declval<const material_vector&>() |
                     std::views::transform(
-                        &std::pair<double, Particle::Properties>::first)) {
-      return material_ | std::views::transform(
-                             &std::pair<double, Particle::Properties>::first);
-    };
+                        &std::pair<double, Particle::Properties>::first));
 
     /*!
      *  \brief Returns a property at the corresponding index
@@ -208,8 +219,10 @@ class Volume final {
      *  \param index The index of the property to return
      *  \return A reference to the Properties struct at the specified index
      */
-    const Particle::Properties& get_property(size_t index) const {
+    const Particle::Properties& get_property(size_t index) const try {
       return material_.at(index).second;
+    } catch (...) {
+      rethrow(EXCEPTION_MESSAGE(""));
     };
 
     /*!
@@ -219,8 +232,10 @@ class Volume final {
      *
      * \return The relative composition of the component at the index.
      */
-    double get_relative_composition(size_t index) const {
+    double get_relative_composition(size_t index) const try {
       return material_.at(index).first;
+    } catch (...) {
+      rethrow(EXCEPTION_MESSAGE(""));
     }
 
     /*!
@@ -235,6 +250,20 @@ class Volume final {
     const length_quantity depth_;
   };
 
+  Volume() = delete;
+
+  /*!
+   * \brief Constructor for a Volume.
+   *
+   * Builds a Volume from a std::vector<Layer>. The constructor ensures that the
+   * layers are provided in order. i.e. the depth of each subsequent layer is
+   * strictly greater than the previous one.
+   *
+   * \param layers An rvalue reference to a vector of layers. Each layer must
+   * have a  greater depth value than the previous one.
+   */
+  Volume(std::vector<Layer>&& layers);
+
   /*!
    * \brief A function to retrieve the layer corresponding to the depth
    * provided.
@@ -248,7 +277,7 @@ class Volume final {
   const Layer& get_layer(length_quantity depth) const;
 
  private:
-  const std::vector<Layer> layers;
+  const std::vector<Layer> layers_;
 };
 
 /*!
@@ -275,39 +304,60 @@ class Simulation final {
    */
   struct Settings {
     const energy_quantity
-        electron_stopping_energy;  //!< Threshold electron stopping energy
-                                   /*!< The energy at which precision of
-                                    * electron stopping calculations should be increased
-                                    */
+        electron_stopping_energy_;  //!< Threshold electron stopping energy
+                                    /*!< The energy at which precision of
+                                     * electron stopping calculations should be increased
+                                     */
     const struct Particle::Properties
-        incident_particle_properties;  //!< Properties of the incident
-                                       //!< particle
-    const bool enable_damage_cascade;  //!< Control whether damange cascade is
-                                       //!< enabled
-    const energy_quantity ion_stopping_energy;  //!< Energy at which ions stop
-    const energy_quantity ion_displacement_energy;  //!< Energy to displace ions
-    const bool log_single_displacement;  //!< Track single displacements
+        incident_particle_properties_;  //!< Properties of the incident
+                                        //!< particle
+    const bool enable_damage_cascade_;  //!< Control whether damange cascade is
+                                        //!< enabled
+    const energy_quantity ion_stopping_energy_;  //!< Energy at which ions stop
+    const energy_quantity
+        ion_displacement_energy_;         //!< Energy to displace ions
+    const bool log_single_displacement_;  //!< Track single displacements
     /*!< Determine whether to log when a substrate atom is displaced only
      * once.
      */
-    const size_t divisor_angle_number;  //!< Angle segment count
+    const size_t divisor_angle_number_;  //!< Angle segment count
     /*!< used for cross-section calculations, higher value means finer
      * granularity for cross-section integration, but also more computation.
      */
     const size_t
-        flying_distance_number;  //!< Number of flying distances per group
+        flying_distance_number_;  //!< Number of flying distances per group
     /*!< Used for electron bombardment simulation optimization. Allows for the
      * use of cross-section calculations on many electron interactions at
      * similar energies.
      */
-    const length_quantity range;     //!< Maximum range of particles
-    const size_t bombardment_count;  //!< Number of bombardments to simulate
+    const length_quantity range_;     //!< Maximum range of particles
+    const size_t bombardment_count_;  //!< Number of bombardments to simulate
+
+    bool is_electron_;  //!< Determines if bombardment is for an electron
+
+    energy_quantity incident_energy_;  //!< Incident particle energy
+
+    Settings() = delete;  //!< Default constructor ensures intialization
+
+    /*!
+     * \brief Constructor for a Settings struct.
+     *
+     * By deleting the default constructor and allowing construction using this
+     * struct, initialization of all fields is guarenteed. All members of
+     * Settings are represented as parameters in this constructor.
+     */
+    Settings(energy_quantity electron_stopping_energy,
+             Particle::Properties incident_particle_properties,
+             bool enable_damage_cascade, energy_quantity ion_stopping_energy,
+             energy_quantity ion_displacement_energy,
+             bool log_single_displacement, size_t divisor_angle_number,
+             size_t flying_distance_number, length_quantity range,
+             size_t bombardment_count, bool is_electron,
+             energy_quantity incident_energy);
   };
 
- private:
-  const Settings settings;
+  Simulation() = delete;
 
- public:
   /*!
    * \brief The constructor for the Simulation class. Accepts a Settings
    * struct to describe simulation settings.
@@ -318,8 +368,10 @@ class Simulation final {
    * \param s This is the struct that describes the configuration of the
    * Simulation.
    */
-  constexpr Simulation(Settings s) : settings(std::move(s)) {};
-
+  Simulation(Settings s, Volume&& volume) try : settings_(s), volume_(volume) {
+  } catch (...) {
+    rethrow(EXCEPTION_MESSAGE(""));
+  };
   /*!
    * \brief A function to access settings.
    *
@@ -328,7 +380,6 @@ class Simulation final {
    *
    * \param member The settings field to be accessed.
    * \return A reference to the requested setting.
-   *
    * \code{.cpp}
    * Simulation simulation;
    * Simulation::Settings settings;
@@ -336,14 +387,22 @@ class Simulation final {
    * // Configure settings
    *
    * auto electron_stopping_energy =
-   * simulation.getSettings(&Simulation::Settings::electron_stopping_energy);
+   * simulation.getSettings(&Simulation::Settings::electron_stopping_energy_);
    * \endcode
    */
   template <typename T>
-  constexpr const T& getSettings(T Settings::* member) const noexcept {
-    return settings.*member;
+  constexpr const T& get_settings(T Settings::* member) const noexcept {
+    return settings_.*member;
   };
-};
 
+  /*!
+   * \brief Run the simulation
+   */
+  void run();
+
+ private:
+  const Settings settings_;
+  Volume volume_;
+};
 }  // namespace common
 }  // namespace amcset
