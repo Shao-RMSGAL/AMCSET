@@ -83,21 +83,6 @@ constexpr auto elementary_charge =
       ", Line: " + std::to_string(__LINE__) + "]"
 
 /*!
- * \brief A helper function that converts a quantity to a string with the value
- * and units.
- *
- * \param quantity The quantity to convert to a string
- *
- * \return A string containing the value and unit.
- */
-template <typename Unit, typename T>
-std::string to_string_with_unit(const quantity<Unit, T>& quantity) {
-  std::ostringstream oss;
-  oss << quantity;
-  return oss.str();
-}
-
-/*!
  * \brief A nested exception handling throwing function.
  *
  * This will show the trace of functions which catch and throw exceptions as

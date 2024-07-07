@@ -23,7 +23,7 @@
  *  interfacing with the front-end gui.
  */
 
-#include <ranges>
+#include <memory>
 #if defined(_WIN32)
 #if defined(EXPORTING_AMCSET)
 #define DECLSPEC __declspec(dllexport)
@@ -36,12 +36,16 @@
 
 #pragma once
 
-#include <boost/units/base_units/angle/radian.hpp>
-#include <boost/units/systems/si/mass.hpp>
-#include <vector>
+// Standard library
+#include <ranges>
 
 // Boost random numbers
+#include <boost/random/discrete_distribution.hpp>
+#include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_01.hpp>
+
+// Boost asio
+#include <boost/asio.hpp>
 
 #include "amcset_utilities.h"
 #include "isotope_data.h"
@@ -77,8 +81,9 @@ struct Coordinate {
    * \param y The value to set to y_
    * \param z The value to set to z_
    */
-  constexpr Coordinate(double x, double y, double z) noexcept
-      : x_(x * angstrom), y_(y * angstrom), z_(z * angstrom) {}
+  constexpr Coordinate(length_quantity x, length_quantity y,
+                       length_quantity z) noexcept
+      : x_(x), y_(y), z_(z) {}
 };
 
 //! A struct for storing velocity information.
@@ -99,11 +104,12 @@ struct Velocity {
    * \param z_angle The value to set to z_angle_
    * \param energy The value to set to energy_
    */
-  constexpr Velocity(double x_angle, double z_angle, double energy) noexcept
-      : x_angle_(x_angle * radian),
-        z_angle_(z_angle * radian),
-        energy_(energy * kilo_electron_volt) {};
+  constexpr Velocity(angle_quantity x_angle, angle_quantity z_angle,
+                     energy_quantity energy) noexcept
+      : x_angle_(x_angle), z_angle_(z_angle), energy_(energy) {};
 };
+
+class Simulation;
 
 /*!
  * \brief A class for representing simulation particles.
@@ -136,23 +142,136 @@ class Particle {
      *
      * This constructor uses the z number and mass number to determine the
      * charge number and exact isotopic mass to the  charge_ and mass_ fields in
-     * the Properties struct.
+     * the Properties struct. This can also represent an electron if the
+     * z_number and mass_number as specified as 0.
      *
-     * \param z_number The atomic (Z) number of the particle.
-     * \param mass_number The mass number of the particle
+     * \param z_number The atomic (Z) number of the particle. If z_number is 0,
+     * an electron is specified.
+     * \param mass_number The mass number of the particle. If mass_number is 0,
+     * an electron is specified.
      */
     constexpr Properties(size_t z_number, size_t mass_number) try
-        : charge_(double(z_number) * elementary_charge),
+        : charge_(z_number > 0 ? double(z_number) * elementary_charge
+                               : double(-1.0) * elementary_charge),
           mass_(IsotopeData::get_isotope_mass(z_number, mass_number)) {
     } catch (...) {
       rethrow(EXCEPTION_MESSAGE(""));
     };
   };
 
+  /*!
+   * \brief Deleted default constructor for Particle.
+   */
   Particle() = delete;
-  // TODO: Implement Particle public members
- private:
-  // TODO: Implement Particle private members
+
+  /*!
+   * \brief construct a Particle by passing a reference to a Simulation object.
+   *
+   * All the information needed to create the particle is stored in the
+   * Simulation object, hence no other parameters are needed.
+   */
+  Particle(const Simulation& simulation,
+           boost::random::discrete_distribution<double> discrete_distribution,
+           const boost::random::uniform_01<double>& uniform_distribution);
+
+  /*!
+   * \brief A pure virtual firing function for Particle.
+   *
+   * This function prevents an instance of Particle from being directly
+   * instantiated. Either an Electron or Ion must be instantiated for a Particle
+   * type.
+   */
+  virtual void fire() = 0;
+
+  /*!
+   * \brief Default destructor for Particle
+   */
+  virtual ~Particle() = default;
+
+ protected:
+  std::vector<std::unique_ptr<Particle>>
+      particles_;  //!< List of cascade particles
+  std::vector<Coordinate>
+      coordinates_;  //!< List of coordinates of the current particle
+  const Simulation& simulation_;  //!< Reference to the simulation object
+  Velocity velocity_;             //!< Current velocity of the particle
+  Coordinate coordinate_;         //!< Current coordinate of the particle
+  boost::random::discrete_distribution<double>
+      discrete_distribution_;  //!< Discrete distribution for Volume particle
+                               //!< interaction calculations.
+  const boost::random::uniform_01<double>&
+      uniform_distribution_;  //!< Uniform distribution between 0 and 1 for
+                              //!< various uses.
+};
+
+/*!
+ *  \brief A class to represent electrons.
+ *
+ *  This class contains functions specific to electron bombardment simulation.
+ */
+class Electron : public Particle {
+ public:
+  /*!
+   * \brief Construct an electron.
+   *
+   * Accepts a Simulation reference and calls the Particle default constructor.
+   * Immediately fires Electron once created.
+   *
+   * \param simulation The reference to the Simulation object
+   */
+  Electron(const Simulation& simulation,
+           boost::random::discrete_distribution<double> discrete_distribution,
+           const boost::random::uniform_01<double>& uniform_distribution)
+      : Particle(simulation, discrete_distribution, uniform_distribution) {};
+
+  /*!
+   * \brief Fire an electron
+   */
+  void fire() override;
+};
+
+class Volume;
+
+/*!
+ * \brief A class to represent ions.
+ *
+ * This class contains functions specific to proton bombardment simulation.
+ */
+class Ion : public Particle {
+ public:
+  /*!
+   * \brief Construct an electron.
+   *
+   * Accepts a Simulation reference and calls the Particle default constructor.
+   * Immediately fires Ion once created.
+   *
+   * \param simulation The reference to the Simulation object
+   */
+  Ion(const Simulation& simulation,
+      boost::random::discrete_distribution<double> discrete_distribution,
+      const boost::random::uniform_01<double>& uniform_distribution)
+      : Particle(simulation, discrete_distribution, uniform_distribution) {};
+
+  /*!
+   * \brief Fire an ion
+   */
+  void fire() override;
+
+  /*!
+   * \brief Calculate the electronic stopping energy of ions in matter.
+   *
+   * Using the charge, mass, depth, and substrate volume, this function
+   * calculates the electronic stopping energy.
+   *
+   * \param charge The charge of the particle
+   * \param mass The mass of the particle
+   * \param depth The depth of the particle
+   * \param volume The volume in which the particle is traveling.
+   * \return The energy lost from electronic ion interaction with matter.
+   */
+  energy_quantity electronic_stopping_energy(
+      charge_quantity charge, mass_quantity mass, length_quantity depth,
+      const Particle::Properties& properties) const;
 };
 
 /*!
@@ -281,6 +400,42 @@ class Volume final {
 };
 
 /*!
+ * \brief Representation of a single particle bombardment.
+ *
+ * This class represents a bombardment of a single particle incident on a
+ * volume. It initiates a particle bobardment and manages IO of the bombardment
+ * information, including what information is sent to the front end, and what is
+ * saved to a file on disk.
+ */
+class Bombardment {
+ public:
+  /*!
+   * \brief Construct a Bombardment.
+   *
+   * The Simulation reference contains all the needed information for a
+   * bombardment run, so it is the only required parameter.
+   *
+   * \param simulation The simulation which the Bombardment belongs to.
+   * Simulation parameters are extracted from this.
+   */
+  Bombardment(const Simulation& simulation);
+
+  /*!
+   * \brief Run a bombardment;
+   *
+   * Depending on the simulation parameters, runs a ion or electron bombardment
+   * in the Volume contained in the Simulation object.
+   */
+  void run_bombardment();
+
+ private:
+  const Simulation& simulation_;
+  std::unique_ptr<Particle> incident_particle_;
+  boost::random::mt19937 random_number_generator_;
+  boost::random::uniform_01<double> uniform_distribution_;
+};
+
+/*!
  * \brief A class for initating, running, and terminating a multi-bombardment
  * simulation.
  *
@@ -333,9 +488,12 @@ class Simulation final {
     const length_quantity range_;     //!< Maximum range of particles
     const size_t bombardment_count_;  //!< Number of bombardments to simulate
 
-    bool is_electron_;  //!< Determines if bombardment is for an electron
+    const bool is_electron_;  //!< Determines if bombardment is for an electron
 
-    energy_quantity incident_energy_;  //!< Incident particle energy
+    const energy_quantity incident_energy_;  //!< Incident particle energy
+
+    const size_t
+        thread_count_;  //!< The number of threads to use in the simulation
 
     Settings() = delete;  //!< Default constructor ensures intialization
 
@@ -353,7 +511,7 @@ class Simulation final {
              bool log_single_displacement, size_t divisor_angle_number,
              size_t flying_distance_number, length_quantity range,
              size_t bombardment_count, bool is_electron,
-             energy_quantity incident_energy);
+             energy_quantity incident_energy, size_t thread_count);
   };
 
   Simulation() = delete;
@@ -365,13 +523,13 @@ class Simulation final {
    * This constructor is used to construct a Simulation object. It accepts a
    * Settings struct to configure the simulation.
    *
-   * \param s This is the struct that describes the configuration of the
+   * \param settings This is the struct that describes the configuration of the
    * Simulation.
+   * \param volume The volume that the Simulation will use to simulate
+   * collisions
    */
-  Simulation(Settings s, Volume&& volume) try : settings_(s), volume_(volume) {
-  } catch (...) {
-    rethrow(EXCEPTION_MESSAGE(""));
-  };
+  Simulation(Settings settings, Volume&& volume);
+
   /*!
    * \brief A function to access settings.
    *
@@ -396,13 +554,36 @@ class Simulation final {
   };
 
   /*!
-   * \brief Run the simulation
+   * \brief Run the simulation.
+   *
+   * This function creates a thread pool with Settings::thread_count_ workers
+   * before posting Settings::bombardment_count_ Bombardment run_bombardment()
+   * commands.
    */
-  void run();
+  void run_simulation();
+
+  /*!
+   * \brief Return a string of settings.
+   *
+   * This function provides the Simulation settings in a textual format.
+   *
+   * \return A string of settings for the simulation
+   */
+  std::string print_settings() const;
+
+  /*!
+   * \brief Return a constant reference to the simulation volume.
+   *
+   * TODO: Write text code for this function
+   */
+  const Volume& get_volume() const { return volume_; };
 
  private:
   const Settings settings_;
   Volume volume_;
+  std::vector<Bombardment> bombardments_;
+  boost::asio::thread_pool thread_pool_;
 };
+
 }  // namespace common
 }  // namespace amcset

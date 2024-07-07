@@ -23,11 +23,13 @@
  * https://www.nist.gov/pml/atomic-weights-and-isotopic-compositions-relative-atomic-masses.
  */
 
+// Boost units include
+#include <boost/units/systems/si/codata/electron_constants.hpp>
+
 // Standard library
 #include <array>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 // AMCSET includes
 #include "amcset_utilities.h"
@@ -55,23 +57,31 @@ class IsotopeData {
    * isotopic mass.
    *
    * This function will access tabulated data stored within IsotopeData and
-   * statically return the value of an isotope's mass.
+   * statically return the value of an isotope's mass. If atomic_number and
+   * mass_number are specifed as 0, the mass of an electron is returned.
    *
-   * \param atomic_number The atomic (Z) number of the isotope
+   * \param atomic_number The atomic (Z) number of the isotope. If this number
+   * is zero and mass_number is 0, electron mass is returned.
    * \param mass_number The mass number of the isotope
    * \return The exact mass of the corresponding isotope in Relative Atomic Mass
    */
   static constexpr mass_quantity get_isotope_mass(size_t atomic_number,
                                                   size_t mass_number) try {
-    if (atomic_number < 1 || atomic_number > MAX_Z) {
+    if (atomic_number == 0 && mass_number == 0) {
+      return constants::m_e;
+    }
+
+    if (atomic_number == 0 || atomic_number > MAX_Z) {
       throw std::out_of_range(EXCEPTION_MESSAGE(
           "Invalid atomic number: " + std::to_string(atomic_number) +
-          ". Allowed range is 1 to " + std::to_string(MAX_Z) + "."));
+          ". Allowed range is 1 to " + std::to_string(MAX_Z) +
+          " for non-electrons."));
     }
-    if (mass_number < 1 || mass_number > MAX_A) {
+    if (mass_number == 0 || mass_number > MAX_A) {
       throw std::out_of_range(EXCEPTION_MESSAGE(
           "Invalid mass number: " + std::to_string(atomic_number) +
-          ". Allowed range is 1 to " + std::to_string(MAX_Z) + "."));
+          ". Allowed range is 1 to " + std::to_string(MAX_Z) +
+          " for non-electrons."));
     }
 
     mass_quantity mass = isotopic_masses[atomic_number - 1][mass_number - 1];

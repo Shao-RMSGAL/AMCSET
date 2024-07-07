@@ -84,7 +84,9 @@ TEST_F(CommonTest, common_assertions) try {
 
 //! Coordinate struct test.
 TEST_F(CommonTest, coordinate_constructor_test) try {
-  constexpr Coordinate coordinate(-1.0, 0, 1.0);
+  constexpr Coordinate coordinate(length_quantity(-1.0 * angstrom),
+                                  length_quantity(0.0 * angstrom),
+                                  length_quantity(1.0 * angstrom));
 
   ASSERT_EQ(to_string(coordinate.x_), "-1e-10 m");
   ASSERT_EQ(to_string(coordinate.y_), "0 m");
@@ -96,7 +98,9 @@ TEST_F(CommonTest, coordinate_constructor_test) try {
 
 //! Velocity struct test.
 TEST_F(CommonTest, velocity_constructor_test) try {
-  constexpr Velocity velocity(-pi, pi, 10000);
+  constexpr Velocity velocity(angle_quantity(-pi * si::radian),
+                              angle_quantity(pi * si::radian),
+                              energy_quantity(10000.0 * kilo_electron_volt));
 
   ASSERT_EQ(to_string(velocity.x_angle_), "-3.14159 rad");
   ASSERT_EQ(to_string(velocity.z_angle_), "3.14159 rad");
@@ -114,9 +118,30 @@ TEST_F(CommonTest, isotope_data_get_isotope_mass_test) try {
             double(4.00260325413) * atomic_mass_unit);
   ASSERT_EQ(IsotopeData::get_isotope_mass(118, 295),
             double(295.21624) * atomic_mass_unit);
+
+  ASSERT_EQ(IsotopeData::get_isotope_mass(0, 0), double(1.0) * constants::m_e);
+
   ASSERT_THROW(IsotopeData::get_isotope_mass(0, 1), std::out_of_range);
   ASSERT_THROW(IsotopeData::get_isotope_mass(1, 0), std::out_of_range);
   ASSERT_THROW(IsotopeData::get_isotope_mass(1, 100), std::invalid_argument);
+} catch (const std::exception& e) {
+  print_exception(e);
+  FAIL();
+}
+
+//! Particle::Properties test
+TEST_F(CommonTest, properties_test) try {
+  Particle::Properties electron(0, 0);
+
+  ASSERT_EQ(electron.mass_, double(1.0) * constants::m_e);
+  ASSERT_EQ(electron.charge_, double(-1.0) * elementary_charge);
+  ASSERT_THROW(Particle::Properties(0, 1), std::out_of_range);
+  ASSERT_THROW(Particle::Properties(1, 0), std::out_of_range);
+
+  Particle::Properties iron(26, 56);
+  ASSERT_EQ(iron.mass_, IsotopeData::get_isotope_mass(26, 56));
+  ASSERT_EQ(iron.charge_, double(26) * elementary_charge);
+
 } catch (const std::exception& e) {
   print_exception(e);
   FAIL();
@@ -204,6 +229,7 @@ TEST_F(CommonTest, simulation_test) try {
   size_t bombardment_count = 1000;
   bool is_electron = false;
   auto incident_energy = energy_quantity(50.0 * kilo_electron_volt);
+  size_t thread_count = 8;
 
   auto volume =
       Volume({create_water_layer(length_quantity(2.0 * angstrom)),
@@ -214,7 +240,7 @@ TEST_F(CommonTest, simulation_test) try {
       electron_stopping_energy, incident_particle_properties,
       enable_damage_cascade, ion_stopping_energy, ion_displacement_energy,
       log_single_displacement, divisor_angle_number, flying_distance_number,
-      range, bombardment_count, is_electron, incident_energy);
+      range, bombardment_count, is_electron, incident_energy, thread_count);
 
   ASSERT_EQ(settings.electron_stopping_energy_, electron_stopping_energy);
   ASSERT_EQ(settings.incident_particle_properties_.mass_,
@@ -231,6 +257,7 @@ TEST_F(CommonTest, simulation_test) try {
   ASSERT_EQ(settings.bombardment_count_, bombardment_count);
   ASSERT_EQ(settings.is_electron_, is_electron);
   ASSERT_EQ(settings.incident_energy_, incident_energy);
+  ASSERT_EQ(settings.thread_count_, thread_count);
 
   Simulation simulation(settings, std::move(volume));
 
@@ -268,8 +295,10 @@ TEST_F(CommonTest, simulation_test) try {
             is_electron);
   ASSERT_EQ(simulation.get_settings(&Simulation::Settings::incident_energy_),
             incident_energy);
+  ASSERT_EQ(simulation.get_settings(&Simulation::Settings::thread_count_),
+            thread_count);
 
-  EXPECT_NO_THROW(simulation.run());
+  EXPECT_NO_THROW(simulation.run_simulation());
 } catch (const std::exception& e) {
   print_exception(e);
   FAIL();
