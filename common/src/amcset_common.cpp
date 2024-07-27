@@ -19,7 +19,11 @@
 #include <glog/logging.h>
 
 #include <boost/random/discrete_distribution.hpp>
+#include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_01.hpp>
+#include <boost/units/pow.hpp>
+#include <boost/units/systems/si/mass.hpp>
+#include <cmath>
 #include <numeric>
 #include <stdexcept>
 
@@ -28,8 +32,36 @@
 namespace amcset {
 namespace common {
 
-Volume::Layer::Layer(material_vector&& material, length_quantity depth) try
-    : material_(std::move(material)), depth_(depth) {
+Layer::Layer(material_vector&& material, length_quantity depth,
+             mass_density_quantity mass_density) try
+    : material_([&material]() {
+        auto relative_compositions =
+            material | std::views::transform(
+                           &std::pair<double, Particle::Properties>::first);
+        double sum = std::accumulate(relative_compositions.begin(),
+                                     relative_compositions.end(), 0.0);
+
+        for (auto& pair : material) {
+          if (pair.first < 0) {
+            throw std::invalid_argument(EXCEPTION_MESSAGE(
+                "Relative composition: " + std::to_string(pair.first) +
+                " is less than zero."));
+          }
+          pair.first /= sum;
+        }
+        return std::move(material);
+      }()),
+      depth_(depth),
+      mass_density_(mass_density),
+      number_density_([&]() {
+        return mass_density /
+               (std::accumulate(material_.begin(), material_.end(),
+                                mass_quantity(0),
+                                [](const mass_quantity& sum, const auto& mat) {
+                                  return sum + mat.first * mat.second.mass_;
+                                }) *
+                constants::N_A);
+      }()) {
   if (depth < length_quantity(0)) {
     throw std::invalid_argument(EXCEPTION_MESSAGE("Depth: " + to_string(depth) +
                                                   " is less than zero."));
@@ -37,26 +69,15 @@ Volume::Layer::Layer(material_vector&& material, length_quantity depth) try
 
   if (material_.size() == 0) {
     throw std::invalid_argument(EXCEPTION_MESSAGE(
-        "Cannot pass a vector of size 0 to Volume::Layer constructor"));
+        "Cannot pass a vector of size 0 to Layer constructor"));
   }
 
-  auto relative_compositions = get_relative_compositions();
-  double sum = std::accumulate(relative_compositions.begin(),
-                               relative_compositions.end(), 0);
-
-  for (auto& arg : material_) {
-    if (arg.first < 0) {
-      throw std::invalid_argument(EXCEPTION_MESSAGE(
-          "Relative composition: " + std::to_string(arg.first) +
-          " is less than zero."));
-    }
-    arg.first /= sum;
-  }
 } catch (...) {
   rethrow();
 }
 
-const Volume::Layer& Volume::get_layer(length_quantity depth) const try {
+std::pair<const Layer&, size_t> Volume::get_layer(length_quantity depth) const
+    try {
   if (depth < length_quantity(0.0 * angstrom)) {
     throw std::invalid_argument(EXCEPTION_MESSAGE(
         "Depth: " + to_string(depth) + " cannot be less than zero."));
@@ -68,9 +89,9 @@ const Volume::Layer& Volume::get_layer(length_quantity depth) const try {
   }
 
   // Rely on the ordering of the layers (depths are strictly increasing)
-  for (const auto& layer : layers_) {
-    if (depth <= layer.get_depth()) {
-      return layer;
+  for (size_t i = 0; i < layers_.size(); i++) {
+    if (depth <= layers_[i].get_depth()) {
+      return std::make_pair(layers_[i], i);
     }
   }
 
@@ -83,7 +104,17 @@ const Volume::Layer& Volume::get_layer(length_quantity depth) const try {
   rethrow();
 }
 
-auto Volume::Layer::get_relative_compositions() const
+const Layer& Volume::get_layer(size_t index) const try {
+  if (index > layers_.size()) {
+    throw std::out_of_range(EXCEPTION_MESSAGE(
+        "Index out of range. Index: " + std::to_string(index) +
+        ". Vector size: " + std::to_string(layers_.size())));
+  }
+  return layers_[index];
+} catch (...) {
+  rethrow();
+}
+auto Layer::get_relative_compositions() const
     -> decltype(std::declval<const material_vector&>() |
                 std::views::transform(
                     &std::pair<double, Particle::Properties>::first)) try {
@@ -238,19 +269,19 @@ Bombardment::Bombardment(const Simulation& simulation) try
       uniform_distribution_() {
   auto composition_distributions = simulation.get_volume()
                                        .get_layer(length_quantity(0))
-                                       .get_relative_compositions();
+                                       .first.get_relative_compositions();
   if (simulation.get_settings(&Simulation::Settings::is_electron_)) {
     incident_particle_ = std::make_unique<Electron>(
         simulation,
-        boost::random::discrete_distribution<double>(
+        boost::random::discrete_distribution<size_t, double>(
             composition_distributions.begin(), composition_distributions.end()),
-        uniform_distribution_);
+        uniform_distribution_, random_number_generator_);
   } else {
     incident_particle_ = std::make_unique<Ion>(
         simulation,
-        boost::random::discrete_distribution<double>(
+        boost::random::discrete_distribution<size_t, double>(
             composition_distributions.begin(), composition_distributions.end()),
-        uniform_distribution_);
+        uniform_distribution_, random_number_generator_);
   }
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
@@ -265,8 +296,9 @@ void Bombardment::run_bombardment() try {
 
 Particle::Particle(
     const Simulation& simulation,
-    boost::random::discrete_distribution<double> discrete_distribution,
-    const boost::random::uniform_01<double>& uniform_distribution) try
+    boost::random::discrete_distribution<size_t, double> discrete_distribution,
+    const boost::random::uniform_01<double>& uniform_distribution,
+    boost::random::mt19937& random_number_generator) try
     : particles_(std::vector<std::unique_ptr<Particle>>()),
       coordinates_(std::vector<Coordinate>()),
       simulation_(simulation),
@@ -275,12 +307,18 @@ Particle::Particle(
           simulation.get_settings(&Simulation::Settings::incident_energy_))),
       coordinate_(Coordinate(0, 0, 0)),
       discrete_distribution_(discrete_distribution),
-      uniform_distribution_(uniform_distribution) {
+      uniform_distribution_(uniform_distribution),
+      random_number_generator_(random_number_generator),
+      current_layer_(std::reference_wrapper<const Layer>(
+          simulation.get_volume()
+              .get_layer(length_quantity(coordinate_.z_))
+              .first)) {
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
 }
 
 void Electron::fire() try {
+  // TODO: Implement Electron simulation
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
 }
@@ -289,6 +327,8 @@ void Ion::fire() try {
   const auto ion_stopping_energy =
       simulation_.get_settings(&Simulation::Settings::ion_stopping_energy_);
   while (velocity_.energy_ > ion_stopping_energy) {
+    velocity_.energy_ -=
+        energy_quantity(1.0 * kilo_electron_volt);  // TODO: Remove this
     // TODO: Implement simulation calculations
     //
     // 1. Subtract electronic stopping energy
@@ -303,10 +343,39 @@ void Ion::fire() try {
   rethrow(EXCEPTION_MESSAGE(""));
 }
 
-energy_quantity Ion::electronic_stopping_energy(
-    charge_quantity charge, mass_quantity mass, length_quantity depth,
-    const Particle::Properties& properties) const try {
-  return energy_quantity(0);
+length_quantity Ion::interatomic_spacing() const {
+  return root<-3>(current_layer_.get().get_number_density() * constants::N_A);
+};
+
+energy_quantity Ion::electronic_stopping_energy(charge_quantity charge,
+                                                mass_quantity mass,
+                                                energy_quantity energy,
+                                                const Layer& layer) const try {
+  const size_t atom_index = discrete_distribution_(random_number_generator_);
+
+  std::cout << "Picked: " << atom_index + 1 << std::endl;
+  std::cout << "Out of: " << layer.get_number_of_components() << std::endl;
+  std::cout << "With charge of: " << layer.get_property(atom_index).charge_
+            << " C" << std::endl;
+
+  const auto properties = layer.get_property(atom_index);
+
+  std::cout << charge << " " << properties.charge_ << " " << mass << " "
+            << energy << std::endl;
+
+  auto stopping_energy = (720.381153118 * si::mass::unit_type() /
+                          pow<static_rational<7, 6>>(si::current::unit_type()) /
+                          pow<static_rational<13, 6>>(si::time::unit_type())) *
+                         pow<static_rational<7, 6>>(charge) *
+                         properties.charge_ /
+                         (pow<static_rational<3, 2>>(
+                              pow<static_rational<2, 3>>(charge) +
+                              pow<static_rational<2, 3>>(properties.charge_)) *
+                          root<2>(mass)) *
+                         root<2>(energy);
+  std::cout << stopping_energy << std::endl;
+
+  return energy_quantity(0.0 * kilo_electron_volt);
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
 }

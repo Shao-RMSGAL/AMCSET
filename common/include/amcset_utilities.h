@@ -26,17 +26,22 @@
 #pragma once
 
 // Boost units
+#include <boost/mpl/list.hpp>
 #include <boost/units/base_units/metric/angstrom.hpp>
 #include <boost/units/io.hpp>
 #include <boost/units/physical_dimensions/energy.hpp>
+#include <boost/units/physical_dimensions/mass.hpp>
+#include <boost/units/systems/si/amount.hpp>
 #include <boost/units/systems/si/codata/electromagnetic_constants.hpp>
 #include <boost/units/systems/si/codata/physico-chemical_constants.hpp>
 #include <boost/units/systems/si/electric_potential.hpp>
 #include <boost/units/systems/si/length.hpp>
+#include <boost/units/systems/si/mass.hpp>
 #include <boost/units/systems/si/plane_angle.hpp>
 
 // Boost math
 #include <boost/math/constants/constants.hpp>
+#include <boost/units/unit.hpp>
 #include <iostream>
 #include <string>
 
@@ -60,6 +65,24 @@ using charge_quantity =
     quantity<si::electric_charge>;  //!< SI type for charge (Coulomb)
 using dimensionless_quantity =
     quantity<si::dimensionless>;  //!< Type for dimensionless quantity
+using volume_quantity = quantity<si::volume>;  //!< Type for volume
+using mass_density_dimension = make_dimension_list<
+    boost::mpl::list2<dim<mass_base_dimension, static_rational<1>>,
+                      dim<length_base_dimension, static_rational<-3>>>>::
+    type;  //!< Custom dimension for mass density
+using mass_density_unit =
+    unit<mass_density_dimension, si::system>;  //!< Unit for mass density
+using mass_density_quantity =
+    quantity<mass_density_unit>;  //!< Type for mass density (kg/m^3)
+using number_density_dimension = make_dimension_list<
+    boost::mpl::list2<dim<amount_base_dimension, static_rational<1>>,
+                      dim<length_base_dimension, static_rational<-3>>>>::
+    type;  //!< Custom dimension for number density
+using number_density_unit =
+    unit<number_density_dimension,
+         si::system>;  //!< Unit for number density, (mol/m^3)
+using number_density_quantity =
+    quantity<number_density_unit>;  //!< Number density
 
 constexpr auto kilo_electron_volt =
     double(1000) * constants::e * si::volt;  //!< Quantity for kiloelectron volt
@@ -71,6 +94,12 @@ constexpr auto atomic_mass_unit =
     constants::m_u;  //!< Quantity for atomic mass unit
 constexpr auto elementary_charge =
     constants::e;  //!< Quantity for the elementary charge
+constexpr mass_density_quantity kg_per_cubic_meter =
+    1.0 * si::kilogram /
+    pow<3>(si::meter);  //!< Unit quantity for mass density (kg/m^3)
+constexpr number_density_quantity atoms_per_cubic_meter =
+    1.0 * si::amount::unit_type() /
+    pow<3>(si::meter);  //!< Unit quantity for number density (mole/m^3)
 
 /*!
  * \brief A macro to provide debugging details for exception messages.

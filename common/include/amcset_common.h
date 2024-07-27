@@ -23,6 +23,8 @@
  *  interfacing with the front-end gui.
  */
 
+#include <boost/units/static_rational.hpp>
+#include <functional>
 #include <memory>
 #if defined(_WIN32)
 #if defined(EXPORTING_AMCSET)
@@ -88,9 +90,9 @@ struct Coordinate {
 
 //! A struct for storing velocity information.
 struct Velocity {
-  const angle_quantity x_angle_;  //!< Angle relative to the x-axis in radians
-  const angle_quantity z_angle_;  //!< Angle relative to the z-axis in  radians
-  const energy_quantity energy_;  //!< Energy of the particle in keV
+  angle_quantity x_angle_;  //!< Angle relative to the x-axis in radians
+  angle_quantity z_angle_;  //!< Angle relative to the z-axis in  radians
+  energy_quantity energy_;  //!< Energy of the particle in keV
 
   Velocity() = delete;
 
@@ -110,6 +112,8 @@ struct Velocity {
 };
 
 class Simulation;
+class Volume;
+class Layer;
 
 /*!
  * \brief A class for representing simulation particles.
@@ -171,8 +175,9 @@ class Particle {
    * Simulation object, hence no other parameters are needed.
    */
   Particle(const Simulation& simulation,
-           boost::random::discrete_distribution<double> discrete_distribution,
-           const boost::random::uniform_01<double>& uniform_distribution);
+           boost::random::discrete_distribution<size_t, double> discrete_distribution,
+           const boost::random::uniform_01<double>& uniform_distribution,
+           boost::random::mt19937& random_number_generator);
 
   /*!
    * \brief A pure virtual firing function for Particle.
@@ -196,12 +201,16 @@ class Particle {
   const Simulation& simulation_;  //!< Reference to the simulation object
   Velocity velocity_;             //!< Current velocity of the particle
   Coordinate coordinate_;         //!< Current coordinate of the particle
-  boost::random::discrete_distribution<double>
+  boost::random::discrete_distribution<size_t, double>
       discrete_distribution_;  //!< Discrete distribution for Volume particle
                                //!< interaction calculations.
   const boost::random::uniform_01<double>&
-      uniform_distribution_;  //!< Uniform distribution between 0 and 1 for
-                              //!< various uses.
+      uniform_distribution_;  //!< Reference to uniform distribution between 0
+                              //!< and 1 for various uses.
+  boost::random::mt19937&
+      random_number_generator_;  //!< Reference to random number generator
+  std::reference_wrapper<const Layer>
+      current_layer_;  //!< Current layer of the particle
 };
 
 /*!
@@ -220,12 +229,16 @@ class Electron : public Particle {
    * \param simulation The reference to the Simulation object
    */
   Electron(const Simulation& simulation,
-           boost::random::discrete_distribution<double> discrete_distribution,
-           const boost::random::uniform_01<double>& uniform_distribution)
-      : Particle(simulation, discrete_distribution, uniform_distribution) {};
+           boost::random::discrete_distribution<size_t, double> discrete_distribution,
+           const boost::random::uniform_01<double>& uniform_distribution,
+           boost::random::mt19937& random_number_generator)
+      : Particle(simulation, discrete_distribution, uniform_distribution,
+                 random_number_generator) {};
 
   /*!
    * \brief Fire an electron
+   *
+   * Fires an electron using electron-specific energy loss functions.
    */
   void fire() override;
 };
@@ -247,13 +260,17 @@ class Ion : public Particle {
    *
    * \param simulation The reference to the Simulation object
    */
-  Ion(const Simulation& simulation,
-      boost::random::discrete_distribution<double> discrete_distribution,
-      const boost::random::uniform_01<double>& uniform_distribution)
-      : Particle(simulation, discrete_distribution, uniform_distribution) {};
+     Ion(const Simulation& simulation,
+      boost::random::discrete_distribution<size_t, double> discrete_distribution,
+      const boost::random::uniform_01<double>& uniform_distribution,
+      boost::random::mt19937& random_number_generator)
+      : Particle(simulation, discrete_distribution, uniform_distribution,
+                 random_number_generator) {};
 
   /*!
    * \brief Fire an ion
+   *
+   * Fires an ion using ion-specific energy loss functions
    */
   void fire() override;
 
@@ -269,11 +286,130 @@ class Ion : public Particle {
    * \param volume The volume in which the particle is traveling.
    * \return The energy lost from electronic ion interaction with matter.
    */
-  energy_quantity electronic_stopping_energy(
-      charge_quantity charge, mass_quantity mass, length_quantity depth,
-      const Particle::Properties& properties) const;
+  energy_quantity electronic_stopping_energy(charge_quantity charge,
+                                             mass_quantity mass,
+                                             energy_quantity energy,
+                                             const Layer& layer) const;
+
+  /*!
+   * \brief Returns the interactomic spacing, depending on the current layer.
+   */
+  length_quantity interatomic_spacing() const;
 };
 
+/*!
+ * \brief A class for representing a single layer of material in the Volume
+ * class.
+ *
+ * A Layer can consist of a single isotope, or many isotopes present at a
+ * relative fraction. The layer is asssumed to be homogenous, so the
+ * probability of interaction with a particular isotope solely depends on the
+ * relative fraction.
+ */
+class Layer final {
+ public:
+  using material_vector =
+      std::vector<std::pair<double,
+                            Particle::Properties>>;  //!< Type for storing
+                                                     //!< material information
+
+  Layer() = delete;
+
+  /*!
+   * \brief Constructor for a Layer that accepts a material_vector
+   *
+   * Accepts a vector and efficiently moves it into the material member.
+   * Maximum depth of the layer is also specified.
+   *
+   * \param material the material_vector containing the Layer information
+   * of interest.
+   *
+   * \param depth The maximum depth the layer extends into the material.
+   * This is not the thickness of the material, but rather the maximum
+   * depth that the layer extends from the bombardment surface of the
+   * volume.
+   *
+   */
+  Layer(material_vector&& material, length_quantity depth,
+        mass_density_quantity density);
+
+  /*!
+   * \brief Return relative compositions of isotopes in the layer
+   *
+   * This function returns a transform which is view of the first elements in
+   * each std::pair which makes up the elements in material_.
+   *
+   * \return A transform of the doubles representing the relative compositions
+   * of the layer
+   */
+  auto get_relative_compositions() const
+      -> decltype(std::declval<const material_vector&>() |
+                  std::views::transform(
+                      &std::pair<double, Particle::Properties>::first));
+
+  /*!
+   *  \brief Returns a property at the corresponding index
+   *
+   *  \param index The index of the property to return
+   *  \return A reference to the Properties struct at the specified index
+   */
+  const Particle::Properties& get_property(size_t index) const try {
+    return material_.at(index).second;
+  } catch (...) {
+    rethrow(EXCEPTION_MESSAGE(""));
+  };
+
+  /*!
+   * \brief Returns a relative composition at the corresponding index.
+   *
+   * \param index The index of the property to return.
+   *
+   * \return The relative composition of the component at the index.
+   */
+  double get_relative_composition(size_t index) const try {
+    return material_.at(index).first;
+  } catch (...) {
+    rethrow(EXCEPTION_MESSAGE(""));
+  }
+
+  /*!
+   * \brief Get the maximum depth of the layer.
+   *
+   * \return The depth of the layer.
+   */
+  length_quantity get_depth() const noexcept { return depth_; };
+
+  /*!
+   * \brief Get the number of components in a layer
+   *
+   * \return The number of components in a layer
+   */
+  size_t get_number_of_components() const noexcept { return material_.size(); };
+
+  /*!
+   * \brief Get the mass density of the layer
+   *
+   * \return Return the mass density of the layer
+   */
+  mass_density_quantity get_mass_density() const noexcept {
+    return mass_density_;
+  }
+
+  /*!
+   * \brief Get the number density of the layer
+   *
+   * \return Return the number density of the layer
+   */
+  number_density_quantity get_number_density() const noexcept {
+    return number_density_;
+  }
+
+ private:
+  material_vector material_;
+  const length_quantity depth_;
+  const mass_density_quantity mass_density_;
+  const number_density_quantity number_density_;
+};
 /*!
  * \brief A class for representing the simulation environment.
  *
@@ -283,92 +419,6 @@ class Ion : public Particle {
  */
 class Volume final {
  public:
-  /*!
-   * \brief A class for representing a single layer of material in the Volume
-   * class.
-   *
-   * A Layer can consist of a single isotope, or many isotopes present at a
-   * relative fraction. The layer is asssumed to be homogenous, so the
-   * probability of interaction with a particular isotope solely depends on the
-   * relative fraction.
-   */
-  class Layer final {
-   public:
-    using material_vector =
-        std::vector<std::pair<double,
-                              Particle::Properties>>;  //!< Type for storing
-                                                       //!< material information
-
-    Layer() = delete;
-
-    /*!
-     * \brief Constructor for a Layer that accepts a material_vector
-     *
-     * Accepts a vector and efficiently moves it into the material member.
-     * Maximum depth of the layer is also specified.
-     *
-     * \param material the material_vector containing the Layer information
-     * of interest.
-     *
-     * \param depth The maximum depth the layer extends into the material.
-     * This is not the thickness of the material, but rather the maximum
-     * depth that the layer extends from the bombardment surface of the
-     * volume.
-     *
-     */
-    Layer(material_vector&& material, length_quantity depth);
-
-    /*!
-     * \brief Return relative compositions of isotopes in the layer
-     *
-     * This function returns a transform which is view of the first elements in
-     * each std::pair which makes up the elements in material_.
-     *
-     * \return A transform of the doubles representing the relative compositions
-     * of the layer
-     */
-    auto get_relative_compositions() const
-        -> decltype(std::declval<const material_vector&>() |
-                    std::views::transform(
-                        &std::pair<double, Particle::Properties>::first));
-
-    /*!
-     *  \brief Returns a property at the corresponding index
-     *
-     *  \param index The index of the property to return
-     *  \return A reference to the Properties struct at the specified index
-     */
-    const Particle::Properties& get_property(size_t index) const try {
-      return material_.at(index).second;
-    } catch (...) {
-      rethrow(EXCEPTION_MESSAGE(""));
-    };
-
-    /*!
-     * \brief Returns a relative composition at the corresponding index.
-     *
-     * \param index The index of the property to return.
-     *
-     * \return The relative composition of the component at the index.
-     */
-    double get_relative_composition(size_t index) const try {
-      return material_.at(index).first;
-    } catch (...) {
-      rethrow(EXCEPTION_MESSAGE(""));
-    }
-
-    /*!
-     * \brief Get the maximum depth of the layer.
-     *
-     * \return The depth of the layer.
-     */
-    length_quantity get_depth() const noexcept { return depth_; };
-
-   private:
-    material_vector material_;
-    const length_quantity depth_;
-  };
-
   Volume() = delete;
 
   /*!
@@ -393,7 +443,16 @@ class Volume final {
    *
    * \return A reference to the Layer at which depth falls into.
    */
-  const Layer& get_layer(length_quantity depth) const;
+  std::pair<const Layer&, size_t> get_layer(length_quantity depth) const;
+
+  /*!
+   * \brief Get a layer using an index
+   *
+   * \param index The index of the layer to return
+   *
+   * \return A constant reference to the Layer of interest
+   */
+  const Layer& get_layer(size_t index) const;
 
  private:
   const std::vector<Layer> layers_;
@@ -574,7 +633,7 @@ class Simulation final {
   /*!
    * \brief Return a constant reference to the simulation volume.
    *
-   * TODO: Write text code for this function
+   * \return The volume of the simulation environment.
    */
   const Volume& get_volume() const { return volume_; };
 

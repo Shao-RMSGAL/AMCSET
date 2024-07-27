@@ -1,5 +1,3 @@
-// Copyright 2024, Texas A&M University
-//
 // This file is part of AMCSET.
 //
 // AMCSET is free software: you can redistribute it and/or modify it under the
@@ -25,6 +23,10 @@
 
 #include <gtest/gtest.h>
 
+#include <boost/random/mersenne_twister.hpp>
+#include <boost/units/systems/si/codata/physico-chemical_constants.hpp>
+#include <ctime>
+
 #include "amcset_common.h"
 #include "amcset_utilities.h"
 
@@ -46,26 +48,63 @@ class CommonTest : public testing::Test {
   void TearDown() override {}
 
   //! Convenience function for creating a water layer for testing
-  Volume::Layer create_water_layer(length_quantity depth) const {
+  Layer create_water_layer(length_quantity depth) const {
     constexpr Particle::Properties hydrogen(1, 1);
     constexpr Particle::Properties oxygen(8, 16);
-    return Volume::Layer({{2.0, hydrogen}, {1.0, oxygen}}, depth);
+    constexpr auto mass_density = 1.0 * kg_per_cubic_meter;
+    return Layer({{2.0, hydrogen}, {1.0, oxygen}}, depth, mass_density);
   }
 
   //! Convenience function for creating an iron layer for testing
-  Volume::Layer create_iron_layer(length_quantity depth) const try {
+  Layer create_iron_layer(length_quantity depth) const try {
     // TODO: Replace with natural-abundance function
     constexpr double natural_abundance_54 = 0.05845;
     constexpr double natural_abundance_56 = 0.91754;
     constexpr double natural_abundance_57 = 0.02119;
     constexpr double natural_abundance_58 = 0.00282;
-    Volume::Layer::material_vector iron{
+    Layer::material_vector iron{
         {natural_abundance_54, Particle::Properties(26, 54)},
         {natural_abundance_56, Particle::Properties(26, 56)},
         {natural_abundance_57, Particle::Properties(26, 57)},
         {natural_abundance_58, Particle::Properties(26, 58)},
     };
-    return Volume::Layer(std::move(iron), depth);
+    constexpr auto mass_density = 7874.0 * kg_per_cubic_meter;
+    return Layer(std::move(iron), depth, mass_density);
+  } catch (const std::exception& e) {
+    print_exception(e);
+    throw e;
+  }
+
+  /*!
+   * \brief A convenience function for creating a simulation
+   */
+  Simulation create_simulation() const try {
+    auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
+    auto incident_particle_properties = Particle::Properties(14, 28);
+    bool enable_damage_cascade = true;
+    auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
+    auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
+    bool log_single_displacement = true;
+    size_t divisor_angle_number = 1000;
+    size_t flying_distance_number = 1000;
+    auto range = length_quantity(80000000.0 * angstrom);
+    size_t bombardment_count = 1000;
+    bool is_electron = false;
+    auto incident_energy = energy_quantity(50.0 * kilo_electron_volt);
+    size_t thread_count = 8;
+
+    auto volume =
+        Volume({create_water_layer(length_quantity(2.0 * angstrom)),
+                create_iron_layer(length_quantity(500.0 * angstrom)),
+                create_water_layer(length_quantity(1000.0 * angstrom))});
+
+    Simulation::Settings settings(
+        electron_stopping_energy, incident_particle_properties,
+        enable_damage_cascade, ion_stopping_energy, ion_displacement_energy,
+        log_single_displacement, divisor_angle_number, flying_distance_number,
+        range, bombardment_count, is_electron, incident_energy, thread_count);
+
+    return Simulation(settings, std::move(volume));
   } catch (const std::exception& e) {
     print_exception(e);
     throw e;
@@ -155,6 +194,7 @@ TEST_F(CommonTest, layer_test) try {
   // Testing get_relative_compositions()
   const auto composition_view = water_layer.get_relative_compositions();
   std::vector<double> compare_doubles = {2.0 / 3.0, 1.0 / 3.0};
+
   ASSERT_TRUE(std::equal(composition_view.begin(), composition_view.end(),
                          compare_doubles.begin(), compare_doubles.end()));
   compare_doubles.at(0) = 4.0;
@@ -171,15 +211,31 @@ TEST_F(CommonTest, layer_test) try {
   ASSERT_EQ(water_layer.get_relative_composition(0), 2.0 / 3.0);
   ASSERT_EQ(water_layer.get_relative_composition(1), 1.0 / 3.0);
 
+  constexpr auto mass_density = 1.0 * kg_per_cubic_meter;
+
   // Testing contructor
-  Volume::Layer::material_vector empty_vec{};
-  ASSERT_THROW(Volume::Layer(std::move(empty_vec), depth),
+  Layer::material_vector empty_vec{};
+  ASSERT_THROW(Layer(std::move(empty_vec), depth, mass_density),
                std::invalid_argument);
-  ASSERT_THROW(Volume::Layer(std::move(empty_vec), double(-1.0) * depth),
+  ASSERT_THROW(Layer(std::move(empty_vec), double(-1.0) * depth, mass_density),
                std::invalid_argument);
 
   // Testing get_depth
   ASSERT_EQ(water_layer.get_depth(), length_quantity(1.0 * angstrom));
+
+  // Testing get_number_of_components
+  ASSERT_EQ(water_layer.get_number_of_components(), 2);
+
+  // Testing get_mass_density
+  ASSERT_EQ(water_layer.get_mass_density(), 1.0 * kg_per_cubic_meter);
+
+  // Testing get_number_density
+  ASSERT_EQ(
+      water_layer.get_number_density(),
+      mass_density / (((2.0 / 3.0) * IsotopeData::get_isotope_mass(1, 1) +
+                       (1.0 / 3.0) * IsotopeData::get_isotope_mass(8, 16)) *
+                      constants::N_A));
+
 } catch (const std::exception& e) {
   print_exception(e);
   FAIL();
@@ -197,26 +253,41 @@ TEST_F(CommonTest, volume_test) try {
   // Test constructor
   ASSERT_THROW(Volume({water_layer_2, iron_layer, water_layer_1}),
                std::invalid_argument);
-  ASSERT_THROW(Volume(std::vector<Volume::Layer>()), std::invalid_argument);
+  ASSERT_THROW(Volume(std::vector<Layer>()), std::invalid_argument);
 
   // Test get_layer
-  ASSERT_EQ(volume.get_layer(length_quantity(1.0 * angstrom)).get_depth(),
+  ASSERT_EQ(volume.get_layer(length_quantity(1.0 * angstrom)).first.get_depth(),
             water_layer_1.get_depth());
-  ASSERT_EQ(volume.get_layer(length_quantity(2.0 * angstrom)).get_depth(),
+  ASSERT_EQ(volume.get_layer(length_quantity(2.0 * angstrom)).first.get_depth(),
             water_layer_1.get_depth());
-  ASSERT_EQ(volume.get_layer(length_quantity(250.0 * angstrom)).get_depth(),
-            iron_layer.get_depth());
-  ASSERT_EQ(volume.get_layer(length_quantity(501.0 * angstrom)).get_depth(),
-            water_layer_2.get_depth());
+  ASSERT_EQ(
+      volume.get_layer(length_quantity(250.0 * angstrom)).first.get_depth(),
+      iron_layer.get_depth());
+  ASSERT_EQ(
+      volume.get_layer(length_quantity(501.0 * angstrom)).first.get_depth(),
+      water_layer_2.get_depth());
   ASSERT_THROW(volume.get_layer(length_quantity(1001.0 * angstrom)),
                std::out_of_range);
+
+  ASSERT_EQ(volume.get_layer(length_quantity(1.0 * angstrom)).second, 0);
+  ASSERT_EQ(volume.get_layer(length_quantity(250.0 * angstrom)).second, 1);
+  ASSERT_EQ(volume.get_layer(length_quantity(501.0 * angstrom)).second, 2);
+
+  ASSERT_EQ(volume.get_layer(length_quantity(1.0 * angstrom)).first.get_depth(),
+            volume.get_layer(0).get_depth());
+  ASSERT_EQ(
+      volume.get_layer(length_quantity(250.0 * angstrom)).first.get_depth(),
+      volume.get_layer(1).get_depth());
+  ASSERT_EQ(
+      volume.get_layer(length_quantity(501.0 * angstrom)).first.get_depth(),
+      volume.get_layer(2).get_depth());
 } catch (const std::exception& e) {
   print_exception(e);
   FAIL();
 }
 
-//! Simulation class test
-TEST_F(CommonTest, simulation_test) try {
+//! Simulation and Simulation::Settings class test
+TEST_F(CommonTest, simulation_and_settings_test) try {
   auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
   auto incident_particle_properties = Particle::Properties(14, 28);
   bool enable_damage_cascade = true;
@@ -299,6 +370,62 @@ TEST_F(CommonTest, simulation_test) try {
             thread_count);
 
   EXPECT_NO_THROW(simulation.run_simulation());
+} catch (const std::exception& e) {
+  print_exception(e);
+  FAIL();
+}
+
+//! Bombardment test
+TEST_F(CommonTest, bombardment_test) try {
+  Simulation simulation = create_simulation();
+  // TODO: Implement bombardment test
+  FAIL();
+} catch (const std::exception& e) {
+  print_exception(e);
+  FAIL();
+}
+
+//! Ion test
+TEST_F(CommonTest, ion_test) try {
+  Simulation simulation = create_simulation();
+  // TODO: Implement Ion test
+  FAIL();
+} catch (const std::exception& e) {
+  print_exception(e);
+  FAIL();
+}
+
+//! Electronic stopping energy test
+TEST_F(CommonTest, electronic_stopping_energy_test) try {
+  // TODO: Implement electronic stopping energy test
+  const auto simulation = create_simulation();
+  boost::random::discrete_distribution<size_t, double> discrete_distribution(
+      simulation.get_volume()
+          .get_layer(length_quantity(250.0 * angstrom))
+          .first.get_relative_compositions()
+          .begin(),
+      simulation.get_volume()
+          .get_layer(length_quantity(250.0 * angstrom))
+          .first.get_relative_compositions()
+          .end());
+  const boost::random::uniform_01<double> uniform_distribution;
+  boost::random::mt19937 random_number_generator;
+
+  Ion test(simulation, discrete_distribution, uniform_distribution,
+           random_number_generator);
+
+  auto charge = charge_quantity(14.0 * elementary_charge);
+  auto mass = mass_quantity(27.97692653442 * atomic_mass_unit);
+  auto energy = energy_quantity(50.0 * kilo_electron_volt);
+  auto layer =
+      simulation.get_volume().get_layer(length_quantity(250 * angstrom)).first;
+  std::cout << "In-test substrate charge value: "
+            << layer.get_property(0).charge_ << std::endl;
+
+  std::cout << test.electronic_stopping_energy(charge, mass, energy, layer)
+            << std::endl;
+
+  FAIL();
 } catch (const std::exception& e) {
   print_exception(e);
   FAIL();
