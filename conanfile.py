@@ -1,5 +1,6 @@
 from conan import ConanFile
 from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout, CMakeDeps
+import os
 
 
 class amcsetRecipe(ConanFile):
@@ -31,6 +32,7 @@ class amcsetRecipe(ConanFile):
         deps.generate()
         tc = CMakeToolchain(self)
         tc.user_presets_path = 'ConanPresets.json'
+        tc.variables["CMAKE_EXPORT_COMPILE_COMMANDS"] = True
         tc.generate()
 
     def build(self):
@@ -39,7 +41,22 @@ class amcsetRecipe(ConanFile):
         cmake.build()
         self.conf["tools.system.package_manager:mode"] = "install"
         self.conf["tools.system.package_manager:sudo"] = True
-
+        src_dir = self.source_folder
+        build_dir = self.build_folder
+        src_dir = self.source_folder
+        build_dir = self.build_folder
+        compile_commands_path = os.path.join(build_dir, "compile_commands.json")
+        symlink_path = os.path.join(src_dir, "compile_commands.json")
+        
+        # Remove existing symlink if it exists
+        if os.path.exists(symlink_path):
+            os.remove(symlink_path)
+        
+        # Create new symlink
+        if os.path.exists(compile_commands_path):
+            os.symlink(compile_commands_path, symlink_path)
+        else:
+            self.output.warning("compile_commands.json not found in build directory")
     def package(self):
         cmake = CMake(self)
         cmake.install()

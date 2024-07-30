@@ -32,7 +32,7 @@
 namespace amcset {
 namespace common {
 
-Layer::Layer(material_vector&& material, length_quantity depth,
+Layer::Layer(material_vector &&material, length_quantity depth,
              mass_density_quantity mass_density) try
     : material_([&material]() {
         auto relative_compositions =
@@ -41,7 +41,7 @@ Layer::Layer(material_vector&& material, length_quantity depth,
         double sum = std::accumulate(relative_compositions.begin(),
                                      relative_compositions.end(), 0.0);
 
-        for (auto& pair : material) {
+        for (auto &pair : material) {
           if (pair.first < 0) {
             throw std::invalid_argument(EXCEPTION_MESSAGE(
                 "Relative composition: " + std::to_string(pair.first) +
@@ -51,13 +51,11 @@ Layer::Layer(material_vector&& material, length_quantity depth,
         }
         return std::move(material);
       }()),
-      depth_(depth),
-      mass_density_(mass_density),
-      number_density_([&]() {
+      depth_(depth), mass_density_(mass_density), number_density_([&]() {
         return mass_density /
                (std::accumulate(material_.begin(), material_.end(),
                                 mass_quantity(0),
-                                [](const mass_quantity& sum, const auto& mat) {
+                                [](const mass_quantity &sum, const auto &mat) {
                                   return sum + mat.first * mat.second.mass_;
                                 }) *
                 constants::N_A);
@@ -76,7 +74,7 @@ Layer::Layer(material_vector&& material, length_quantity depth,
   rethrow();
 }
 
-std::pair<const Layer&, size_t> Volume::get_layer(length_quantity depth) const
+std::pair<const Layer &, size_t> Volume::get_layer(length_quantity depth) const
     try {
   if (depth < length_quantity(0.0 * angstrom)) {
     throw std::invalid_argument(EXCEPTION_MESSAGE(
@@ -104,7 +102,7 @@ std::pair<const Layer&, size_t> Volume::get_layer(length_quantity depth) const
   rethrow();
 }
 
-const Layer& Volume::get_layer(size_t index) const try {
+const Layer &Volume::get_layer(size_t index) const try {
   if (index > layers_.size()) {
     throw std::out_of_range(EXCEPTION_MESSAGE(
         "Index out of range. Index: " + std::to_string(index) +
@@ -115,23 +113,23 @@ const Layer& Volume::get_layer(size_t index) const try {
   rethrow();
 }
 auto Layer::get_relative_compositions() const
-    -> decltype(std::declval<const material_vector&>() |
+    -> decltype(std::declval<const material_vector &>() |
                 std::views::transform(
                     &std::pair<double, Particle::Properties>::first)) try {
   return material_ |
          std::views::transform(&std::pair<double, Particle::Properties>::first);
-} catch (...) {  //!<
+} catch (...) { //!<
   rethrow(EXCEPTION_MESSAGE(""));
 }
 
-Volume::Volume(std::vector<Layer>&& layers) try : layers_(std::move(layers)) {
+Volume::Volume(std::vector<Layer> &&layers) try : layers_(std::move(layers)) {
   if (layers_.size() == 0) {
     throw std::invalid_argument(
         "Vector cannot be empty to Volume constructor.");
   }
 
   auto prev_depth = layers_.at(0).get_depth();
-  for (const auto& layer : layers_) {
+  for (const auto &layer : layers_) {
     if (layer.get_depth() < prev_depth) {
       throw std::invalid_argument(EXCEPTION_MESSAGE(
           "Provided vector of layers contains a layer which has a smaller "
@@ -159,12 +157,9 @@ Simulation::Settings::Settings(
       ion_displacement_energy_(ion_displacement_energy),
       log_single_displacement_(log_single_displacement),
       divisor_angle_number_(divisor_angle_number),
-      flying_distance_number_(flying_distance_number),
-      range_(range),
-      bombardment_count_(bombardment_count),
-      is_electron_(is_electron),
-      incident_energy_(incident_energy),
-      thread_count_(thread_count) {
+      flying_distance_number_(flying_distance_number), range_(range),
+      bombardment_count_(bombardment_count), is_electron_(is_electron),
+      incident_energy_(incident_energy), thread_count_(thread_count) {
   if (incident_energy <= energy_quantity(0.0 * kilo_electron_volt)) {
     throw std::invalid_argument(
         EXCEPTION_MESSAGE("Incident energy should be greater than 0. Value: " +
@@ -175,7 +170,8 @@ Simulation::Settings::Settings(
         EXCEPTION_MESSAGE("Bombardment count must be greater than 0"));
   }
   if (divisor_angle_number == 0) {
-    EXCEPTION_MESSAGE("Divisor angle number must be greater than 0");
+    throw std::invalid_argument(
+        EXCEPTION_MESSAGE("Divisor angle number must be greater than 0"));
   }
   if (ion_displacement_energy < energy_quantity(0.0 * kilo_electron_volt)) {
     throw std::invalid_argument(EXCEPTION_MESSAGE(
@@ -203,10 +199,9 @@ Simulation::Settings::Settings(
   rethrow();
 }
 
-Simulation::Simulation(const Settings settings, Volume&& volume) try
-    : settings_(settings),
-      volume_(std::move(volume)),
-      bombardments_([&settings](const Simulation& self) {
+Simulation::Simulation(const Settings settings, Volume &&volume) try
+    : settings_(settings), volume_(std::move(volume)),
+      bombardments_([&settings](const Simulation &self) {
         std::vector<Bombardment> bombardments;
         bombardments.reserve(settings.bombardment_count_);
         std::generate_n(std::back_inserter(bombardments),
@@ -223,7 +218,7 @@ void Simulation::run_simulation() try {
   std::cout << "Starting Simulation" << std::endl;
   LOG(INFO) << "Starting Simulation" << "Settings\n"
             << Simulation::print_settings();
-  for (auto& bombardment : bombardments_) {
+  for (auto &bombardment : bombardments_) {
     boost::asio::post(thread_pool_,
                       [&bombardment]() { bombardment.run_bombardment(); });
   }
@@ -263,9 +258,8 @@ std::string Simulation::print_settings() const try {
   rethrow(EXCEPTION_MESSAGE(""));
 }
 
-Bombardment::Bombardment(const Simulation& simulation) try
-    : simulation_(simulation),
-      random_number_generator_(),
+Bombardment::Bombardment(const Simulation &simulation) try
+    : simulation_(simulation), random_number_generator_(),
       uniform_distribution_() {
   auto composition_distributions = simulation.get_volume()
                                        .get_layer(length_quantity(0))
@@ -295,13 +289,12 @@ void Bombardment::run_bombardment() try {
 }
 
 Particle::Particle(
-    const Simulation& simulation,
+    const Simulation &simulation,
     boost::random::discrete_distribution<size_t, double> discrete_distribution,
-    const boost::random::uniform_01<double>& uniform_distribution,
-    boost::random::mt19937& random_number_generator) try
+    const boost::random::uniform_01<double> &uniform_distribution,
+    boost::random::mt19937 &random_number_generator) try
     : particles_(std::vector<std::unique_ptr<Particle>>()),
-      coordinates_(std::vector<Coordinate>()),
-      simulation_(simulation),
+      coordinates_(std::vector<Coordinate>()), simulation_(simulation),
       velocity_(Velocity(
           0, 0,
           simulation.get_settings(&Simulation::Settings::incident_energy_))),
@@ -328,7 +321,7 @@ void Ion::fire() try {
       simulation_.get_settings(&Simulation::Settings::ion_stopping_energy_);
   while (velocity_.energy_ > ion_stopping_energy) {
     velocity_.energy_ -=
-        energy_quantity(1.0 * kilo_electron_volt);  // TODO: Remove this
+        energy_quantity(1.0 * kilo_electron_volt); // TODO: Remove this
     // TODO: Implement simulation calculations
     //
     // 1. Subtract electronic stopping energy
@@ -350,7 +343,7 @@ length_quantity Ion::interatomic_spacing() const {
 energy_quantity Ion::electronic_stopping_energy(charge_quantity charge,
                                                 mass_quantity mass,
                                                 energy_quantity energy,
-                                                const Layer& layer) const try {
+                                                const Layer &layer) const try {
   const size_t atom_index = discrete_distribution_(random_number_generator_);
 
   std::cout << "Picked: " << atom_index + 1 << std::endl;
@@ -380,5 +373,5 @@ energy_quantity Ion::electronic_stopping_energy(charge_quantity charge,
   rethrow(EXCEPTION_MESSAGE(""));
 }
 
-}  // namespace common
-}  // namespace amcset
+} // namespace common
+} // namespace amcset
