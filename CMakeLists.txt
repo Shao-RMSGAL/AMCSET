@@ -33,7 +33,6 @@ find_package(glog 0.7.1 REQUIRED)
 # Configure subdirectories
 add_subdirectory(common)
 add_subdirectory(server)
-add_subdirectory(gui)
 add_subdirectory(test)
 
 # Add package includes and link common
@@ -41,22 +40,8 @@ target_include_directories(amcset-common SYSTEM PUBLIC
     ${Boost_INCLUDE_DIRS}
     )
 
-target_include_directories(amcset-gui PRIVATE ${Boost_INCLUDE_DIRS})
+# target_include_directories(amcset-gui PRIVATE ${Boost_INCLUDE_DIRS})
 target_link_libraries(amcset-common PUBLIC ${Boost_LIBRARY_DIRS} glog::glog)
 
 # Allow link access for common library to server
 target_link_libraries(amcset-server PRIVATE amcset-common)
-target_link_libraries(amcset-gui PRIVATE amcset-common)
-
-# Install directories (When running cmake --install)
-install(TARGETS amcset-gui
-    BUNDLE  DESTINATION .
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
-qt_generate_deploy_app_script(
-    TARGET amcset-gui
-    OUTPUT_SCRIPT deploy_script
-    NO_UNSUPPORTED_PLATFORM_ERROR
-)
-install(SCRIPT ${deploy_script})

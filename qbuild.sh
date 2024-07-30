@@ -3,9 +3,10 @@
 project_dir="$HOME/Code/C++/AMCSET"
 build_dir="$project_dir/build/Debug"
 src_dir="$project_dir"
-cmake_cmd="$HOME/Qt/Tools/CMake/bin/cmake"
+cmake_cmd="cmake"
+cmake_flags="--preset conan-debug"
+conan_flags="-s build_type=Debug --build=missing"
 test_dir="$project_dir/build/Debug/test"
-cmake_flags="-DCMAKE_EXPORT_COMPILE_COMMANDS=1"
 export TESTDIR="$build_dir/log"
 
 check_status() {
@@ -16,10 +17,9 @@ check_status() {
 }
 
 build() {
-    cd $build_dir
-    $cmake_cmd -S $src_dir -B $build_dir $cmake_flags
+    $cmake_cmd $cmake_flags
     check_status
-    $cmake_cmd --build $build_dir --target all 
+    $cmake_cmd --build $cmake_flags 
     check_status
     cd -
 }
@@ -37,8 +37,9 @@ run() {
 }
 
 conan_run() {
-    conan install . --build=missing
-    conan install . -s build_type=Debug --build=missing
+    conan install . $conan_flags 
+    check_status
+    conan install .
     check_status
 }
 

@@ -11,21 +11,24 @@ class amcsetRecipe(ConanFile):
     license = "GPL 3.0"
     author = "Nathaniel Thomas, nathaniel@swbell.net"
     url = "https://github.com/Shao-RMSGAL/AMCSET"
-    description = "This is AMCSET, a materials ion bombardment simulation program with capabilities for electron bombardment simulation."
+    description = "This is AMCSET, a materials ion bombardment simulation"
+    "program with capabilities for electron bombardment simulation."
+
     topics = ("simulation", "physics", "particles")
 
     # Binary configuration
     settings = "os", "compiler", "build_type", "arch"
 
-    # Sources are located in the same place as this recipe, copy them to the recipe
+    # Sources are located in the same place as this recipe, copy them to the
+    # recipe
     exports_sources = "CMakeLists.txt", "gui/src", "common/src", "server/src"
 
     def layout(self):
         cmake_layout(self)
 
     def generate(self):
-        # deps = CMakeDeps(self) # Not needed for QtCreator
-        # deps.generate()
+        deps = CMakeDeps(self)
+        deps.generate()
         tc = CMakeToolchain(self)
         tc.user_presets_path = 'ConanPresets.json'
         tc.generate()
@@ -45,7 +48,6 @@ class amcsetRecipe(ConanFile):
         self.requires("boost/1.85.0")
         self.requires("gtest/1.14.0")
         self.requires("glog/0.7.1")
-        # self.requires("qt/6.7.1") # Not needed when using QtCreator.
 
     def build_requirements(self):
         self.tool_requires("cmake/[>3.23]")
