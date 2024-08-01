@@ -24,7 +24,6 @@
  */
 
 #include <boost/units/static_rational.hpp>
-#include <functional>
 #include <memory>
 #if defined(_WIN32)
 #if defined(EXPORTING_AMCSET)
@@ -175,9 +174,7 @@ class Particle {
      * All the information needed to create the particle is stored in the
      * Simulation object, hence no other parameters are needed.
      */
-    Particle(const Simulation& simulation,
-             boost::random::discrete_distribution<size_t, double>
-                 discrete_distribution,
+    Particle(size_t z_number, size_t mass_number, const Simulation& simulation,
              const boost::random::uniform_01<double>& uniform_distribution,
              boost::random::mt19937& random_number_generator);
 
@@ -196,6 +193,7 @@ class Particle {
     virtual ~Particle() = default;
 
    protected:
+    Properties properties_;  //!< Properties of the particle
     std::vector<std::unique_ptr<Particle>>
         particles_;  //!< List of cascade particles
     std::vector<Coordinate>
@@ -203,16 +201,11 @@ class Particle {
     const Simulation& simulation_;  //!< Reference to the simulation object
     Velocity velocity_;             //!< Current velocity of the particle
     Coordinate coordinate_;         //!< Current coordinate of the particle
-    boost::random::discrete_distribution<size_t, double>
-        discrete_distribution_;  //!< Discrete distribution for Volume particle
-                                 //!< interaction calculations.
     const boost::random::uniform_01<double>&
         uniform_distribution_;  //!< Reference to uniform distribution between 0
                                 //!< and 1 for various uses.
     boost::random::mt19937&
         random_number_generator_;  //!< Reference to random number generator
-    std::reference_wrapper<const Layer>
-        current_layer_;  //!< Current layer of the particle
 };
 
 /*!
@@ -230,12 +223,10 @@ class Electron : public Particle {
      *
      * \param simulation The reference to the Simulation object
      */
-    Electron(const Simulation& simulation,
-             boost::random::discrete_distribution<size_t, double>
-                 discrete_distribution,
+    Electron(size_t z_number, size_t mass_number, const Simulation& simulation,
              const boost::random::uniform_01<double>& uniform_distribution,
              boost::random::mt19937& random_number_generator)
-        : Particle(simulation, discrete_distribution, uniform_distribution,
+        : Particle(z_number, mass_number, simulation, uniform_distribution,
                    random_number_generator) {};
 
     /*!
@@ -263,12 +254,10 @@ class Ion : public Particle {
      *
      * \param simulation The reference to the Simulation object
      */
-    Ion(const Simulation& simulation,
-        boost::random::discrete_distribution<size_t, double>
-            discrete_distribution,
+    Ion(size_t z_number, size_t mass_number, const Simulation& simulation,
         const boost::random::uniform_01<double>& uniform_distribution,
         boost::random::mt19937& random_number_generator)
-        : Particle(simulation, discrete_distribution, uniform_distribution,
+        : Particle(z_number, mass_number, simulation, uniform_distribution,
                    random_number_generator) {};
 
     /*!
@@ -415,11 +404,37 @@ class Layer final {
         return number_density_;
     }
 
+    /*!
+     * \brief Return the discrete distrbution used for selecting material
+     * interaction
+     *
+     * \return Return the discrete distribution corresponding to the relative
+     * composition of atoms in the layer
+     */
+    boost::random::discrete_distribution<size_t, double>
+    get_discrete_distribution() const noexcept {
+        return discrete_distribution_;
+    }
+
+    // TODO: Allow for the use of any random number generator
+    /*!
+     * \brief Return a random index using the random number generator reference
+     * passed as an argument.
+     *
+     * \param random_number_generator The random number generator to select the
+     * index. Currently only mt19937.
+     */
+    size_t get_random_index(
+        boost::random::mt19937& random_number_generator) const {
+        return discrete_distribution_(random_number_generator);
+    }
+
    private:
     material_vector material_;
     const length_quantity depth_;
     const mass_density_quantity mass_density_;
     const number_density_quantity number_density_;
+    boost::random::discrete_distribution<size_t, double> discrete_distribution_;
 };
 /*!
  * \brief A class for representing the simulation environment.
@@ -444,6 +459,8 @@ class Volume final {
      */
     Volume(std::vector<Layer>&& layers);
 
+    // TODO: Improve performance by returning a reference/pointer to Layer
+    // instead
     /*!
      * \brief A function to retrieve the layer corresponding to the depth
      * provided.
@@ -456,7 +473,7 @@ class Volume final {
      *          which depth falls into, and the second being the index of the
      *          layer in the layers_ vector.
      */
-    std::pair<const Layer&, size_t> get_layer(length_quantity depth) const;
+    std::pair<const Layer*, size_t> get_layer(length_quantity depth) const;
 
     /*!
      * \brief Get a layer using an index
@@ -489,8 +506,9 @@ class Bombardment {
      *
      * \param simulation The simulation which the Bombardment belongs to.
      * Simulation parameters are extracted from this.
+     * \param id The ID of the bombardment
      */
-    Bombardment(const Simulation& simulation);
+    Bombardment(const Simulation& simulation, size_t id);
 
     /*!
      * \brief Run a bombardment;
@@ -500,11 +518,19 @@ class Bombardment {
      */
     void run_bombardment();
 
+    /*!
+     * \brief Return the ID of the bombardment
+     *
+     * \return The ID of the bombardment
+     */
+    size_t get_id() const noexcept { return id_; }
+
    private:
     const Simulation& simulation_;
     std::unique_ptr<Particle> incident_particle_;
     boost::random::mt19937 random_number_generator_;
     boost::random::uniform_01<double> uniform_distribution_;
+    size_t id_;
 };
 
 /*!
@@ -535,6 +561,8 @@ class Simulation final {
                                         /*!< The energy at which precision of
                                          * electron stopping calculations should be increased
                                          */
+        const size_t z_number_;     //!< The z number of the incident particle
+        const size_t mass_number_;  //! The mass number of the incident particle
         const struct Particle::Properties
             incident_particle_properties_;  //!< Properties of the incident
                                             //!< particle
@@ -579,9 +607,8 @@ class Simulation final {
          * this struct, initialization of all fields is guarenteed. All members
          * of Settings are represented as parameters in this constructor.
          */
-        Settings(energy_quantity electron_stopping_energy,
-                 Particle::Properties incident_particle_properties,
-                 bool enable_damage_cascade,
+        Settings(energy_quantity electron_stopping_energy, size_t z_number,
+                 size_t mass_number, bool enable_damage_cascade,
                  energy_quantity ion_stopping_energy,
                  energy_quantity ion_displacement_energy,
                  bool log_single_displacement, size_t divisor_angle_number,

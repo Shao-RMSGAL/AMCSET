@@ -73,11 +73,15 @@ Layer::Layer(material_vector &&material, length_quantity depth,
             "Cannot pass a vector of size 0 to Layer constructor"));
     }
 
+    discrete_distribution_ =
+        boost::random::discrete_distribution<size_t, double>(
+            get_relative_compositions().begin(),
+            get_relative_compositions().end());
 } catch (...) {
     rethrow();
 }
 
-std::pair<const Layer &, size_t> Volume::get_layer(length_quantity depth) const
+std::pair<const Layer *, size_t> Volume::get_layer(length_quantity depth) const
     try {
     if (depth < length_quantity(0.0 * angstrom)) {
         throw std::invalid_argument(EXCEPTION_MESSAGE(
@@ -93,7 +97,7 @@ std::pair<const Layer &, size_t> Volume::get_layer(length_quantity depth) const
     // Rely on the ordering of the layers (depths are strictly increasing)
     for (size_t i = 0; i < layers_.size(); i++) {
         if (depth <= layers_[i].get_depth()) {
-            return std::make_pair(layers_[i], i);
+            return std::make_pair(&layers_[i], i);
         }
     }
 
@@ -148,15 +152,18 @@ Volume::Volume(std::vector<Layer> &&layers) try : layers_(std::move(layers)) {
 }
 
 Simulation::Settings::Settings(
-    energy_quantity electron_stopping_energy,
-    Particle::Properties incident_particle_properties,
-    bool enable_damage_cascade, energy_quantity ion_stopping_energy,
+    energy_quantity electron_stopping_energy, size_t z_number,
+    size_t mass_number, bool enable_damage_cascade,
+    energy_quantity ion_stopping_energy,
     energy_quantity ion_displacement_energy, bool log_single_displacement,
     size_t divisor_angle_number, size_t flying_distance_number,
     length_quantity range, size_t bombardment_count, bool is_electron,
     energy_quantity incident_energy, size_t thread_count) try
     : electron_stopping_energy_(electron_stopping_energy),
-      incident_particle_properties_(incident_particle_properties),
+      z_number_(z_number),
+      mass_number_(mass_number),
+      incident_particle_properties_(
+          Particle::Properties(z_number, mass_number)),
       enable_damage_cascade_(enable_damage_cascade),
       ion_stopping_energy_(ion_stopping_energy),
       ion_displacement_energy_(ion_displacement_energy),
@@ -166,6 +173,7 @@ Simulation::Settings::Settings(
       range_(range),
       bombardment_count_(bombardment_count),
       is_electron_(is_electron),
+      incident_energy_(incident_energy),
       thread_count_(thread_count) {
     if (incident_energy <= energy_quantity(0.0 * kilo_electron_volt)) {
         throw std::invalid_argument(EXCEPTION_MESSAGE(
@@ -209,30 +217,31 @@ Simulation::Settings::Settings(
 Simulation::Simulation(const Settings settings, Volume &&volume) try
     : settings_(settings),
       volume_(std::move(volume)),
-      bombardments_([&settings](const Simulation &self) {
-          std::vector<Bombardment> bombardments;
-          bombardments.reserve(settings.bombardment_count_);
-          std::generate_n(std::back_inserter(bombardments),
-                          settings.bombardment_count_,
-                          [&self]() { return Bombardment(self); });
-          return bombardments;
-      }(*this)),
       thread_pool_(settings.thread_count_) {
-    std::cout << "Creating simulation" << std::endl;
+    std::vector<Bombardment> bombardments;
+    bombardments.reserve(settings.bombardment_count_);
+    for (size_t i = 0; i < settings.bombardment_count_; i++) {
+        bombardments.push_back(Bombardment(*this, i));
+    }
+    bombardments_ = std::move(bombardments);
+
 } catch (...) {
     rethrow(EXCEPTION_MESSAGE(""));
 }
 
 void Simulation::run_simulation() try {
-    std::cout << "Starting Simulation" << std::endl;
-    LOG(INFO) << "Starting Simulation" << "Settings\n"
+    LOG(INFO) << "Starting Simulation...\n"
+              << "Settings:\n"
               << Simulation::print_settings();
     for (auto &bombardment : bombardments_) {
-        boost::asio::post(thread_pool_,
-                          [&bombardment]() { bombardment.run_bombardment(); });
+        // boost::asio::post(thread_pool_, [&bombardment]() {
+        LOG(INFO) << "Starting Bombardment...";
+        bombardment.run_bombardment();
+        LOG(INFO) << "...Bombardment Complete!";
+        // });
     }
     thread_pool_.join();
-    LOG(INFO) << "Simulation complete";
+    LOG(INFO) << "...Simulation complete";
 } catch (...) {
     rethrow(EXCEPTION_MESSAGE(""));
 }
@@ -240,6 +249,9 @@ void Simulation::run_simulation() try {
 std::string Simulation::print_settings() const try {
     std::ostringstream ss;
     ss << "Electron stopping energy: " << settings_.electron_stopping_energy_
+       << std::endl;
+    ss << "Incident particle z number: " << settings_.z_number_ << std::endl;
+    ss << "Incident particle mass number: " << settings_.mass_number_
        << std::endl;
     ss << "Incident particle properties: " << std::endl;
     ss << "\tMass: " << settings_.incident_particle_properties_.mass_
@@ -269,32 +281,31 @@ std::string Simulation::print_settings() const try {
     rethrow(EXCEPTION_MESSAGE(""));
 }
 
-Bombardment::Bombardment(const Simulation &simulation) try
+Bombardment::Bombardment(const Simulation &simulation, size_t id) try
     : simulation_(simulation),
       random_number_generator_(),
-      uniform_distribution_() {
-    auto composition_distributions =
-        simulation.get_volume().get_layer(0).get_relative_compositions();
-    if (simulation.get_settings(&Simulation::Settings::is_electron_)) {
-        incident_particle_ = std::make_unique<Electron>(
-            simulation,
-            boost::random::discrete_distribution<size_t, double>(
-                composition_distributions.begin(),
-                composition_distributions.end()),
-            uniform_distribution_, random_number_generator_);
-    } else {
-        incident_particle_ = std::make_unique<Ion>(
-            simulation,
-            boost::random::discrete_distribution<size_t, double>(
-                composition_distributions.begin(),
-                composition_distributions.end()),
-            uniform_distribution_, random_number_generator_);
-    }
+      uniform_distribution_(),
+      id_(id) {
+    std::cout << "Attempting random number: "
+              << uniform_distribution_(random_number_generator_) << std::endl;
+
 } catch (...) {
     rethrow(EXCEPTION_MESSAGE(""));
 }
 
 void Bombardment::run_bombardment() try {
+    if (simulation_.get_settings(&Simulation::Settings::is_electron_)) {
+        incident_particle_ = std::make_unique<Electron>(
+            simulation_.get_settings(&Simulation::Settings::z_number_),
+            simulation_.get_settings(&Simulation::Settings::mass_number_),
+            simulation_, uniform_distribution_, random_number_generator_);
+    } else {
+        incident_particle_ = std::make_unique<Ion>(
+            simulation_.get_settings(&Simulation::Settings::z_number_),
+            simulation_.get_settings(&Simulation::Settings::mass_number_),
+            simulation_, uniform_distribution_, random_number_generator_);
+    }
+
     incident_particle_->fire();
 
 } catch (...) {
@@ -302,24 +313,19 @@ void Bombardment::run_bombardment() try {
 }
 
 Particle::Particle(
-    const Simulation &simulation,
-    boost::random::discrete_distribution<size_t, double> discrete_distribution,
+    size_t z_number, size_t mass_number, const Simulation &simulation,
     const boost::random::uniform_01<double> &uniform_distribution,
     boost::random::mt19937 &random_number_generator) try
-    : particles_(std::vector<std::unique_ptr<Particle>>()),
+    : properties_(Particle::Properties(z_number, mass_number)),
+      particles_(std::vector<std::unique_ptr<Particle>>()),
       coordinates_(std::vector<Coordinate>()),
       simulation_(simulation),
       velocity_(Velocity(
           0, 0,
           simulation.get_settings(&Simulation::Settings::incident_energy_))),
       coordinate_(Coordinate(0, 0, 0)),
-      discrete_distribution_(discrete_distribution),
       uniform_distribution_(uniform_distribution),
-      random_number_generator_(random_number_generator),
-      current_layer_(std::reference_wrapper<const Layer>(
-          simulation.get_volume()
-              .get_layer(length_quantity(coordinate_.z_))
-              .first)) {
+      random_number_generator_(random_number_generator) {
 } catch (...) {
     rethrow(EXCEPTION_MESSAGE(""));
 }
@@ -333,12 +339,28 @@ void Electron::fire() try {
 void Ion::fire() try {
     const auto ion_stopping_energy =
         simulation_.get_settings(&Simulation::Settings::ion_stopping_energy_);
+    auto current_layer_pair =
+        simulation_.get_volume().get_layer(coordinate_.z_);
+    const Layer &current_layer = *(current_layer_pair.first);
+
+    auto comp_view = current_layer.get_relative_compositions().begin();
+
+    // TODO: Remove
+    for (size_t i = 0; i < current_layer.get_number_of_components(); i++) {
+        std::cout << "Index: " << i << std::endl;
+        std::cout << "Relative (direct): "
+                  << current_layer.get_relative_composition(i) << std::endl;
+        std::cout << "Relative (view): " << *comp_view << std::endl;
+        comp_view++;
+    }
+
     while (velocity_.energy_ > ion_stopping_energy) {
-        velocity_.energy_ -=
-            energy_quantity(1.0 * kilo_electron_volt);  // TODO: Remove this
         // TODO: Implement simulation calculations
         //
         // 1. Subtract electronic stopping energy
+        velocity_.energy_ =
+            electronic_stopping_energy(properties_.charge_, properties_.mass_,
+                                       velocity_.energy_, current_layer);
         // 2. Calculate recoil energy and velocity
         // 3. Calculate new coordinate (push old coordinate to vector)
         // 4. Determine if sputtering occured
@@ -350,19 +372,18 @@ void Ion::fire() try {
     rethrow(EXCEPTION_MESSAGE(""));
 }
 
-// TODO: Remove cout statements
 length_quantity Ion::interatomic_spacing(
     number_density_quantity number_density) const {
-    std::cout << "Number density: " << number_density << std::endl;
     return root<-3>(number_density * constants::N_A);
 };
 
-// TODO: Remove cout statements
 energy_quantity Ion::electronic_stopping_energy(charge_quantity charge,
                                                 mass_quantity mass,
                                                 energy_quantity energy,
                                                 const Layer &layer) const try {
-    const size_t atom_index = discrete_distribution_(random_number_generator_);
+    const size_t atom_index =
+        layer.get_discrete_distribution()(random_number_generator_);
+    std::cout << "Index: " << atom_index << std::endl;
     const auto properties = layer.get_property(atom_index);
     const auto c_1 = 1.212 * root<2>(constants::m_u) * root<2>(electron_volt) /
                      angstrom / pow<static_rational<7, 6>>(constants::e);

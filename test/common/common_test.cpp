@@ -82,7 +82,8 @@ class CommonTest : public testing::Test {
     Simulation create_simulation() const try {
         auto electron_stopping_energy =
             energy_quantity(1.0 * kilo_electron_volt);
-        auto incident_particle_properties = Particle::Properties(14, 28);
+        size_t z_number = 14;
+        size_t mass_number = 28;
         bool enable_damage_cascade = true;
         auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
         auto ion_displacement_energy =
@@ -91,7 +92,7 @@ class CommonTest : public testing::Test {
         size_t divisor_angle_number = 1000;
         size_t flying_distance_number = 1000;
         auto range = length_quantity(80000000.0 * angstrom);
-        size_t bombardment_count = 10;
+        size_t bombardment_count = 1;
         bool is_electron = false;
         auto incident_energy = energy_quantity(50.0 * kilo_electron_volt);
         size_t thread_count = 8;
@@ -101,7 +102,7 @@ class CommonTest : public testing::Test {
                     create_iron_layer(length_quantity(500.0 * angstrom)),
                     create_water_layer(length_quantity(1000.0 * angstrom))});
         Simulation::Settings settings(
-            electron_stopping_energy, incident_particle_properties,
+            electron_stopping_energy, z_number, mass_number,
             enable_damage_cascade, ion_stopping_energy, ion_displacement_energy,
             log_single_displacement, divisor_angle_number,
             flying_distance_number, range, bombardment_count, is_electron,
@@ -243,6 +244,16 @@ TEST_F(CommonTest, layer_test) try {
                          (1.0 / 3.0) * IsotopeData::get_isotope_mass(8, 16)) *
                         constants::N_A));
 
+    // Testing discrete distibution
+    auto iron_layer = create_iron_layer(500.0 * angstrom);
+    boost::random::mt19937 rng;
+    auto distribution = iron_layer.get_discrete_distribution();
+    size_t random_number;
+    for (int i = 0; i < 1000; i++) {
+        random_number = distribution(rng);
+        ASSERT_TRUE(random_number < iron_layer.get_number_of_components());
+    }
+
 } catch (const std::exception &e) {
     print_exception(e);
     FAIL();
@@ -265,16 +276,16 @@ TEST_F(CommonTest, volume_test) try {
 
     // Test get_layer
     ASSERT_EQ(
-        volume.get_layer(length_quantity(1.0 * angstrom)).first.get_depth(),
+        volume.get_layer(length_quantity(1.0 * angstrom)).first->get_depth(),
         water_layer_1.get_depth());
     ASSERT_EQ(
-        volume.get_layer(length_quantity(2.0 * angstrom)).first.get_depth(),
+        volume.get_layer(length_quantity(2.0 * angstrom)).first->get_depth(),
         water_layer_1.get_depth());
     ASSERT_EQ(
-        volume.get_layer(length_quantity(250.0 * angstrom)).first.get_depth(),
+        volume.get_layer(length_quantity(250.0 * angstrom)).first->get_depth(),
         iron_layer.get_depth());
     ASSERT_EQ(
-        volume.get_layer(length_quantity(501.0 * angstrom)).first.get_depth(),
+        volume.get_layer(length_quantity(501.0 * angstrom)).first->get_depth(),
         water_layer_2.get_depth());
     ASSERT_THROW(volume.get_layer(length_quantity(1001.0 * angstrom)),
                  std::out_of_range);
@@ -284,13 +295,13 @@ TEST_F(CommonTest, volume_test) try {
     ASSERT_EQ(volume.get_layer(length_quantity(501.0 * angstrom)).second, 2);
 
     ASSERT_EQ(
-        volume.get_layer(length_quantity(1.0 * angstrom)).first.get_depth(),
+        volume.get_layer(length_quantity(1.0 * angstrom)).first->get_depth(),
         volume.get_layer(0).get_depth());
     ASSERT_EQ(
-        volume.get_layer(length_quantity(250.0 * angstrom)).first.get_depth(),
+        volume.get_layer(length_quantity(250.0 * angstrom)).first->get_depth(),
         volume.get_layer(1).get_depth());
     ASSERT_EQ(
-        volume.get_layer(length_quantity(501.0 * angstrom)).first.get_depth(),
+        volume.get_layer(length_quantity(501.0 * angstrom)).first->get_depth(),
         volume.get_layer(2).get_depth());
 } catch (const std::exception &e) {
     print_exception(e);
@@ -300,7 +311,8 @@ TEST_F(CommonTest, volume_test) try {
 //! Simulation and Simulation::Settings class test
 TEST_F(CommonTest, simulation_and_settings_test) try {
     auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
-    auto incident_particle_properties = Particle::Properties(14, 28);
+    size_t z_number = 14;
+    size_t mass_number = 28;
     bool enable_damage_cascade = true;
     auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
     auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
@@ -308,7 +320,7 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
     size_t divisor_angle_number = 1000;
     size_t flying_distance_number = 1000;
     auto range = length_quantity(80000000.0 * angstrom);
-    size_t bombardment_count = 1000;
+    size_t bombardment_count = 1;
     bool is_electron = false;
     auto incident_energy = energy_quantity(50.0 * kilo_electron_volt);
     size_t thread_count = 8;
@@ -319,16 +331,16 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
                 create_water_layer(length_quantity(1000.0 * angstrom))});
 
     Simulation::Settings settings(
-        electron_stopping_energy, incident_particle_properties,
-        enable_damage_cascade, ion_stopping_energy, ion_displacement_energy,
-        log_single_displacement, divisor_angle_number, flying_distance_number,
-        range, bombardment_count, is_electron, incident_energy, thread_count);
+        electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
+        ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+        divisor_angle_number, flying_distance_number, range, bombardment_count,
+        is_electron, incident_energy, thread_count);
 
     ASSERT_EQ(settings.electron_stopping_energy_, electron_stopping_energy);
     ASSERT_EQ(settings.incident_particle_properties_.mass_,
-              incident_particle_properties.mass_);
+              IsotopeData::get_isotope_mass(z_number, mass_number));
     ASSERT_EQ(settings.incident_particle_properties_.charge_,
-              incident_particle_properties.charge_);
+              double(z_number) * elementary_charge);
     ASSERT_EQ(settings.enable_damage_cascade_, enable_damage_cascade);
     ASSERT_EQ(settings.ion_stopping_energy_, ion_stopping_energy);
     ASSERT_EQ(settings.ion_displacement_energy_, ion_displacement_energy);
@@ -349,9 +361,7 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
     auto simulation_incident_particle_properties = simulation.get_settings(
         &Simulation::Settings::incident_particle_properties_);
     ASSERT_EQ(simulation_incident_particle_properties.charge_,
-              incident_particle_properties.charge_);
-    ASSERT_EQ(simulation_incident_particle_properties.charge_,
-              incident_particle_properties.charge_);
+              double(z_number) * elementary_charge);
     ASSERT_EQ(
         simulation.get_settings(&Simulation::Settings::enable_damage_cascade_),
         enable_damage_cascade);
@@ -390,7 +400,7 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
 //! Bombardment test
 TEST_F(CommonTest, bombardment_test) try {
     Simulation simulation = create_simulation();
-    // TODO: Implement bombardment test
+    simulation.run_simulation();
     FAIL();
 } catch (const std::exception &e) {
     print_exception(e);
@@ -409,7 +419,6 @@ TEST_F(CommonTest, ion_test) try {
 
 //! Electronic stopping energy test
 TEST_F(CommonTest, electronic_stopping_energy_test) try {
-    // TODO: Implement electronic stopping energy test
     const auto simulation = create_simulation();
     std::cout << "Simulation created" << std::endl;  // TODO: Remove
 
@@ -423,7 +432,10 @@ TEST_F(CommonTest, electronic_stopping_energy_test) try {
     const boost::random::uniform_01<double> uniform_distribution;
     boost::random::mt19937 random_number_generator;
 
-    Ion test(simulation, discrete_distribution, uniform_distribution,
+    const size_t z_number = 14;
+    const size_t mass_number = 28;
+
+    Ion test(z_number, mass_number, simulation, uniform_distribution,
              random_number_generator);
 
     auto silicon_28_mass = IsotopeData::get_isotope_mass(14, 28);
