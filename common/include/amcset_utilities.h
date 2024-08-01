@@ -74,20 +74,19 @@ using mass_density_unit =
     unit<mass_density_dimension, si::system>;  //!< Unit for mass density
 using mass_density_quantity =
     quantity<mass_density_unit>;  //!< Type for mass density (kg/m^3)
-using number_density_dimension = make_dimension_list<
-    boost::mpl::list2<dim<amount_base_dimension, static_rational<1>>,
-                      dim<length_base_dimension, static_rational<-3>>>>::
-    type;  //!< Custom dimension for number density
 using number_density_unit =
-    unit<number_density_dimension,
-         si::system>;  //!< Unit for number density, (mol/m^3)
+    divide_typeof_helper<si::amount, si::volume>::type;  //!< Custom dimension
+                                                         //!< for number density
+using number_density_quantity =
+    quantity<number_density_unit>;  //!< Unit for number density, (mol/m^3)
 using number_density_quantity =
     quantity<number_density_unit>;  //!< Number density
 
+constexpr auto electron_volt =
+    constants::e * si::volt;  //!< Quantity for electron volt
 constexpr auto kilo_electron_volt =
-    double(1000) * constants::e * si::volt;  //!< Quantity for kiloelectron volt
-constexpr auto angstrom =
-    metric::angstrom_base_unit::unit_type();  //!< Quantity for angstrom
+    1000.0 * electron_volt;  //!< Quantity for kiloelectron volt
+constexpr auto angstrom = 1e-10 * si::meter;  //!< Quantity for angstrom
 constexpr auto radian =
     angle::radian_base_unit::unit_type();  //!< Quantity for radian
 constexpr auto atomic_mass_unit =
@@ -98,8 +97,8 @@ constexpr mass_density_quantity kg_per_cubic_meter =
     1.0 * si::kilogram /
     pow<3>(si::meter);  //!< Unit quantity for mass density (kg/m^3)
 constexpr number_density_quantity atoms_per_cubic_meter =
-    1.0 * si::amount::unit_type() /
-    pow<3>(si::meter);  //!< Unit quantity for number density (mole/m^3)
+    1.0 * si::mole / pow<3>(si::meter);  //!< Unit quantity for number density
+                                         //!< atoms/m^3)
 
 /*!
  * \brief A macro to provide debugging details for exception messages.
@@ -107,9 +106,9 @@ constexpr number_density_quantity atoms_per_cubic_meter =
  * This macro takes a message and appends the function name, file name, and line
  * number to the end of the message.
  */
-#define EXCEPTION_MESSAGE(msg)                                           \
-  std::string(msg) + " [Function: " + __func__ + ", File: " + __FILE__ + \
-      ", Line: " + std::to_string(__LINE__) + "]"
+#define EXCEPTION_MESSAGE(msg)                                             \
+    std::string(msg) + " [Function: " + __func__ + ", File: " + __FILE__ + \
+        ", Line: " + std::to_string(__LINE__) + "]"
 
 /*!
  * \brief A nested exception handling throwing function.
@@ -125,21 +124,21 @@ constexpr number_density_quantity atoms_per_cubic_meter =
  */
 template <class... Args>
 [[noreturn]] void rethrow(Args&&... args) {
-  std::ostringstream ss;
-  using expand = int[];
-  std::string sep;
-  void(expand{0, ((ss << sep << args), sep = ", ", 0)...});
-  try {
-    std::rethrow_exception(std::current_exception());
-  } catch (const std::invalid_argument& e) {
-    std::throw_with_nested(std::invalid_argument(ss.str()));
-  } catch (const std::out_of_range& e) {
-    std::throw_with_nested(std::out_of_range(ss.str()));
-  } catch (const std::logic_error& e) {
-    std::throw_with_nested(std::logic_error(ss.str()));
-  } catch (...) {
-    std::throw_with_nested(std::runtime_error(ss.str()));
-  }
+    std::ostringstream ss;
+    using expand = int[];
+    std::string sep;
+    void(expand{0, ((ss << sep << args), sep = ", ", 0)...});
+    try {
+        std::rethrow_exception(std::current_exception());
+    } catch (const std::invalid_argument& e) {
+        std::throw_with_nested(std::invalid_argument(ss.str()));
+    } catch (const std::out_of_range& e) {
+        std::throw_with_nested(std::out_of_range(ss.str()));
+    } catch (const std::logic_error& e) {
+        std::throw_with_nested(std::logic_error(ss.str()));
+    } catch (...) {
+        std::throw_with_nested(std::runtime_error(ss.str()));
+    }
 }
 
 /*!
@@ -154,12 +153,12 @@ template <class... Args>
  * top-leve exception.
  */
 inline void print_exception(const std::exception& e, std::size_t depth = 0) {
-  std::cerr << "exception: " << std::string(depth, ' ') << e.what() << '\n';
-  try {
-    std::rethrow_if_nested(e);
-  } catch (const std::exception& nested) {
-    print_exception(nested, depth + 1);
-  }
+    std::cerr << "exception: " << std::string(depth, ' ') << e.what() << '\n';
+    try {
+        std::rethrow_if_nested(e);
+    } catch (const std::exception& nested) {
+        print_exception(nested, depth + 1);
+    }
 }
 
 }  // namespace common
