@@ -1,3 +1,12 @@
+# A script for quickly building the AMCSET program (Tested on Linux)
+# Instructions:
+# 1. Have the following installed:
+#   - Conan (https://conan.io/)
+#   - Cmake (https://cmake.org/)
+# 2. Run `conan profile detect`, then modify ~/.conan2/profiles/default to 
+#   use C++23. (Set compiler.cppstd=gnu23)
+# 3. Run ./qbuild -c -b from the project root directory
+
 # Building
 
 project_dir="$HOME/Code/C++/AMCSET"
@@ -5,7 +14,7 @@ build_dir="$project_dir/build/Debug"
 src_dir="$project_dir"
 cmake_cmd="cmake"
 cmake_flags="--preset conan-debug"
-conan_flags="-s build_type=Debug --build=missing"
+conan_flags="--build=missing --settings=build_type=Debug"
 test_dir="$project_dir/build/Debug/test"
 export TESTDIR="$build_dir/log"
 
@@ -31,8 +40,7 @@ test() {
 }
 
 run() {
-    $build_dir/amcset-server &
-    $build_dir/amcset-gui
+    $build_dir/amcset-server
     check_status
 }
 

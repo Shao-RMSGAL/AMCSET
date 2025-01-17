@@ -606,15 +606,25 @@ class Simulation final {
          * By deleting the default constructor and allowing construction using
          * this struct, initialization of all fields is guarenteed. All members
          * of Settings are represented as parameters in this constructor.
+         *
+         * TODO: Modify to accept a map instead
          */
-        Settings(energy_quantity electron_stopping_energy, size_t z_number,
-                 size_t mass_number, bool enable_damage_cascade,
-                 energy_quantity ion_stopping_energy,
-                 energy_quantity ion_displacement_energy,
-                 bool log_single_displacement, size_t divisor_angle_number,
-                 size_t flying_distance_number, length_quantity range,
-                 size_t bombardment_count, bool is_electron,
-                 energy_quantity incident_energy, size_t thread_count);
+        Settings(
+                energy_quantity electron_stopping_energy,
+                size_t z_number,
+                size_t mass_number,
+                bool enable_damage_cascade,
+                energy_quantity ion_stopping_energy,
+                energy_quantity ion_displacement_energy,
+                bool log_single_displacement,
+                size_t divisor_angle_number,
+                size_t flying_distance_number,
+                length_quantity range,
+                size_t bombardment_count,
+                bool is_electron,
+                energy_quantity incident_energy,
+                size_t thread_count
+        );
     };
 
     Simulation() = delete;

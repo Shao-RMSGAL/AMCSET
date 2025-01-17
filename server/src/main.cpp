@@ -16,52 +16,71 @@
 
 #include <boost/interprocess/ipc/message_queue.hpp>
 #include <boost/math/constants/constants.hpp>
-#include <iostream>
-#include <string>
+// #include <iostream>
+// #include <string>
 
-#include "amcset_common.h"
+#include <QApplication>
+#include <QFrame>
+#include <QLabel>
+#include <QMainWindow>
+#include <QScreen>
+
+// #include "amcset_common.h"
 #include "amcset_server.h"
 
-int main(/* const int argc, const char* argv[] */) {
-  std::cout << "Value of pi: " << boost::math::constants::pi<double>()
-            << std::endl;
+using namespace amcset::server;
 
-  boost::interprocess::message_queue::remove("server_to_client_message_queue");
-  boost::interprocess::message_queue::remove("client_to_server_message_queue");
+int main(int argc, char *argv[]) {
+  // std::cout << "(Boost test) Value of pi: " <<
+  // boost::math::constants::pi<double>()
+  //           << std::en
+  // server / include / amcset_server.h l;
 
-  boost::interprocess::message_queue server_to_client_message_queue(
-      boost::interprocess::create_only, "server_to_client_message_queue", 100,
-      256);
-  boost::interprocess::message_queue client_to_server_message_queue(
-      boost::interprocess::create_only, "client_to_server_message_queue", 100,
-      256);
+  // boost::interprocess::message_queue::remove("server_to_client_message_queue");
+  // boost::interprocess::message_queue::remove("client_to_server_message_queue");
 
-  size_t count = 0;
+  // boost::interprocess::message_queue server_to_client_message_queue(
+  //     boost::interprocess::create_only, "server_to_client_message_queue",
+  //     100, 256);
+  // boost::interprocess::message_queue client_to_server_message_queue(
+  //     boost::interprocess::create_only, "client_to_server_message_queue",
+  //     100, 256);
 
-  while (true) {
-    char recieved_message[256];
-    size_t recieved_size;
-    unsigned int priority;
-    client_to_server_message_queue.receive(
-        &recieved_message, sizeof(recieved_message), recieved_size, priority);
-    recieved_message[recieved_size] = '\0';
+  // size_t count = 0;
 
-    if (std::string(recieved_message) == "exit") {
-      std::cout << "Exiting..." << std::endl;
-      return 0;
-    }
+  // while (true) {
+  //   char recieved_message[256];
+  //   size_t recieved_size;
+  //   unsigned int priority;
+  //   client_to_server_message_queue.receive(
+  //       &recieved_message, sizeof(recieved_message), recieved_size,
+  //       priority);
+  //   recieved_message[recieved_size] = '\0';
 
-    std::cout << "Recieved: " << recieved_message << std::endl;
+  //   if (std::string(recieved_message) == "exit") {
+  //       std::cout << "Exiting..." << std::endl;
+  //     return 0;
+  //   }
 
-    count++;
+  //   std::cout << "Recieved: " << recieved_message << std::endl;
 
-    std::string message = "Server call count: " + std::to_string(count);
+  //   count++;
 
-    server_to_client_message_queue.send(message.c_str(), message.size(), 0);
-  }
+  //   std::string message = "Server call count: " + std::to_string(count);
 
-  boost::interprocess::message_queue::remove("server_to_client_message_queue");
-  boost::interprocess::message_queue::remove("client_to_server_message_queue");
+  //   server_to_client_message_queue.send(message.c_str(), message.size(), 0);
+  // }
+
+  // boost::interprocess::message_queue::remove("server_to_client_message_queue");
+  // boost::interprocess::message_queue::remove("client_to_server_message_queue");
+
+  auto application = QApplication{argc, argv};
+  auto window1 = Window1{};
+  window1.show();
+  return application.exec();
+
+  // auto out = QTextStream{stdout};
+  // out << "Hello, World!" << Qt::endl;
 
   return 0;
 }

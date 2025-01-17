@@ -31,7 +31,7 @@ class amcsetRecipe(ConanFile):
         deps = CMakeDeps(self)
         deps.generate()
         tc = CMakeToolchain(self)
-        tc.user_presets_path = 'ConanPresets.json'
+        tc.user_presets_path = "ConanPresets.json"
         tc.variables["CMAKE_EXPORT_COMPILE_COMMANDS"] = True
         tc.generate()
 
@@ -47,16 +47,17 @@ class amcsetRecipe(ConanFile):
         build_dir = self.build_folder
         compile_commands_path = os.path.join(build_dir, "compile_commands.json")
         symlink_path = os.path.join(src_dir, "compile_commands.json")
-        
+
         # Remove existing symlink if it exists
         if os.path.exists(symlink_path):
             os.remove(symlink_path)
-        
+
         # Create new symlink
         if os.path.exists(compile_commands_path):
             os.symlink(compile_commands_path, symlink_path)
         else:
             self.output.warning("compile_commands.json not found in build directory")
+
     def package(self):
         cmake = CMake(self)
         cmake.install()
@@ -65,7 +66,12 @@ class amcsetRecipe(ConanFile):
         self.requires("boost/1.85.0")
         self.requires("gtest/1.14.0")
         self.requires("glog/0.7.1")
+        self.requires("qt/6.7.3")
+        self.requires("openssl/3.3.2")
 
     def build_requirements(self):
         self.tool_requires("cmake/[>3.23]")
         self.tool_requires("ninja/[>1.12]")
+
+    def configure(self):
+        self.options["qt"].with_openssl = True
