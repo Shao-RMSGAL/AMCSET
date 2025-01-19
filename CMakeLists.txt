@@ -54,6 +54,5 @@ target_link_libraries(amcset-server PRIVATE amcset-common
     Qt6::Core
     Qt6::Widgets
     Qt6::Gui
-    OpenSSL::SSL
-    OpenSSL::Crypto
+    glog::glog
 )

@@ -67,11 +67,21 @@ class amcsetRecipe(ConanFile):
         self.requires("gtest/1.14.0")
         self.requires("glog/0.7.1")
         self.requires("qt/6.7.3")
-        self.requires("openssl/3.3.2")
+        self.requires("libb2/20190723")
 
     def build_requirements(self):
         self.tool_requires("cmake/[>3.23]")
         self.tool_requires("ninja/[>1.12]")
+        #  if self.settings.os == "Windows":
+        #      self.tool_requires("strawberryperl/5.32.1.1")  # Required for Qt on Windows
 
     def configure(self):
-        self.options["qt"].with_openssl = True
+        #  self.options["qt"].with_openssl = True
+        self.options["qt"].shared = True  # Qt must be built as shared libraries
+        self.options["qt"].with_openssl = True  # You already had this
+
+        # Enable required Qt modules
+        self.options["qt"].qtbase = True
+        self.options["qt"].qttools = True
+        self.options["qt"].qtdeclarative = True
+        self.options["qt"].with_host_tools = True

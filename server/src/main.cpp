@@ -14,16 +14,17 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
+#include <iostream>
+
 #include <boost/interprocess/ipc/message_queue.hpp>
 #include <boost/math/constants/constants.hpp>
-// #include <iostream>
-// #include <string>
 
 #include <QApplication>
 #include <QFrame>
 #include <QLabel>
 #include <QMainWindow>
-#include <QScreen>
+
+#include <glog/logging.h>
 
 // #include "amcset_common.h"
 #include "amcset_server.h"
@@ -31,10 +32,6 @@
 using namespace amcset::server;
 
 int main(int argc, char *argv[]) {
-  // std::cout << "(Boost test) Value of pi: " <<
-  // boost::math::constants::pi<double>()
-  //           << std::en
-  // server / include / amcset_server.h l;
 
   // boost::interprocess::message_queue::remove("server_to_client_message_queue");
   // boost::interprocess::message_queue::remove("client_to_server_message_queue");
@@ -68,19 +65,23 @@ int main(int argc, char *argv[]) {
 
   //   std::string message = "Server call count: " + std::to_string(count);
 
-  //   server_to_client_message_queue.send(message.c_str(), message.size(), 0);
+  //   server_to_client_message_queue.send(message.c_str(), message.size(),
+  //   0);
   // }
 
   // boost::interprocess::message_queue::remove("server_to_client_message_queue");
   // boost::interprocess::message_queue::remove("client_to_server_message_queue");
 
-  auto application = QApplication{argc, argv};
-  auto window1 = Window1{};
+  google::InitGoogleLogging(argv[0]);
+  FLAGS_alsologtostderr = 1;
+  LOG(INFO) << "Starting AMCSET GUI...";
+
+  auto application = Application{argc, argv};
+  auto window1 = Window1{&application};
+  window1.resize(800, 600);
   window1.show();
-  return application.exec();
 
-  // auto out = QTextStream{stdout};
-  // out << "Hello, World!" << Qt::endl;
-
-  return 0;
+  auto exit_code = application.exec();
+  LOG(INFO) << "...Quitting AMCSET GUI. Exit code: " << exit_code;
+  return exit_code;
 }

@@ -14,12 +14,8 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
-#include "amcset_server.h"
+// #include "amcset_server.h"
 
 namespace amcset {
-namespace server {
-
-
-
-}
-}  // namespace amcset
+namespace server {}
+} // namespace amcset

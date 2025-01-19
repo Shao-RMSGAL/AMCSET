@@ -2,20 +2,37 @@
 # Instructions:
 # 1. Have the following installed:
 #   - Conan (https://conan.io/)
-#   - Cmake (https://cmake.org/)
 # 2. Run `conan profile detect`, then modify ~/.conan2/profiles/default to 
 #   use C++23. (Set compiler.cppstd=gnu23)
+#   Here is an example:
+#
+#   [settings]
+#       arch=x86_64
+#       build_type=Debug
+#       compiler=gcc
+#       compiler.cppstd=gnu23
+#       compiler.libcxx=libstdc++11
+#       compiler.version=14
+#       os=Linux
+#   # Optionally choose your favorite generator, for example, Ninja
+#   [conf]
+#       tools.cmake.cmaketoolchain:generator=Ninja
 # 3. Run ./qbuild -c -b from the project root directory
 
 # Building
 
+# Control whether to run in debug or release mode. Debug seems to be broken.
+mode="Debug"
+mode_lower="debug"
 project_dir="$HOME/Code/C++/AMCSET"
-build_dir="$project_dir/build/Debug"
 src_dir="$project_dir"
 cmake_cmd="cmake"
-cmake_flags="--preset conan-debug"
-conan_flags="--build=missing --settings=build_type=Debug"
-test_dir="$project_dir/build/Debug/test"
+build_dir="$project_dir/build/$mode"
+
+conan_flags="--build=missing --settings=build_type=$mode"
+cmake_flags="--preset conan-$mode_lower"
+
+test_dir="$project_dir/build/$mode/test"
 export TESTDIR="$build_dir/log"
 
 check_status() {
@@ -26,9 +43,10 @@ check_status() {
 }
 
 build() {
+    source ./build/$mode/generators/conanbuild.sh
     $cmake_cmd $cmake_flags
     check_status
-    $cmake_cmd --build $cmake_flags 
+    $cmake_cmd --build $cmake_flags
     check_status
     cd -
 }
@@ -45,9 +63,9 @@ run() {
 }
 
 conan_run() {
-    conan install . $conan_flags 
+    conan install . --settings=build_type=Debug --build=missing
     check_status
-    conan install .
+    conan install . --settings=build_type=Release --build=missing
     check_status
 }
 
