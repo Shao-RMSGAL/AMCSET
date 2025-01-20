@@ -26,10 +26,12 @@
 
 #include <glog/logging.h>
 
-// #include "amcset_common.h"
+#include "amcset_common.h"
 #include "amcset_server.h"
+#include "amcset_utilities.h"
 
 using namespace amcset::server;
+using namespace amcset::common;
 
 int main(int argc, char *argv[]) {
 
@@ -72,9 +74,57 @@ int main(int argc, char *argv[]) {
   // boost::interprocess::message_queue::remove("server_to_client_message_queue");
   // boost::interprocess::message_queue::remove("client_to_server_message_queue");
 
+  // Initialize logger
   google::InitGoogleLogging(argv[0]);
   FLAGS_alsologtostderr = 1;
   LOG(INFO) << "Starting AMCSET GUI...";
+
+  // Create AMCSET settings (TODO: Read this from a file and allow a user to
+  // configure)
+  energy_quantity electron_stopping_energy =
+      40.0 * electron_volt;           // Energy at which electrons stop
+  size_t z_number = 1;                // Hydrogen
+  size_t mass_number = 1;             // Hydrogen
+  bool enable_damage_cascade = false; // TODO: Update to test cascades
+  energy_quantity ion_stopping_energy =
+      40.0 * electron_volt; // Typical for iron
+  energy_quantity ion_displacement_energy =
+      40.0 * electron_volt; // Typical for iron
+  bool log_single_displacement =
+      false; // TODO: Test later, will consume a LOT of memory/disk space.
+  size_t divisor_angle_number = 1000; // Break angle range into 1000 segements.
+                                      // TODO: Test with different numbers
+  size_t flying_distance_number =
+      1000; // Break flying distnaces into groups of 1000. TODO: Test with
+            // different numbers
+  length_quantity range =
+      100000.0 * angstrom; // Target range. Should be unused. TODO: Remove once
+                           // confirmed to be unused.
+  size_t bombardment_count = 1; // TODO: Test with more later.
+  bool is_electron = false; // Start with ions. TODO: Test with electrons later.
+  energy_quantity incident_energy =
+      100.0 * kilo_electron_volt; // TODO: Test with other energies
+  size_t thread_count =
+      1; // Try with single threading, TODO: Try with multithreading
+  // TODO: Add an option to use GPU (Use Kokkos for cross-platform
+  // compatability. Note that it is not available in conan. Either make a conan
+  // recipe for it or use another installation method.
+
+  auto settings = Simulation::Settings(
+      electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
+      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      divisor_angle_number, flying_distance_number, range, bombardment_count,
+      is_electron, incident_energy, thread_count);
+
+  // Create AMCSET volume (TODO: Read this from a file and allow a user to
+  // configure)
+
+  std::vector<Layer> single_layer();
+
+  single_layer.push(Layer(material, depth, density));
+  auto volume = Volume(single_layer);
+
+  // Create the AMCSET simulation object
 
   auto application = Application{argc, argv};
   auto window1 = Window1{&application};
