@@ -61,7 +61,8 @@ public:
    * \param argc Number of command line arguments.
    * \param argv Strings of the command line arguments.
    */
-  Application(int &argc, char **argv) : QApplication(argc, argv) {
+  Application(int &argc, char **argv, amcset::common::Simulation *simulation)
+      : QApplication(argc, argv), simulation(simulation) {
     dark_mode = false;
     toggleDarkMode();
   }
@@ -79,8 +80,21 @@ public:
    */
   bool getDarkMode() { return dark_mode; };
 
+  /*!
+   * \brief Start a simulation.
+   *
+   * Once a simulation is initialized, this will run the simulation. After
+   * a period of time, the simulation will complete and the results will
+   * become available inside the 'simulation' class member.
+   */
+  void runSimulation() {
+    LOG(INFO) << "Starting simulation";
+    simulation->run_simulation();
+  };
+
 private:
   bool dark_mode;
+  amcset::common::Simulation *simulation;
 };
 
 class Window1 : public QMainWindow {

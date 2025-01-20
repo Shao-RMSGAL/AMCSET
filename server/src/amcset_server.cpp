@@ -185,7 +185,7 @@ Window1::Window1(Application *app_in) {
   startSimulationButton.move(400, 300);
   startSimulationButton.setText("Run Simulation");
   connect(&startSimulationButton, &QPushButton::clicked,
-          [&] { LOG(INFO) << "Starting Simulation"; });
+          [&] { app->runSimulation(); });
 
   setCentralWidget(&frame);
   setWindowTitle("AMCSET");

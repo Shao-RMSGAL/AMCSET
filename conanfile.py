@@ -45,7 +45,8 @@ class amcsetRecipe(ConanFile):
         build_dir = self.build_folder
         src_dir = self.source_folder
         build_dir = self.build_folder
-        compile_commands_path = os.path.join(build_dir, "compile_commands.json")
+        compile_commands_path = os.path.join(
+            build_dir, "compile_commands.json")
         symlink_path = os.path.join(src_dir, "compile_commands.json")
 
         # Remove existing symlink if it exists
@@ -56,7 +57,8 @@ class amcsetRecipe(ConanFile):
         if os.path.exists(compile_commands_path):
             os.symlink(compile_commands_path, symlink_path)
         else:
-            self.output.warning("compile_commands.json not found in build directory")
+            self.output.warning(
+                "compile_commands.json not found in build directory")
 
     def package(self):
         cmake = CMake(self)
@@ -77,7 +79,8 @@ class amcsetRecipe(ConanFile):
 
     def configure(self):
         #  self.options["qt"].with_openssl = True
-        self.options["qt"].shared = True  # Qt must be built as shared libraries
+        # Qt must be built as shared libraries
+        self.options["qt"].shared = True
         self.options["qt"].with_openssl = True  # You already had this
 
         # Enable required Qt modules

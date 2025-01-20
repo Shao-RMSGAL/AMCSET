@@ -119,14 +119,29 @@ int main(int argc, char *argv[]) {
   // Create AMCSET volume (TODO: Read this from a file and allow a user to
   // configure)
 
-  std::vector<Layer> single_layer();
+  constexpr double natural_abundance_54 = 0.05845;
+  constexpr double natural_abundance_56 = 0.91754;
+  constexpr double natural_abundance_57 = 0.02119;
+  constexpr double natural_abundance_58 = 0.00282;
+  Layer::material_vector material{
+      {natural_abundance_54, Particle::Properties(26, 54)},
+      {natural_abundance_56, Particle::Properties(26, 56)},
+      {natural_abundance_57, Particle::Properties(26, 57)},
+      {natural_abundance_58, Particle::Properties(26, 58)},
+  };
+  auto depth = 10000.0 * angstrom;
+  constexpr auto density = 7874.0 * kg_per_cubic_meter;
 
-  single_layer.push(Layer(material, depth, density));
-  auto volume = Volume(single_layer);
+  std::vector<Layer> single_layer;
+  single_layer.push_back(Layer(std::move(material), depth, density));
+  auto volume = Volume(std::move(single_layer));
 
   // Create the AMCSET simulation object
 
-  auto application = Application{argc, argv};
+  auto simulation = Simulation(settings, std::move(volume));
+
+  auto application = Application{argc, argv, &simulation};
+
   auto window1 = Window1{&application};
   window1.resize(800, 600);
   window1.show();
