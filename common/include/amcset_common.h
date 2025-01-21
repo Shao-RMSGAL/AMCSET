@@ -658,7 +658,7 @@ public:
    * before posting Settings::bombardment_count_ Bombardment run_bombardment()
    * commands.
    */
-  void run_simulation();
+  int run_simulation();
 
   /*!
    * \brief Return a string of settings.

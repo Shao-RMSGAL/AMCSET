@@ -228,7 +228,7 @@ Simulation::Simulation(const Settings settings, Volume &&volume) try
   rethrow(EXCEPTION_MESSAGE(""));
 }
 
-void Simulation::run_simulation() try {
+int Simulation::run_simulation() try {
   LOG(INFO) << "Starting Simulation...";
   for (auto &bombardment : bombardments_) {
     // TODO: Enable multithreading
@@ -240,6 +240,7 @@ void Simulation::run_simulation() try {
   }
   // thread_pool_.join();
   LOG(INFO) << "...Simulation complete";
+  return 0;
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
 }

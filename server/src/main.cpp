@@ -31,6 +31,8 @@
 #include "amcset_server.h"
 #include "amcset_utilities.h"
 
+DEFINE_bool(no_gui, true, "Include 'advanced' options in the menu listing");
+
 using namespace amcset::server;
 using namespace amcset::common;
 
@@ -79,10 +81,11 @@ int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
   FLAGS_alsologtostderr = 1;
 
+  std::string usage_message = "AMCSET. Call " + std::string(argv[0]);
+  gflags::SetUsageMessage(usage_message);
+  gflags::SetVersionString("0.0.1");
   // Process flags
   gflags::ParseCommandLineFlags(&argc, &argv, true);
-
-  LOG(INFO) << "Starting AMCSET GUI...";
 
   // Create AMCSET settings (TODO: Read this from a file and allow a user to
   // configure)
@@ -144,18 +147,21 @@ int main(int argc, char *argv[]) {
   // Create the AMCSET simulation object
 
   auto simulation = Simulation(settings, std::move(volume));
+  int exit_code;
 
-  bool no_gui = true;
-  if (no_gui) {
-    simulation.run_simulation();
+  if (FLAGS_no_gui) {
+    LOG(INFO) << "Starting AMCSET in CLI mode...";
+    exit_code = simulation.run_simulation();
+    LOG(INFO) << "...Quitting AMCSET CLI.";
     return 0;
   } else {
+    LOG(INFO) << "Starting AMCSET GUI...";
     auto application = Application{argc, argv, &simulation};
     auto window1 = Window1{&application};
     window1.resize(800, 600);
     window1.show();
 
-    auto exit_code = application.exec();
+    exit_code = application.exec();
     LOG(INFO) << "...Quitting AMCSET GUI. Exit code: " << exit_code;
     return exit_code;
   }
