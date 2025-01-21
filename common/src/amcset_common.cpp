@@ -36,9 +36,9 @@ namespace common {
 Layer::Layer(material_vector &&material, length_quantity depth,
              mass_density_quantity mass_density) try
     : material_([&material, depth, mass_density]() {
-        LOG(INFO) << "Creating layer with " << material.size()
-                  << " materials, depth of " << depth << " and density of "
-                  << mass_density;
+        VLOG(1) << "Creaating Layer material with vector of length "
+                << material.size() << ", depth " << depth << ", and density "
+                << mass_density;
         auto relative_compositions =
             material | std::views::transform(
                            &std::pair<double, Particle::Properties>::first);
@@ -64,6 +64,9 @@ Layer::Layer(material_vector &&material, length_quantity depth,
                                 }) *
                 constants::N_A);
       }()) {
+  VLOG(1) << "Created Layer with " << material_.size()
+          << " components, depth of " << depth << ", density of "
+          << mass_density << ", and number density of " << number_density_;
   if (depth < length_quantity(0)) {
     throw std::invalid_argument(EXCEPTION_MESSAGE("Depth: " + to_string(depth) +
                                                   " is less than zero."));
@@ -82,6 +85,7 @@ Layer::Layer(material_vector &&material, length_quantity depth,
 
 std::pair<const Layer *, size_t> Volume::get_layer(length_quantity depth) const
     try {
+  VLOG(1) << "Getting layer at depth " << depth;
   if (depth < length_quantity(0.0 * angstrom)) {
     throw std::invalid_argument(EXCEPTION_MESSAGE(
         "Depth: " + to_string(depth) + " cannot be less than zero."));
@@ -94,7 +98,11 @@ std::pair<const Layer *, size_t> Volume::get_layer(length_quantity depth) const
 
   // Rely on the ordering of the layers (depths are strictly increasing)
   for (size_t i = 0; i < layers_.size(); i++) {
+    VLOG(2) << "Checking layer " << i << " with depth "
+            << layers_[i].get_depth();
     if (depth <= layers_[i].get_depth()) {
+      VLOG(1) << "Found match at " << i << " with depth "
+              << layers_[i].get_depth() << " greater than " << depth;
       return std::make_pair(&layers_[i], i);
     }
   }
@@ -122,6 +130,8 @@ auto Layer::get_relative_compositions() const
     -> decltype(std::declval<const material_vector &>() |
                 std::views::transform(
                     &std::pair<double, Particle::Properties>::first)) try {
+  VLOG(1) << "Getting relative compositions for layer with " << material_.size()
+          << " components";
   return material_ |
          std::views::transform(&std::pair<double, Particle::Properties>::first);
 } catch (...) { //!<
@@ -129,6 +139,7 @@ auto Layer::get_relative_compositions() const
 }
 
 Volume::Volume(std::vector<Layer> &&layers) try : layers_(std::move(layers)) {
+  VLOG(1) << "Created volume with " << layers_.size() << " components";
   if (layers_.size() == 0) {
     throw std::invalid_argument(
         "Vector cannot be empty to Volume constructor.");
@@ -342,17 +353,19 @@ void Ion::fire() try {
   auto current_layer_pair = simulation_.get_volume().get_layer(coordinate_.z_);
   const Layer &current_layer = *(current_layer_pair.first);
 
+#ifdef NDEBUG /*{{{*/
+#else
+  // Grad an iterator to a view of the first
   auto comp_view = current_layer.get_relative_compositions().begin();
-
-  // TODO: Remove
   for (size_t i = 0; i < current_layer.get_number_of_components(); i++) {
-    VLOG(1) << "Index: " << i;
-    VLOG(1) << "Relative (direct): "
-            << current_layer.get_relative_composition(i);
-    // VLOG(1) << "Relative (view): " << *comp_view; // TODO: This causes a
-    // segfault. Find out why.
-    comp_view++;
+    auto direct_composition = current_layer.get_relative_composition(i);
+    auto viewed_composition = *(comp_view++);
+    VLOG(2) << "Index: " << i << "has directly measured composition of "
+            << direct_composition << " view-based composition of "
+            << "Relative (view): " << viewed_composition;
+    assert(direct_composition == viewed_composition);
   }
+#endif /*}}}*/
 
   while (velocity_.energy_ > ion_stopping_energy) {
     // TODO: Implement simulation calculations
@@ -381,10 +394,14 @@ energy_quantity Ion::electronic_stopping_energy(charge_quantity charge,
                                                 mass_quantity mass,
                                                 energy_quantity energy,
                                                 const Layer &layer) const try {
+  VLOG(2) << "Calculating ion electronic stopping energy with charge " << charge
+          << " mass " << mass << " energy " << energy << " and "
+          << " layer with " << layer.get_number_of_components()
+          << " components.";
   const size_t atom_index =
       layer.get_discrete_distribution()(random_number_generator_);
-  VLOG(1) << "Index: " << atom_index;
   const auto properties = layer.get_property(atom_index);
+
   const auto c_1 = 1.212 * root<2>(constants::m_u) * root<2>(electron_volt) /
                    angstrom / pow<static_rational<7, 6>>(constants::e);
   const auto k_l = c_1 * pow<static_rational<7, 6>>(charge) *
@@ -398,6 +415,11 @@ energy_quantity Ion::electronic_stopping_energy(charge_quantity charge,
   const auto travel_length = interatomic_spacing(layer.get_number_density());
   const auto energy_loss = c_2 * travel_length * layer.get_number_density() *
                            constants::N_A * stopping_energy;
+
+  VLOG(2) << "Using atom at index " << atom_index << " out of "
+          << layer.get_number_of_components() << " components with mass "
+          << properties.mass_ << ".\n Traveled " << travel_length
+          << " and calculated energy loss of " << energy_loss;
   return energy - energy_loss;
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));

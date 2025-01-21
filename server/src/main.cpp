@@ -37,7 +37,7 @@ using namespace amcset::server;
 using namespace amcset::common;
 
 int main(int argc, char *argv[]) {
-
+  /*{{{*/
   // boost::interprocess::message_queue::remove("server_to_client_message_queue");
   // boost::interprocess::message_queue::remove("client_to_server_message_queue");
 
@@ -76,7 +76,7 @@ int main(int argc, char *argv[]) {
 
   // boost::interprocess::message_queue::remove("server_to_client_message_queue");
   // boost::interprocess::message_queue::remove("client_to_server_message_queue");
-
+  /*}}}*/
   // Initialize logger
   google::InitGoogleLogging(argv[0]);
   FLAGS_alsologtostderr = 1;
