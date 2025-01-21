@@ -1,5 +1,22 @@
 # A script for quickly building the AMCSET program (Tested on Linux)
-# Instructions:
+#
+# This project uses conan as a package manager, which is _supposed_
+# to solve portability issues of dependancies across various platform.
+# Unfortunately, conan is somewhat unreliable in my experience, 
+# and builds will occasionally fail. Your best bet is use to a 
+# standard, clean Ubuntu distribution to build this project, 
+# but if you're willing to deal with a bit of troubleshooting,
+# this project should build anywhere that the project dependancies
+# are supported. This includes Windows.
+#
+# If builds fail, try deleting conan cache with 'conan remove '*'' or 
+# `conan cache clean`. Then try to reinstall. You may find that rebooting
+# can also solve some problems. Also try to make adjustments to your
+# conan profile if needed. Avoid modifying the conanfile.py, as this defines
+# the state of dependancies, and messing with them may mess with the intended
+# behavior of the code.
+#
+# Instructions (Linux):
 # 1. Have the following installed:
 #   - Conan (https://conan.io/)
 # 2. Run `conan profile detect`, then modify ~/.conan2/profiles/default to 
@@ -17,7 +34,10 @@
 #   # Optionally choose your favorite generator, for example, Ninja
 #   [conf]
 #       tools.cmake.cmaketoolchain:generator=Ninja
-# 3. Run ./qbuild -c -b from the project root directory
+# 3. Run ./qbuild -c -b -r from the project root directory
+#   -c tells conan to install all required packages.
+#   -b builds the code
+#   -r runs the resulting binary once built.
 
 # Building
 
