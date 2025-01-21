@@ -30,6 +30,7 @@ configure_file(common/include/config.h.in config.h)
 find_package(Boost 1.85.0 REQUIRED)
 find_package(GTest 1.14.0 REQUIRED)
 find_package(glog 0.7.1 REQUIRED)
+find_package(gflags 2.2.2 REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED)
 if (Qt6_FOUND)
@@ -55,4 +56,5 @@ target_link_libraries(amcset-server PRIVATE amcset-common
     Qt6::Widgets
     Qt6::Gui
     glog::glog
+    gflags::gflags
 )

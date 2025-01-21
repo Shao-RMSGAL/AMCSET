@@ -24,6 +24,7 @@
 #include <QLabel>
 #include <QMainWindow>
 
+#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "amcset_common.h"
@@ -77,6 +78,10 @@ int main(int argc, char *argv[]) {
   // Initialize logger
   google::InitGoogleLogging(argv[0]);
   FLAGS_alsologtostderr = 1;
+
+  // Process flags
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
   LOG(INFO) << "Starting AMCSET GUI...";
 
   // Create AMCSET settings (TODO: Read this from a file and allow a user to
@@ -140,13 +145,18 @@ int main(int argc, char *argv[]) {
 
   auto simulation = Simulation(settings, std::move(volume));
 
-  auto application = Application{argc, argv, &simulation};
+  bool no_gui = true;
+  if (no_gui) {
+    simulation.run_simulation();
+    return 0;
+  } else {
+    auto application = Application{argc, argv, &simulation};
+    auto window1 = Window1{&application};
+    window1.resize(800, 600);
+    window1.show();
 
-  auto window1 = Window1{&application};
-  window1.resize(800, 600);
-  window1.show();
-
-  auto exit_code = application.exec();
-  LOG(INFO) << "...Quitting AMCSET GUI. Exit code: " << exit_code;
-  return exit_code;
+    auto exit_code = application.exec();
+    LOG(INFO) << "...Quitting AMCSET GUI. Exit code: " << exit_code;
+    return exit_code;
+  }
 }

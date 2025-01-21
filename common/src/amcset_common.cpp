@@ -37,8 +37,8 @@ Layer::Layer(material_vector &&material, length_quantity depth,
              mass_density_quantity mass_density) try
     : material_([&material, depth, mass_density]() {
         LOG(INFO) << "Creating layer with " << material.size()
-                  << " materials and " << depth.value()
-                  << " [units] and denisity " << mass_density;
+                  << " materials, depth of " << depth << " and density of "
+                  << mass_density;
         auto relative_compositions =
             material | std::views::transform(
                            &std::pair<double, Particle::Properties>::first);
@@ -211,9 +211,9 @@ Simulation::Settings::Settings(
 Simulation::Simulation(const Settings settings, Volume &&volume) try
     : settings_(settings), volume_(std::move(volume)),
       thread_pool_(settings.thread_count_) {
-  LOG(INFO) << "Creating simulation..."; // TODO: Override ostream operators for
-                                         // settings and volume to print
-                                         // relevant information.
+  LOG(INFO) << "Creating simulation with settings:\n"
+            << Simulation::print_settings(); // TODO: Print volume information
+                                             // as well.
   std::vector<Bombardment> bombardments;
   bombardments.reserve(settings.bombardment_count_);
 
@@ -229,17 +229,16 @@ Simulation::Simulation(const Settings settings, Volume &&volume) try
 }
 
 void Simulation::run_simulation() try {
-  LOG(INFO) << "Starting Simulation...\n"
-            << "Settings:\n"
-            << Simulation::print_settings();
+  LOG(INFO) << "Starting Simulation...";
   for (auto &bombardment : bombardments_) {
+    // TODO: Enable multithreading
     // boost::asio::post(thread_pool_, [&bombardment]() {
     LOG(INFO) << "Starting Bombardment...";
     bombardment.run_bombardment();
     LOG(INFO) << "...Bombardment Complete!";
     // });
   }
-  thread_pool_.join();
+  // thread_pool_.join();
   LOG(INFO) << "...Simulation complete";
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
@@ -281,8 +280,8 @@ std::string Simulation::print_settings() const try {
 Bombardment::Bombardment(const Simulation &simulation, size_t id) try
     : simulation_(simulation), random_number_generator_(),
       uniform_distribution_(), id_(id) {
-  std::cout << "Attempting random number: "
-            << uniform_distribution_(random_number_generator_) << std::endl;
+  VLOG(1) << "Attempting random number: "
+          << uniform_distribution_(random_number_generator_);
 
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
@@ -290,15 +289,19 @@ Bombardment::Bombardment(const Simulation &simulation, size_t id) try
 
 void Bombardment::run_bombardment() try {
   if (simulation_.get_settings(&Simulation::Settings::is_electron_)) {
+    VLOG(1) << "Simulating electron bombardment...";
     incident_particle_ = std::make_unique<Electron>(
         simulation_.get_settings(&Simulation::Settings::z_number_),
         simulation_.get_settings(&Simulation::Settings::mass_number_),
         simulation_, uniform_distribution_, random_number_generator_);
+    VLOG(1) << "...Electron bombardment complete.";
   } else {
+    VLOG(1) << "Simulating ion bombardment";
     incident_particle_ = std::make_unique<Ion>(
         simulation_.get_settings(&Simulation::Settings::z_number_),
         simulation_.get_settings(&Simulation::Settings::mass_number_),
         simulation_, uniform_distribution_, random_number_generator_);
+    VLOG(1) << "...Ion bombardment complete.";
   }
 
   incident_particle_->fire();
@@ -326,11 +329,13 @@ Particle::Particle(
 
 void Electron::fire() try {
   // TODO: Implement Electron simulation
+  throw std::logic_error("Electron simulation is not implemented");
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
 }
 
 void Ion::fire() try {
+  LOG(INFO) << "Firing ion with initial energy " << velocity_.energy_;
   const auto ion_stopping_energy =
       simulation_.get_settings(&Simulation::Settings::ion_stopping_energy_);
   auto current_layer_pair = simulation_.get_volume().get_layer(coordinate_.z_);
@@ -340,10 +345,11 @@ void Ion::fire() try {
 
   // TODO: Remove
   for (size_t i = 0; i < current_layer.get_number_of_components(); i++) {
-    std::cout << "Index: " << i << std::endl;
-    std::cout << "Relative (direct): "
-              << current_layer.get_relative_composition(i) << std::endl;
-    std::cout << "Relative (view): " << *comp_view << std::endl;
+    VLOG(1) << "Index: " << i;
+    VLOG(1) << "Relative (direct): "
+            << current_layer.get_relative_composition(i);
+    // VLOG(1) << "Relative (view): " << *comp_view; // TODO: This causes a
+    // segfault. Find out why.
     comp_view++;
   }
 
@@ -376,7 +382,7 @@ energy_quantity Ion::electronic_stopping_energy(charge_quantity charge,
                                                 const Layer &layer) const try {
   const size_t atom_index =
       layer.get_discrete_distribution()(random_number_generator_);
-  std::cout << "Index: " << atom_index << std::endl;
+  VLOG(1) << "Index: " << atom_index;
   const auto properties = layer.get_property(atom_index);
   const auto c_1 = 1.212 * root<2>(constants::m_u) * root<2>(electron_volt) /
                    angstrom / pow<static_rational<7, 6>>(constants::e);
