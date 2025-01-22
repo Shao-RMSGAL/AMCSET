@@ -208,60 +208,17 @@ protected:
    * \brief Calculate velocity from energy.
    */
   virtual velocity_quantity speed_from_energy(energy_quantity energy,
-                                              mass_quantity mass);
+                                              mass_quantity mass) const;
   /*!
    * \brief Calculate reduced mass.
    */
   virtual mass_quantity reduced_mass(mass_quantity mass_1,
-                                     mass_quantity mass_2);
+                                     mass_quantity mass_2) const;
   /*!
    * \brief Calculate kinetic energy for center of mass coordinates.
    */
   virtual energy_quantity cm_energy(mass_quantity reduced_mass,
-                                    velocity_quantity velocity);
-
-  /*!
-   * \brief Screening potential.
-   */
-  virtual energy_quantity screening_potential(length_quantity radius,
-                                              dimensionless_quantity z_1,
-                                              dimensionless_quantity z_2);
-
-  /*!
-   * \brief Derivative of screening potential with respect to distance.
-   */
-  virtual voltage_quantity
-  screening_potential_derivative(length_quantity radius,
-                                 dimensionless_quantity z_1,
-                                 dimensionless_quantity z_2);
-
-  /*!
-   * \brief Universal screening function.
-   */
-  virtual dimensionless_quantity
-  screening_function(dimensionless_quantity reduced_radius);
-
-  /*!
-   * \brief Universal screening length.
-   */
-  virtual length_quantity screening_length(dimensionless_quantity z_1,
-                                           dimensionless_quantity z_2);
-
-  /*!
-   * \brief Reduced energy.
-   */
-  virtual dimensionless_quantity
-  reduced_energy(length_quantity screening_length, energy_quantity cm_energy,
-                 dimensionless_quantity z_1, dimensionless_quantity z_2);
-
-  /*!
-   * \brief free_flying_path_length
-   */
-  virtual length_quantity
-  free_flying_path_length(mass_quantity m_1, mass_quantity m_2,
-                          dimensionless_quantity reduced_energy,
-                          length_quantity screening_length,
-                          number_density_quantity number_density);
+                                    velocity_quantity velocity) const;
 
   Properties properties_; //!< Properties of the particle
   std::vector<std::unique_ptr<Particle>>
@@ -367,11 +324,72 @@ private:
   interatomic_spacing(number_density_quantity number_density) const;
 
   /*!
+   * \brief Screening potential.
+   */
+  energy_quantity screening_potential(length_quantity radius,
+                                      dimensionless_quantity z_1,
+                                      dimensionless_quantity z_2) const;
+
+  /*!
+   * \brief Derivative of screening potential with respect to distance.
+   */
+  voltage_quantity
+  screening_potential_derivative(length_quantity radius,
+                                 dimensionless_quantity z_1,
+                                 dimensionless_quantity z_2) const;
+
+  /*!
+   * \brief Universal screening function.
+   */
+  dimensionless_quantity
+  screening_function(dimensionless_quantity reduced_radius) const;
+
+  /*!
+   * \brief Universal screening length.
+   */
+  length_quantity screening_length(dimensionless_quantity z_1,
+                                   dimensionless_quantity z_2) const;
+
+  /*!
+   * \brief Reduced energy.
+   */
+  dimensionless_quantity reduced_energy(length_quantity screening_length,
+                                        energy_quantity cm_energy,
+                                        dimensionless_quantity z_1,
+                                        dimensionless_quantity z_2) const;
+
+  /*!
+   * \brief free_flying_path_length
+   */
+  length_quantity
+  free_flying_path_length(mass_quantity m_1, mass_quantity m_2,
+                          dimensionless_quantity reduced_energy,
+                          length_quantity screening_length,
+                          number_density_quantity number_density) const;
+  /*!
    * \brief Impact parameter
    */
   length_quantity impact_parameter(number_density_quantity number_density,
                                    length_quantity length,
                                    dimensionless_quantity reduced_energy) const;
+
+  /*!
+   * \brief Collision diameter.
+   */
+  length_quantity collision_diameter(dimensionless_quantity z_1,
+                                     dimensionless_quantity z_2,
+                                     mass_quantity m_c,
+                                     velocity_quantity v_0) const;
+
+  /*!
+   * \brief Calculate the closest approach distance of an ion.
+   **/
+  length_quantity closest_approach(length_quantity radius,
+                                   dimensionless_quantity z_1,
+                                   dimensionless_quantity z_2,
+                                   energy_quantity cm_energy,
+                                   length_quantity impact_param,
+                                   length_quantity coll_diameter) const;
 };
 
 /*!
@@ -379,7 +397,7 @@ private:
  * class.
  *
  * A Layer can consist of a single isotope, or many isotopes present at a
- * relative fraction. The layer is asssumed to be homogenous, so the
+ * relative fraction. The layer is assumed to be homogenous, so the
  * probability of interaction with a particular isotope solely depends on the
  * relative fraction.
  */
@@ -567,9 +585,9 @@ private:
  * \brief Representation of a single particle bombardment.
  *
  * This class represents a bombardment of a single particle incident on a
- * volume. It initiates a particle bobardment and manages IO of the bombardment
- * information, including what information is sent to the front end, and what is
- * saved to a file on disk.
+ * volume. It initiates a particle bobardment and manages IO of the
+ * bombardment information, including what information is sent to the front
+ * end, and what is saved to a file on disk.
  */
 class Bombardment {
 public:

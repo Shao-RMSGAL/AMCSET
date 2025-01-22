@@ -367,22 +367,22 @@ Particle::Particle(
 }
 
 velocity_quantity Particle::speed_from_energy(energy_quantity energy,
-                                              mass_quantity mass) {
+                                              mass_quantity mass) const {
   return boost::units::sqrt(2.0 * energy / mass);
 }
 
 mass_quantity Particle::reduced_mass(mass_quantity mass_1,
-                                     mass_quantity mass_2) {
+                                     mass_quantity mass_2) const {
   return mass_1 * mass_2 / (mass_1 + mass_2);
 }
 
 energy_quantity Particle::cm_energy(mass_quantity reduced_mass,
-                                    velocity_quantity velocity) {
+                                    velocity_quantity velocity) const {
   return reduced_mass * boost::units::pow<2>(velocity) / 2.0;
 }
 
 dimensionless_quantity
-Particle::screening_function(dimensionless_quantity reduced_radius) {
+Ion::screening_function(dimensionless_quantity reduced_radius) const {
   const auto result = 0.1818 * exp(-3.2 * reduced_radius) +
                       0.5099 * exp(-0.9423 * reduced_radius) +
                       0.2802 * exp(-0.4028 * reduced_radius) +
@@ -395,8 +395,8 @@ Particle::screening_function(dimensionless_quantity reduced_radius) {
 // TODO: Find a way to cache the results of this function for speedup. Consider
 // calculating ahead of time and storing the results in a data structure
 // constructed at runtime for each Layer material.
-length_quantity Particle::screening_length(dimensionless_quantity z_1,
-                                           dimensionless_quantity z_2) {
+length_quantity Ion::screening_length(dimensionless_quantity z_1,
+                                      dimensionless_quantity z_2) const {
   const auto result = 0.25 * cbrt(9.0 * pi * pi / 2.0) * bohr_radius /
                       (pow(z_1, 0.23) + pow(z_2, 0.23));
   VLOG(2) << "Screening length with z_1 " << z_1 << " and z_2 " << z_2 << " is "
@@ -404,9 +404,9 @@ length_quantity Particle::screening_length(dimensionless_quantity z_1,
   return result;
 }
 
-energy_quantity Particle::screening_potential(length_quantity radius,
-                                              dimensionless_quantity z_1,
-                                              dimensionless_quantity z_2) {
+energy_quantity Ion::screening_potential(length_quantity radius,
+                                         dimensionless_quantity z_1,
+                                         dimensionless_quantity z_2) const {
   auto reduced_length = radius / screening_length(z_1, z_2);
   auto result = screening_function(reduced_length) * z_1 * z_2 * e_statcoulomb *
                 e_statcoulomb / radius;
@@ -416,9 +416,9 @@ energy_quantity Particle::screening_potential(length_quantity radius,
 }
 
 voltage_quantity
-Particle::screening_potential_derivative(length_quantity radius,
-                                         dimensionless_quantity z_1,
-                                         dimensionless_quantity z_2) {
+Ion::screening_potential_derivative(length_quantity radius,
+                                    dimensionless_quantity z_1,
+                                    dimensionless_quantity z_2) const {
   // TODO: Consolidate calls to screening_length to above-mentioned method.
   // Optimize this function as well.
   auto s_length = screening_length(z_1, z_2);
@@ -438,10 +438,10 @@ Particle::screening_potential_derivative(length_quantity radius,
   return result;
 }
 
-dimensionless_quantity
-Particle::reduced_energy(length_quantity screening_length,
-                         energy_quantity cm_energy, dimensionless_quantity z_1,
-                         dimensionless_quantity z_2) {
+dimensionless_quantity Ion::reduced_energy(length_quantity screening_length,
+                                           energy_quantity cm_energy,
+                                           dimensionless_quantity z_1,
+                                           dimensionless_quantity z_2) const {
   auto result = screening_length * cm_energy /
                 (z_1 * z_2 * e_statcoulomb * e_statcoulomb);
   VLOG(2) << "Reduced energy with screening length " << screening_length
@@ -451,9 +451,11 @@ Particle::reduced_energy(length_quantity screening_length,
 }
 
 // TODO: Verify that dividing by Avogadro's number is correct.
-length_quantity Particle::free_flying_path_length(
-    mass_quantity m_1, mass_quantity m_2, dimensionless_quantity reduced_energy,
-    length_quantity screening_length, number_density_quantity number_density) {
+length_quantity
+Ion::free_flying_path_length(mass_quantity m_1, mass_quantity m_2,
+                             dimensionless_quantity reduced_energy,
+                             length_quantity screening_length,
+                             number_density_quantity number_density) const {
   length_quantity L;
   if (reduced_energy > 100) {
     L = (0.02 * pow(1.0 + (m_1 + m_2) / atomic_mass_unit, 2) * reduced_energy *
@@ -477,6 +479,28 @@ length_quantity Particle::free_flying_path_length(
             << L;
   }
   return L;
+}
+
+length_quantity Ion::collision_diameter(dimensionless_quantity z_1,
+                                        dimensionless_quantity z_2,
+                                        mass_quantity rd_mass,
+                                        velocity_quantity speed) const {
+  auto result =
+      4 * z_1 * z_2 * e_statcoulomb * e_statcoulomb / (rd_mass * speed * speed);
+  VLOG(2) << "Collision diameter given z_1 " << z_1 << ", z_2 " << z_2
+          << " reduced mass " << rd_mass << ", and speed " << speed;
+  return result;
+}
+
+// TODO: Implement
+length_quantity Ion::closest_approach(length_quantity radius,
+                                      dimensionless_quantity z_1,
+                                      dimensionless_quantity z_2,
+                                      energy_quantity cm_energy,
+                                      length_quantity impact_param,
+                                      length_quantity coll_diameter) const {
+
+  return angstrom; // TODO: Remove
 }
 
 // }}}
@@ -541,6 +565,9 @@ void Ion::fire() try {
     auto rd_energy = reduced_energy(screen_length, c_mass_energy, z_1, z_2);
     auto path_length = free_flying_path_length(m_1, m_2, rd_energy,
                                                screen_length, number_density);
+    auto i_param = impact_parameter(number_density, path_length, rd_energy);
+
+    auto coll_diameter = collision_diameter(z_1, z_2, rd_mass, speed);
 
     // TODO: Implement derivative of screening potential
 
@@ -555,20 +582,24 @@ void Ion::fire() try {
   rethrow(EXCEPTION_MESSAGE(""));
 }
 
-// TODO: Finish this (logging)
 length_quantity
 Ion::impact_parameter(number_density_quantity number_density,
                       length_quantity length,
                       dimensionless_quantity reduced_energy) const {
-  length_quantity p;
+  length_quantity result;
   if (reduced_energy > 10.0) {
-    p = sqrt(-log(0.5) / (pi * number_density * length / si::mole));
-    VLOG(2) << "Impact parameter at high energy";
+    result = sqrt(-log(0.5) / (pi * number_density * length / si::mole));
+    VLOG(2) << "Impact parameter at high energy for number density "
+            << number_density << ", length " << length
+            << ", and reduced energy " << reduced_energy << " is " << result;
   } else {
-    p = sqrt(0.5 /
-             (pi * pow<static_rational<2, 3>>(number_density / si::mole)));
+    result = sqrt(0.5 /
+                  (pi * pow<static_rational<2, 3>>(number_density / si::mole)));
+    VLOG(2) << "Impact parameter at low energy for number density "
+            << number_density << ", length " << length
+            << ", and reduced energy " << reduced_energy << " is " << result;
   }
-  return p;
+  return result;
 }
 
 length_quantity
