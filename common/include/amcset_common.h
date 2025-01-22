@@ -23,7 +23,9 @@
  *  interfacing with the front-end gui.
  */
 
-#include <boost/units/static_rational.hpp>
+#pragma once
+
+#include <boost/units/systems/si/length.hpp>
 #include <memory>
 #if defined(_WIN32)
 #if defined(EXPORTING_AMCSET)
@@ -35,8 +37,6 @@
 #define DECLSPEC
 #endif
 
-#pragma once
-
 // Standard library
 #include <ranges>
 
@@ -44,6 +44,10 @@
 #include <boost/random/discrete_distribution.hpp>
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_01.hpp>
+
+// Boost units
+#include <boost/random/discrete_distribution.hpp>
+#include <boost/units/static_rational.hpp>
 
 // Boost asio
 #include <boost/asio.hpp>
@@ -63,6 +67,9 @@ namespace amcset {
  * namespace.
  */
 namespace common {
+
+using namespace amcset::common;
+using namespace amcset::common;
 
 //! A struct to store 3D coordinate data
 struct Coordinate {
@@ -130,12 +137,12 @@ public:
    * \brief A struct for storing property information associated with a
    * particle.
    *
-   * A partcle has two pieces of information of interest, a charge (Z number)
+   * A particle has two pieces of information of interest, a charge (Z number)
    * and a mass. Both of these pieces of information are stored as
    */
   struct Properties {
-    const charge_quantity
-        charge_; //!< The charge of the particle (Elementary charge)
+    const dimensionless_quantity
+        charge_; //!< The atomic number of the particle (dimensionless)
     const mass_quantity mass_; //!< The exact mass of the particle (amu)
 
     Properties() = delete;
@@ -154,8 +161,8 @@ public:
      * the particle. If mass_number is 0, an electron is specified.
      */
     constexpr Properties(size_t z_number, size_t mass_number) try
-        : charge_(z_number > 0 ? double(z_number) * elementary_charge
-                               : double(-1.0) * elementary_charge),
+        : charge_(z_number > 0 ? dimensionless_quantity(z_number)
+                               : dimensionless_quantity(-1)),
           mass_(IsotopeData::get_isotope_mass(z_number, mass_number)) {
     } catch (...) {
       rethrow(EXCEPTION_MESSAGE(""));
@@ -167,6 +174,10 @@ public:
    */
   Particle() = delete;
 
+  Particle(const Particle &) = default;
+  Particle(Particle &&) = delete;
+  Particle &operator=(const Particle &) = delete;
+  Particle &operator=(Particle &&) = delete;
   /*!
    * \brief construct a Particle by passing a reference to a Simulation
    * object.
@@ -193,6 +204,65 @@ public:
   virtual ~Particle() = default;
 
 protected:
+  /*!
+   * \brief Calculate velocity from energy.
+   */
+  virtual velocity_quantity speed_from_energy(energy_quantity energy,
+                                              mass_quantity mass);
+  /*!
+   * \brief Calculate reduced mass.
+   */
+  virtual mass_quantity reduced_mass(mass_quantity mass_1,
+                                     mass_quantity mass_2);
+  /*!
+   * \brief Calculate kinetic energy for center of mass coordinates.
+   */
+  virtual energy_quantity cm_energy(mass_quantity reduced_mass,
+                                    velocity_quantity velocity);
+
+  /*!
+   * \brief Screening potential.
+   */
+  virtual energy_quantity screening_potential(length_quantity radius,
+                                              dimensionless_quantity z_1,
+                                              dimensionless_quantity z_2);
+
+  /*!
+   * \brief Derivative of screening potential with respect to distance.
+   */
+  virtual voltage_quantity
+  screening_potential_derivative(length_quantity radius,
+                                 dimensionless_quantity z_1,
+                                 dimensionless_quantity z_2);
+
+  /*!
+   * \brief Universal screening function.
+   */
+  virtual dimensionless_quantity
+  screening_function(dimensionless_quantity reduced_radius);
+
+  /*!
+   * \brief Universal screening length.
+   */
+  virtual length_quantity screening_length(dimensionless_quantity z_1,
+                                           dimensionless_quantity z_2);
+
+  /*!
+   * \brief Reduced energy.
+   */
+  virtual dimensionless_quantity
+  reduced_energy(length_quantity screening_length, energy_quantity cm_energy,
+                 dimensionless_quantity z_1, dimensionless_quantity z_2);
+
+  /*!
+   * \brief free_flying_path_length
+   */
+  virtual length_quantity
+  free_flying_path_length(mass_quantity m_1, mass_quantity m_2,
+                          dimensionless_quantity reduced_energy,
+                          length_quantity screening_length,
+                          number_density_quantity number_density);
+
   Properties properties_; //!< Properties of the particle
   std::vector<std::unique_ptr<Particle>>
       particles_; //!< List of cascade particles
@@ -267,6 +337,7 @@ public:
    */
   void fire() override;
 
+private:
   /*!
    * \brief Calculate the electronic stopping energy of ions in matter.
    *
@@ -279,13 +350,14 @@ public:
    * \param volume The volume in which the particle is traveling.
    * \return The energy lost from electronic ion interaction with matter.
    */
-  energy_quantity electronic_stopping_energy(charge_quantity charge,
-                                             mass_quantity mass,
-                                             energy_quantity energy,
-                                             const Layer &layer) const;
+  energy_quantity
+  electronic_stopping_energy(dimensionless_quantity charge, mass_quantity mass,
+                             energy_quantity energy,
+                             number_density_quantity number_density,
+                             const Properties &properties) const;
 
   /*!
-   * \brief Returns the interactomic spacing, depending on the current layer.
+   * \brief Returns the interatomic spacing, depending on the current layer.
    *
    * \param The number density of the substance in moles of atoms/m^3.
    *
@@ -293,6 +365,13 @@ public:
    */
   length_quantity
   interatomic_spacing(number_density_quantity number_density) const;
+
+  /*!
+   * \brief Impact parameter
+   */
+  length_quantity impact_parameter(number_density_quantity number_density,
+                                   length_quantity length,
+                                   dimensionless_quantity reduced_energy) const;
 };
 
 /*!
@@ -341,9 +420,7 @@ public:
    * of the layer
    */
   auto get_relative_compositions() const
-      -> decltype(std::declval<const material_vector &>() |
-                  std::views::transform(
-                      &std::pair<double, Particle::Properties>::first));
+      -> decltype(std::declval<const material_vector &>() | std::views::keys);
 
   /*!
    *  \brief Returns a property at the corresponding index
@@ -403,7 +480,7 @@ public:
   }
 
   /*!
-   * \brief Return the discrete distrbution used for selecting material
+   * \brief Return the discrete distribution used for selecting material
    * interaction
    *
    * \return Return the discrete distribution corresponding to the relative

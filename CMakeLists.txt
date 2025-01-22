@@ -4,9 +4,9 @@ project(amcset VERSION 1.0)
 # For clangd lsp
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Require C++20
+# Require C++26
 add_library(compiler_flags INTERFACE)
-target_compile_features(compiler_flags INTERFACE cxx_std_23)
+target_compile_features(compiler_flags INTERFACE cxx_std_26)
 
 # Set compiler flags
 set(gcc_like_cxx "$<COMPILE_LANG_AND_ID:CXX,ARMClang,AppleClang,Clang,GNU,LCC>")

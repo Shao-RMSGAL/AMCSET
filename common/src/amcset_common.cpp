@@ -17,13 +17,20 @@
 
 #include "amcset_common.h"
 
+#include <boost/units/systems/si/amount.hpp>
+#include <boost/units/systems/si/codata/physico-chemical_constants.hpp>
+#include <boost/units/systems/si/length.hpp>
 #include <glog/logging.h>
 
 #include <boost/random/discrete_distribution.hpp>
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_01.hpp>
+
+#include <boost/units/cmath.hpp>
 #include <boost/units/pow.hpp>
+#include <boost/units/static_rational.hpp>
 #include <boost/units/systems/si/mass.hpp>
+
 #include <cmath>
 #include <numeric>
 #include <stdexcept>
@@ -33,10 +40,11 @@
 namespace amcset {
 namespace common {
 
+// Layer function implementations{{{
 Layer::Layer(material_vector &&material, length_quantity depth,
              mass_density_quantity mass_density) try
     : material_([&material, depth, mass_density]() {
-        VLOG(1) << "Creaating Layer material with vector of length "
+        VLOG(1) << "Creating Layer material with vector of length "
                 << material.size() << ", depth " << depth << ", and density "
                 << mass_density;
         auto relative_compositions =
@@ -44,6 +52,7 @@ Layer::Layer(material_vector &&material, length_quantity depth,
                            &std::pair<double, Particle::Properties>::first);
         double sum = std::accumulate(relative_compositions.begin(),
                                      relative_compositions.end(), 0.0);
+        VLOG(1) << "Sum of compositions is " << sum;
 
         for (auto &pair : material) {
           if (pair.first < 0) {
@@ -51,15 +60,23 @@ Layer::Layer(material_vector &&material, length_quantity depth,
                 "Relative composition: " + std::to_string(pair.first) +
                 " is less than zero."));
           }
+          VLOG(2) << "Initial composition is " << pair.first;
           pair.first /= sum;
+          VLOG(2) << "Final composition is " << pair.first;
         }
+
         return std::move(material);
       }()),
       depth_(depth), mass_density_(mass_density), number_density_([&]() {
+        VLOG(1) << "Calculating mass density using " << mass_density;
         return mass_density /
                (std::accumulate(material_.begin(), material_.end(),
                                 mass_quantity(0),
                                 [](const mass_quantity &sum, const auto &mat) {
+                                  VLOG(2)
+                                      << "Number density calculation. Sum of "
+                                      << sum << ", fraction " << mat.first
+                                      << ", and mass of " << mat.second.mass_;
                                   return sum + mat.first * mat.second.mass_;
                                 }) *
                 constants::N_A);
@@ -67,6 +84,7 @@ Layer::Layer(material_vector &&material, length_quantity depth,
   VLOG(1) << "Created Layer with " << material_.size()
           << " components, depth of " << depth << ", density of "
           << mass_density << ", and number density of " << number_density_;
+
   if (depth < length_quantity(0)) {
     throw std::invalid_argument(EXCEPTION_MESSAGE("Depth: " + to_string(depth) +
                                                   " is less than zero."));
@@ -77,8 +95,58 @@ Layer::Layer(material_vector &&material, length_quantity depth,
         "Cannot pass a vector of size 0 to Layer constructor"));
   }
 
+  VLOG(1) << "Passing relative compositions to discrete distribution.";
+  auto composition_view = get_relative_compositions();
   discrete_distribution_ = boost::random::discrete_distribution<size_t, double>(
-      get_relative_compositions().begin(), get_relative_compositions().end());
+      composition_view.begin(), composition_view.end());
+
+} catch (...) {
+  rethrow();
+}
+
+auto Layer::get_relative_compositions() const
+    -> decltype(std::declval<const material_vector &>() |
+                std::views::keys) try {
+  VLOG(1) << "Getting relative compositions for layer with " << material_.size()
+          << " components";
+  // return material_ |
+  //        std::views::transform(&std::pair<double,
+  //        Particle::Properties>::first);
+  return material_ | std::views::keys;
+} catch (...) { //!<
+  rethrow(EXCEPTION_MESSAGE(""));
+} // }}}
+
+// Volume function implementations{{{
+Volume::Volume(std::vector<Layer> &&layers) try : layers_(std::move(layers)) {
+  VLOG(1) << "Created volume with " << layers_.size() << " layers.";
+  if (layers_.size() == 0) {
+    throw std::invalid_argument(
+        "Vector cannot be empty to Volume constructor.");
+  }
+
+  auto prev_depth = layers_.at(0).get_depth();
+  for (const auto &layer : layers_) {
+    if (layer.get_depth() < prev_depth) {
+      throw std::invalid_argument(EXCEPTION_MESSAGE(
+          "Provided vector of layers contains a layer which has a "
+          "smaller "
+          "depth than the previous layer. Depth: " +
+          to_string(layer.get_depth()) +
+          ". Previous depth: " + to_string(prev_depth)));
+    }
+  }
+} catch (...) {
+  rethrow();
+}
+
+const Layer &Volume::get_layer(size_t index) const try {
+  if (index > layers_.size()) {
+    throw std::out_of_range(EXCEPTION_MESSAGE(
+        "Index out of range. Index: " + std::to_string(index) +
+        ". Vector size: " + std::to_string(layers_.size())));
+  }
+  return layers_[index];
 } catch (...) {
   rethrow();
 }
@@ -114,52 +182,9 @@ std::pair<const Layer *, size_t> Volume::get_layer(length_quantity depth) const
                         ". Provided depth: " + to_string(depth)));
 } catch (...) {
   rethrow();
-}
+} // }}}
 
-const Layer &Volume::get_layer(size_t index) const try {
-  if (index > layers_.size()) {
-    throw std::out_of_range(EXCEPTION_MESSAGE(
-        "Index out of range. Index: " + std::to_string(index) +
-        ". Vector size: " + std::to_string(layers_.size())));
-  }
-  return layers_[index];
-} catch (...) {
-  rethrow();
-}
-auto Layer::get_relative_compositions() const
-    -> decltype(std::declval<const material_vector &>() |
-                std::views::transform(
-                    &std::pair<double, Particle::Properties>::first)) try {
-  VLOG(1) << "Getting relative compositions for layer with " << material_.size()
-          << " components";
-  return material_ |
-         std::views::transform(&std::pair<double, Particle::Properties>::first);
-} catch (...) { //!<
-  rethrow(EXCEPTION_MESSAGE(""));
-}
-
-Volume::Volume(std::vector<Layer> &&layers) try : layers_(std::move(layers)) {
-  VLOG(1) << "Created volume with " << layers_.size() << " components";
-  if (layers_.size() == 0) {
-    throw std::invalid_argument(
-        "Vector cannot be empty to Volume constructor.");
-  }
-
-  auto prev_depth = layers_.at(0).get_depth();
-  for (const auto &layer : layers_) {
-    if (layer.get_depth() < prev_depth) {
-      throw std::invalid_argument(EXCEPTION_MESSAGE(
-          "Provided vector of layers contains a layer which has a "
-          "smaller "
-          "depth than the previous layer. Depth: " +
-          to_string(layer.get_depth()) +
-          ". Previous depth: " + to_string(prev_depth)));
-    }
-  }
-} catch (...) {
-  rethrow();
-}
-
+// Simulation function implementations{{{
 Simulation::Settings::Settings(
     energy_quantity electron_stopping_energy, size_t z_number,
     size_t mass_number, bool enable_damage_cascade,
@@ -287,8 +312,9 @@ std::string Simulation::print_settings() const try {
   return ss.str();
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
-}
+} // }}}
 
+// Bombardment function implementations{{{
 Bombardment::Bombardment(const Simulation &simulation, size_t id) try
     : simulation_(simulation), random_number_generator_(),
       uniform_distribution_(), id_(id) {
@@ -320,8 +346,9 @@ void Bombardment::run_bombardment() try {
 
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
-}
+} // }}}
 
+// Particle function implementations{{{
 Particle::Particle(
     size_t z_number, size_t mass_number, const Simulation &simulation,
     const boost::random::uniform_01<double> &uniform_distribution,
@@ -339,13 +366,130 @@ Particle::Particle(
   rethrow(EXCEPTION_MESSAGE(""));
 }
 
+velocity_quantity Particle::speed_from_energy(energy_quantity energy,
+                                              mass_quantity mass) {
+  return boost::units::sqrt(2.0 * energy / mass);
+}
+
+mass_quantity Particle::reduced_mass(mass_quantity mass_1,
+                                     mass_quantity mass_2) {
+  return mass_1 * mass_2 / (mass_1 + mass_2);
+}
+
+energy_quantity Particle::cm_energy(mass_quantity reduced_mass,
+                                    velocity_quantity velocity) {
+  return reduced_mass * boost::units::pow<2>(velocity) / 2.0;
+}
+
+dimensionless_quantity
+Particle::screening_function(dimensionless_quantity reduced_radius) {
+  const auto result = 0.1818 * exp(-3.2 * reduced_radius) +
+                      0.5099 * exp(-0.9423 * reduced_radius) +
+                      0.2802 * exp(-0.4028 * reduced_radius) +
+                      0.2817 * exp(-0.2016 * reduced_radius);
+  VLOG(2) << "Screening function with reduced radius " << reduced_radius
+          << " is " << result;
+  return result;
+}
+
+// TODO: Find a way to cache the results of this function for speedup. Consider
+// calculating ahead of time and storing the results in a data structure
+// constructed at runtime for each Layer material.
+length_quantity Particle::screening_length(dimensionless_quantity z_1,
+                                           dimensionless_quantity z_2) {
+  const auto result = 0.25 * cbrt(9.0 * pi * pi / 2.0) * bohr_radius /
+                      (pow(z_1, 0.23) + pow(z_2, 0.23));
+  VLOG(2) << "Screening length with z_1 " << z_1 << " and z_2 " << z_2 << " is "
+          << result;
+  return result;
+}
+
+energy_quantity Particle::screening_potential(length_quantity radius,
+                                              dimensionless_quantity z_1,
+                                              dimensionless_quantity z_2) {
+  auto reduced_length = radius / screening_length(z_1, z_2);
+  auto result = screening_function(reduced_length) * z_1 * z_2 * e_statcoulomb *
+                e_statcoulomb / radius;
+  VLOG(2) << "Screening potential with radius " << radius << ", z_1 " << z_1
+          << ", and z_2 " << z_2 << " is " << result;
+  return result;
+}
+
+voltage_quantity
+Particle::screening_potential_derivative(length_quantity radius,
+                                         dimensionless_quantity z_1,
+                                         dimensionless_quantity z_2) {
+  // TODO: Consolidate calls to screening_length to above-mentioned method.
+  // Optimize this function as well.
+  auto s_length = screening_length(z_1, z_2);
+  auto reduced_radius = radius / s_length;
+  auto result =
+      (0.1818 * exp(-3.2 * reduced_radius) * (-3.2 / s_length) +
+       exp(-0.9423 * reduced_radius) * (-0.9423 / s_length) +
+       0.2802 * exp(-0.4028 * reduced_radius) * (-0.4028 / s_length) +
+       0.2817 * exp(-0.2016 * reduced_radius) * (-0.2016 / s_length)) *
+          z_1 * z_2 * e_statcoulomb * e_statcoulomb / radius -
+      (0.1818 * exp(-3.2 * reduced_radius) + exp(-0.9423 * reduced_radius) +
+       0.2802 * exp(-0.4028 * reduced_radius) +
+       0.2817 * exp(-0.2016 * reduced_radius)) *
+          z_1 * z_2 * e_statcoulomb * e_statcoulomb / (radius * radius);
+  VLOG(2) << "Screening potential derivative with radius " << radius << ", z_1 "
+          << z_1 << ", and z_2 " << z_2 << " is " << result;
+  return result;
+}
+
+dimensionless_quantity
+Particle::reduced_energy(length_quantity screening_length,
+                         energy_quantity cm_energy, dimensionless_quantity z_1,
+                         dimensionless_quantity z_2) {
+  auto result = screening_length * cm_energy /
+                (z_1 * z_2 * e_statcoulomb * e_statcoulomb);
+  VLOG(2) << "Reduced energy with screening length " << screening_length
+          << ", center of mass energy " << cm_energy << ", z_1 " << z_1
+          << ", z_2" << z_2 << ", result is " << result;
+  return result;
+}
+
+// TODO: Verify that dividing by Avogadro's number is correct.
+length_quantity Particle::free_flying_path_length(
+    mass_quantity m_1, mass_quantity m_2, dimensionless_quantity reduced_energy,
+    length_quantity screening_length, number_density_quantity number_density) {
+  length_quantity L;
+  if (reduced_energy > 100) {
+    L = (0.02 * pow(1.0 + (m_1 + m_2) / atomic_mass_unit, 2) * reduced_energy *
+             reduced_energy +
+         0.1 * pow(reduced_energy, 1.38)) /
+        (4.0 * pi * screening_length * screening_length * number_density *
+         log(1.0 + reduced_energy)) /
+        si::constants::codata::N_A;
+    VLOG(3) << "High energy free flying path length with m_1 " << m_1 << ", m_2"
+            << m_2 << ", reduced_energy " << reduced_energy
+            << ", screening_length " << screening_length
+            << ", and number_density " << number_density << " with result "
+            << L;
+  } else {
+    L = pow<static_rational<1, 3>>(1.0 / number_density /
+                                   si::constants::codata::N_A);
+    VLOG(3) << "Low energy free flying path length with m_1 " << m_1 << ", m_2"
+            << m_2 << ", reduced_energy " << reduced_energy
+            << ", screening_length " << screening_length
+            << ", and number_density " << number_density << " with result "
+            << L;
+  }
+  return L;
+}
+
+// }}}
+
+// Electron function implementations{{{
 void Electron::fire() try {
   // TODO: Implement Electron simulation
   throw std::logic_error("Electron simulation is not implemented");
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
-}
+} // }}}
 
+// Ion function implementations // {{{
 void Ion::fire() try {
   LOG(INFO) << "Firing ion with initial energy " << velocity_.energy_;
   const auto ion_stopping_energy =
@@ -368,12 +512,38 @@ void Ion::fire() try {
 #endif /*}}}*/
 
   while (velocity_.energy_ > ion_stopping_energy) {
+
+    // TODO:
+    const size_t atom_index =
+        current_layer.get_discrete_distribution()(random_number_generator_);
+    const auto layer_properties = current_layer.get_property(atom_index);
+
+    auto z_1 = properties_.charge_;
+    auto z_2 = layer_properties.charge_;
+    auto m_1 = properties_.mass_;
+    auto m_2 = layer_properties.mass_;
+    auto number_density = current_layer.get_number_density();
+    auto energy = velocity_.energy_;
+
     // TODO: Implement simulation calculations
     //
     // 1. Subtract electronic stopping energy
-    velocity_.energy_ =
-        electronic_stopping_energy(properties_.charge_, properties_.mass_,
-                                   velocity_.energy_, current_layer);
+    velocity_.energy_ = electronic_stopping_energy(
+        z_1, m_1, energy, number_density, layer_properties);
+    auto speed = speed_from_energy(energy, m_1);
+    auto rd_mass = reduced_mass(m_1, m_2);
+    auto c_mass_energy = cm_energy(m_1, speed);
+    auto temp_rad = 1.0 * angstrom; // TODO: Remove
+    auto potential = screening_potential(temp_rad, z_1, z_2);
+    auto potential_derivative =
+        screening_potential_derivative(temp_rad, z_1, z_2);
+    auto screen_length = screening_length(z_1, z_2);
+    auto rd_energy = reduced_energy(screen_length, c_mass_energy, z_1, z_2);
+    auto path_length = free_flying_path_length(m_1, m_2, rd_energy,
+                                               screen_length, number_density);
+
+    // TODO: Implement derivative of screening potential
+
     // 2. Calculate recoil energy and velocity
     // 3. Calculate new coordinate (push old coordinate to vector)
     // 4. Determine if sputtering occured
@@ -385,45 +555,58 @@ void Ion::fire() try {
   rethrow(EXCEPTION_MESSAGE(""));
 }
 
+// TODO: Finish this (logging)
+length_quantity
+Ion::impact_parameter(number_density_quantity number_density,
+                      length_quantity length,
+                      dimensionless_quantity reduced_energy) const {
+  length_quantity p;
+  if (reduced_energy > 10.0) {
+    p = sqrt(-log(0.5) / (pi * number_density * length / si::mole));
+    VLOG(2) << "Impact parameter at high energy";
+  } else {
+    p = sqrt(0.5 /
+             (pi * pow<static_rational<2, 3>>(number_density / si::mole)));
+  }
+  return p;
+}
+
 length_quantity
 Ion::interatomic_spacing(number_density_quantity number_density) const {
   return root<-3>(number_density * constants::N_A);
 };
 
-energy_quantity Ion::electronic_stopping_energy(charge_quantity charge,
-                                                mass_quantity mass,
-                                                energy_quantity energy,
-                                                const Layer &layer) const try {
+energy_quantity
+Ion::electronic_stopping_energy(dimensionless_quantity charge,
+                                mass_quantity mass, energy_quantity energy,
+                                number_density_quantity number_density,
+                                const Properties &properties) const try {
   VLOG(2) << "Calculating ion electronic stopping energy with charge " << charge
-          << " mass " << mass << " energy " << energy << " and "
-          << " layer with " << layer.get_number_of_components()
-          << " components.";
-  const size_t atom_index =
-      layer.get_discrete_distribution()(random_number_generator_);
-  const auto properties = layer.get_property(atom_index);
+          << ", mass " << mass << ", and energy " << energy;
 
-  const auto c_1 = 1.212 * root<2>(constants::m_u) * root<2>(electron_volt) /
-                   angstrom / pow<static_rational<7, 6>>(constants::e);
+  const auto c_1 =
+      1.212 * root<2>(constants::m_u) * root<2>(electron_volt) / angstrom;
+  VLOG(3) << "Value of c_1 " << c_1;
   const auto k_l = c_1 * pow<static_rational<7, 6>>(charge) *
                    properties.charge_ /
                    (pow<static_rational<3, 2>>(
                         pow<static_rational<2, 3>>(charge) +
                         pow<static_rational<2, 3>>(properties.charge_)) *
                     root<2>(mass));
+  VLOG(3) << "Value of k_l " << k_l;
   const auto stopping_energy = k_l * root<2>(energy);
+  VLOG(3) << "Value of stopping_energy " << stopping_energy;
   const auto c_2 = 1.59 * pow<3>(angstrom);
-  const auto travel_length = interatomic_spacing(layer.get_number_density());
-  const auto energy_loss = c_2 * travel_length * layer.get_number_density() *
-                           constants::N_A * stopping_energy;
-
-  VLOG(2) << "Using atom at index " << atom_index << " out of "
-          << layer.get_number_of_components() << " components with mass "
-          << properties.mass_ << ".\n Traveled " << travel_length
-          << " and calculated energy loss of " << energy_loss;
+  VLOG(3) << "Value of c_2 " << c_2;
+  const auto travel_length = interatomic_spacing(number_density);
+  VLOG(3) << "Value of travel_length " << travel_length;
+  const auto energy_loss =
+      c_2 * travel_length * number_density * constants::N_A * stopping_energy;
+  VLOG(3) << "Value of energy_loss " << energy_loss;
   return energy - energy_loss;
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
-}
+} // }}}
 
 } // namespace common
 } // namespace amcset
