@@ -33,6 +33,7 @@
 #include <boost/units/static_rational.hpp>
 #include <boost/units/systems/si/mass.hpp>
 
+#include <array>
 #include <cmath>
 #include <numeric>
 #include <stdexcept>
@@ -501,8 +502,7 @@ length_quantity Ion::collision_diameter(dimensionless_quantity z_1,
 length_quantity Ion::closest_approach(dimensionless_quantity z_1,
                                       dimensionless_quantity z_2,
                                       energy_quantity cm_energy,
-                                      length_quantity impact_param,
-                                      length_quantity coll_diameter) const {
+                                      length_quantity impact_param, ) const {
   // Potential function
   auto F = [&](length_quantity closest_approach) {
     return 1 - screening_potential(closest_approach, z_1, z_2) / cm_energy -
@@ -666,6 +666,112 @@ Ion::nuclear_energy_loss(mass_quantity atom_mass, mass_quantity target_mass,
   return electron_volt;
 }
 
+angle_quantity
+Ion::laboratory_scattering_angle(angle_quantity cm_scattering_angle,
+                                 mass_quantity atom_mass,
+                                 mass_quantity target_mass) const {
+  auto result = atan(sin(cm_scattering_angle) /
+                     (cos(cm_scattering_angle) + (atom_mass / target_mass)));
+
+  VLOG(2) << "Laboratory scattering angle with cm_scattering_angle "
+          << cm_scattering_angle << " atom_mass " << atom_mass
+          << " target_mass " << target_mass << " with result " << result;
+  return result;
+}
+
+std::array<angle_quantity, 4>
+Ion::relative_to_absolute_angle(angle_quantity initial_altitude,
+                                angle_quantity initial_azimuth,
+                                angle_quantity incident_deflection,
+                                angle_quantity target_deflection) const {
+  auto THETA1RELATIVE = incident_deflection;
+  auto THETA2RELATIVE = target_deflection;
+  auto ALPHA1RELATIVE =
+      uniform_distribution_(random_number_generator_) * 2.0 * pi;
+  auto ALPHA2RELATIVE = ALPHA1RELATIVE + pi;
+
+  auto THETAO = initial_altitude;
+  auto ALPHAO = initial_azimuth;
+
+  // Angle
+  auto X1 = sin(THETA1RELATIVE) * cos(ALPHA1RELATIVE);
+  auto Y1 = sin(THETA1RELATIVE) * sin(ALPHA1RELATIVE);
+  auto Z1 = cos(THETA1RELATIVE);
+
+  auto Y0 = Y1 * cos(THETAO) + Z1 * sin(THETAO);
+  auto Z0 = -Y1 * sin(THETAO) + Z1 * cos(THETAO);
+  auto X0 = X1;
+
+  auto Z = Z0;
+  auto X = X0 * sin(ALPHAO) + Y0 * cos(ALPHAO);
+  auto Y = -X0 * cos(ALPHAO) + Y0 * sin(ALPHAO);
+
+  angle_quantity THETA1;
+
+  if (Z > 0.0) {
+    THETA1 = atan(sqrt(X * X + Y * Y) / Z);
+  } else if (Z < 0.0) {
+    THETA1 = radian * pi + atan(sqrt(X * X + Y * Y) / Z);
+  } else {
+    THETA1 = radian * pi / 2.0;
+  }
+
+  angle_quantity ALPHA1;
+
+  if (sin(THETA1) != 0.0) {
+    if (X > 0.0) {
+      ALPHA1 = atan(Y / X);
+    } else if (X == 0.0) {
+      ALPHA1 = radian * (pi - (Y > 0.0 ? 1.0 : -1.0) * pi / 2.0);
+    } else {
+      ALPHA1 = radian * pi + atan(Y / X);
+    }
+  } else {
+    ALPHA1 = 0.0 * radian;
+  }
+
+  // Target
+  auto X3 = sin(THETA2RELATIVE) * cos(ALPHA2RELATIVE);
+  auto Y3 = sin(THETA2RELATIVE) * sin(ALPHA2RELATIVE);
+  auto Z3 = cos(THETA2RELATIVE);
+
+  auto Y2 = Y3 * cos(THETAO) + Z3 * sin(THETAO);
+  auto Z2 = -Y3 * sin(THETAO) + Z3 * cos(THETAO);
+  auto X2 = X3;
+
+  auto Z5 = Z2;
+  auto X5 = X2 * sin(ALPHAO) + Y2 * cos(ALPHAO);
+  auto Y5 = -X2 * cos(ALPHAO) + Y2 * sin(ALPHAO);
+
+  angle_quantity THETA2;
+  if (Z5 < 0.0) {
+    THETA2 = radian * pi + atan(sqrt(X5 * X5 + Y5 * Y5) / Z5);
+  } else if (Z5 > 0.0) {
+    THETA2 = atan(sqrt(X5 * X5 + Y5 * Y5) / Z5);
+  } else {
+    THETA2 = radian * pi / 2.0;
+  }
+
+  angle_quantity ALPHA2;
+
+  if (sin(THETA2) != 0.0) {
+    if (X5 < 0.0) {
+      ALPHA2 = radian * pi + atan(Y5 / X5);
+    } else if (X5 > 0.0) {
+      atan(Y5 / X5);
+    } else {
+      ALPHA2 = radian * (pi - 0.5 * ((Y5 > 0.0) ? 1 : -1) * pi);
+    }
+  } else {
+    ALPHA2 = radian * 0.0;
+  }
+  // newVelocity.zAngle = THETA1;
+  // newVelocity.xAngle = ALPHA1;
+  // targetVelocity.zAngle = THETA2;
+  // targetVelocity.xAngle = ALPHA2;
+  return {{THETA1, ALPHA1, THETA2, ALPHA2}};
+}
+
 // }}}
 
 // Electron function implementations{{{
@@ -728,14 +834,18 @@ void Ion::fire() try {
     auto i_param = impact_parameter(number_density, path_length, rd_energy);
 
     auto coll_diameter = collision_diameter(z_1, z_2, rd_mass, speed);
-    auto closest_appr =
-        closest_approach(z_1, z_2, c_mass_energy, i_param, coll_diameter);
+    auto closest_appr = closest_approach(z_1, z_2, c_mass_energy, i_param);
     auto rad_curv = radius_of_curvature(closest_appr, c_mass_energy, z_1, z_2);
     auto magic_correction = magic_formula_correction_parameter(
         rd_energy, i_param, screen_length, closest_appr);
-    auto scatter_angle = magic_formula_scattering_angle(
+    auto cm_scatter_angle = magic_formula_scattering_angle(
         i_param, closest_appr, rad_curv, magic_correction, screen_length);
-    auto nuclear_e_loss = nuclear_energy_loss(m_1, m_2, energy, scatter_angle);
+    auto nuclear_e_loss =
+        nuclear_energy_loss(m_1, m_2, energy, cm_scatter_angle);
+    auto laboratory_scatter_angle =
+        laboratory_scattering_angle(cm_scatter_angle, m_1, m_2);
+
+    // auto relative_to_absolute = relative_to_absolute();
 
     // TODO: Implement derivative of screening potential
 

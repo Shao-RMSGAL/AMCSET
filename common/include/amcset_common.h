@@ -387,8 +387,7 @@ private:
   length_quantity closest_approach(dimensionless_quantity z_1,
                                    dimensionless_quantity z_2,
                                    energy_quantity cm_energy,
-                                   length_quantity impact_param,
-                                   length_quantity coll_diameter) const;
+                                   length_quantity impact_param, ) const;
 
   /*!
    * \brief Radius of curvature
@@ -422,6 +421,22 @@ private:
                                       mass_quantity target_mass,
                                       energy_quantity incident_energy,
                                       angle_quantity scattering_angle) const;
+
+  /*!
+   * \brief Laboratory scattering angle
+   */
+  angle_quantity laboratory_scattering_angle(angle_quantity cm_scattering_angle,
+                                             mass_quantity atom_mass,
+                                             mass_quantity target_mass) const;
+
+  /*!
+   * \brief Convert relative angle to absolute angle.
+   */
+  std::array<angle_quantity, 4>
+  relative_to_absolute_angle(angle_quantity initial_altitude,
+                             angle_quantity initial_azimuth,
+                             angle_quantity incident_deflection,
+                             angle_quantity target_deflection) const;
 };
 
 /*!
