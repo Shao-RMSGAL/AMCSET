@@ -416,7 +416,7 @@ TEST_F(CommonTest, electronic_stopping_energy_test) try {
   boost::random::discrete_distribution<size_t, double> discrete_distribution(
       simulation.get_volume().get_layer(1).get_relative_compositions().begin(),
       simulation.get_volume().get_layer(1).get_relative_compositions().end());
-  const boost::random::uniform_01<double> uniform_distribution;
+  boost::random::uniform_01<double> uniform_distribution;
   boost::random::mt19937 random_number_generator;
 
   const size_t z_number = 14;

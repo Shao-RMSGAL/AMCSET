@@ -114,8 +114,7 @@ constexpr auto kilo_electron_volt =
     1000.0 * electron_volt; //!< Quantity for kiloelectron volt
 
 constexpr auto angstrom = 1e-10 * si::meter; //!< Quantity for angstrom
-constexpr auto radian =
-    angle::radian_base_unit::unit_type(); //!< Quantity for radian
+constexpr auto radian = 1.0 * si::radian;    //!< Quantity for radian
 constexpr auto atomic_mass_unit =
     constants::m_u; //!< Quantity for atomic mass unit
 constexpr auto elementary_charge =
@@ -145,7 +144,7 @@ constexpr length_quantity bohr_radius =
 // sqrt is constexpr as of C++26, but clangd does not recognize this. TODO:
 // Exchange const for constexpr when clang no longer complains about this. (Note
 // that this will compile under gcc regardless.
-const auto statcoulomb = pow<static_rational<3, 2>>(si::meter) / 1000.0 *
+const auto statcoulomb = 0.001 * pow<static_rational<3, 2>>(si::meter) *
                          std::sqrt(1.0 / 1000.0) *
                          pow<static_rational<1, 2>>(si::kilogram) / si::second;
 const auto e_statcoulomb = 4.80320425e-10 * statcoulomb;

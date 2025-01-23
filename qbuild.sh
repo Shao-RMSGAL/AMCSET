@@ -51,6 +51,7 @@ build_dir="$project_dir/build/$mode"
 
 conan_flags="--build=missing --settings=build_type=$mode"
 cmake_flags="--preset conan-$mode_lower"
+run_flags="-v=3"
 
 test_dir="$project_dir/build/$mode/test"
 export TESTDIR="$build_dir/log"
@@ -78,7 +79,7 @@ test() {
 }
 
 run() {
-    $build_dir/amcset-server
+    $build_dir/amcset-server $run_flags
     check_status
 }
 

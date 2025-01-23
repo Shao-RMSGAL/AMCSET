@@ -17,7 +17,6 @@
 
 #include "amcset_common.h"
 
-#include <boost/math/constants/constants.hpp>
 #include <boost/units/systems/si/amount.hpp>
 #include <boost/units/systems/si/codata/physico-chemical_constants.hpp>
 #include <boost/units/systems/si/energy.hpp>
@@ -608,64 +607,6 @@ length_quantity Ion::radius_of_curvature(length_quantity radius,
   return result;
 }
 
-dimensionless_quantity Ion::magic_formula_correction_parameter(
-    dimensionless_quantity reduced_energy, length_quantity impact_parameter,
-    length_quantity screening_length, length_quantity closest_approach) const {
-  auto C_1 = 0.99229;
-  auto C_2 = 0.011615;
-  auto C_3 = 0.007122;
-  auto C_4 = 9.3066;
-  auto C_5 = 14.813;
-
-  auto alpha = 1 + C_1 / sqrt(reduced_energy);
-  auto beta = (C_2 + sqrt(reduced_energy)) / (C_3 + sqrt(reduced_energy));
-  auto gamma = (C_4 + reduced_energy) / (C_5 + reduced_energy);
-  auto B = impact_parameter / screening_length;
-  auto A = 2 * alpha * reduced_energy * pow(B, beta);
-  auto G = gamma / (sqrt(1 + A * A) - A);
-  auto R_o = closest_approach / screening_length;
-  auto result = A * (R_o - B) / (1 + G);
-  VLOG(2) << "Magic formula correction parameter with reduced_energy "
-          << reduced_energy << ", impact_parameter " << impact_parameter
-          << ", screening_length " << screening_length << " result is "
-          << result;
-  return result;
-}
-
-angle_quantity
-Ion::magic_formula_scattering_angle(length_quantity impact_parameter,
-                                    length_quantity closest_approach,
-                                    length_quantity radius_of_curvature,
-                                    dimensionless_quantity correction_factor,
-                                    length_quantity screening_distance) const {
-  // TODO: Correct radius of curvature naming scheme
-  const auto B = impact_parameter / screening_distance;
-  const auto R_o = closest_approach / screening_distance;
-  const auto R_c = radius_of_curvature / screening_distance;
-  const auto result = acos((B + R_c + correction_factor) / (R_o + R_c));
-  VLOG(2) << "Magic scattering angle with impact_parameter " << impact_parameter
-          << " closest_approach " << closest_approach << " radius_of_curvature "
-          << radius_of_curvature << " correction_factor " << correction_factor
-          << " screening_distance " << screening_distance << " with result "
-          << result;
-  return result;
-}
-
-energy_quantity
-Ion::nuclear_energy_loss(mass_quantity atom_mass, mass_quantity target_mass,
-                         energy_quantity incident_energy,
-                         angle_quantity scattering_angle) const {
-
-  auto result = 4.0 * atom_mass * target_mass /
-                pow<2>(atom_mass * target_mass) * incident_energy *
-                pow<2>(sin(scattering_angle));
-  VLOG(2) << "Nuclear scattering energy loss atom mass " << atom_mass
-          << " target_mass " << target_mass << " incident_energy "
-          << incident_energy << " scattering_angle " << scattering_angle
-          << " has result " << result;
-  return electron_volt;
-}
-
 // }}}
 
 // Electron function implementations{{{
@@ -730,12 +671,7 @@ void Ion::fire() try {
     auto coll_diameter = collision_diameter(z_1, z_2, rd_mass, speed);
     auto closest_appr =
         closest_approach(z_1, z_2, c_mass_energy, i_param, coll_diameter);
-    auto rad_curv = radius_of_curvature(closest_appr, c_mass_energy, z_1, z_2);
-    auto magic_correction = magic_formula_correction_parameter(
-        rd_energy, i_param, screen_length, closest_appr);
-    auto scatter_angle = magic_formula_scattering_angle(
-        i_param, closest_appr, rad_curv, magic_correction, screen_length);
-    auto nuclear_e_loss = nuclear_energy_loss(m_1, m_2, energy, scatter_angle);
+    auto rad_curv = radius_of_curvature(closest_appr, c_mass_energy);
 
     // TODO: Implement derivative of screening potential
 

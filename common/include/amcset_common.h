@@ -186,7 +186,7 @@ public:
    * Simulation object, hence no other parameters are needed.
    */
   Particle(size_t z_number, size_t mass_number, const Simulation &simulation,
-           const boost::random::uniform_01<double> &uniform_distribution,
+           boost::random::uniform_01<double> &uniform_distribution,
            boost::random::mt19937 &random_number_generator);
 
   /*!
@@ -228,7 +228,7 @@ protected:
   const Simulation &simulation_; //!< Reference to the simulation object
   Velocity velocity_;            //!< Current velocity of the particle
   Coordinate coordinate_;        //!< Current coordinate of the particle
-  const boost::random::uniform_01<double>
+  boost::random::uniform_01<double>
       &uniform_distribution_; //!< Reference to uniform distribution between 0
                               //!< and 1 for various uses.
   boost::random::mt19937
@@ -251,7 +251,7 @@ public:
    * \param simulation The reference to the Simulation object
    */
   Electron(size_t z_number, size_t mass_number, const Simulation &simulation,
-           const boost::random::uniform_01<double> &uniform_distribution,
+           boost::random::uniform_01<double> &uniform_distribution,
            boost::random::mt19937 &random_number_generator)
       : Particle(z_number, mass_number, simulation, uniform_distribution,
                  random_number_generator) {};
@@ -282,7 +282,7 @@ public:
    * \param simulation The reference to the Simulation object
    */
   Ion(size_t z_number, size_t mass_number, const Simulation &simulation,
-      const boost::random::uniform_01<double> &uniform_distribution,
+      boost::random::uniform_01<double> &uniform_distribution,
       boost::random::mt19937 &random_number_generator)
       : Particle(z_number, mass_number, simulation, uniform_distribution,
                  random_number_generator) {};
@@ -383,13 +383,45 @@ private:
 
   /*!
    * \brief Calculate the closest approach distance of an ion.
-   **/
-  length_quantity closest_approach(length_quantity radius,
-                                   dimensionless_quantity z_1,
+   */
+  length_quantity closest_approach(dimensionless_quantity z_1,
                                    dimensionless_quantity z_2,
                                    energy_quantity cm_energy,
                                    length_quantity impact_param,
                                    length_quantity coll_diameter) const;
+
+  /*!
+   * \brief Radius of curvature
+   */
+  length_quantity radius_of_curvature(length_quantity radius,
+                                      energy_quantity cm_energy,
+                                      dimensionless_quantity z_1,
+                                      dimensionless_quantity z_2) const;
+
+  /*!
+   * \brief Magic formula correction parameter.
+   */
+  dimensionless_quantity magic_formula_correction_parameter(
+      dimensionless_quantity reduced_energy, length_quantity impact_parameter,
+      length_quantity screening_length, length_quantity closest_approach) const;
+
+  /*!
+   * \brief Magic formula scattering angle.
+   */
+  angle_quantity
+  magic_formula_scattering_angle(length_quantity impact_parameter,
+                                 length_quantity closest_approach,
+                                 length_quantity radius_of_curvature,
+                                 dimensionless_quantity correction_factor,
+                                 length_quantity screening_distance) const;
+
+  /*!
+   * \brief Nuclear energy loss.
+   */
+  energy_quantity nuclear_energy_loss(mass_quantity atom_mass,
+                                      mass_quantity target_mass,
+                                      energy_quantity incident_energy,
+                                      angle_quantity scattering_angle) const;
 };
 
 /*!
@@ -497,6 +529,7 @@ public:
     return number_density_;
   }
 
+  // TODO: Return by reference
   /*!
    * \brief Return the discrete distribution used for selecting material
    * interaction
