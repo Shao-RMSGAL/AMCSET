@@ -15,30 +15,33 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
+// Includes{{{
+
 #include "amcset_common.h"
 
+#include <glog/logging.h>
+
 #include <boost/math/constants/constants.hpp>
+#include <boost/random/discrete_distribution.hpp>
+#include <boost/random/mersenne_twister.hpp>
+#include <boost/random/uniform_01.hpp>
+#include <boost/units/cmath.hpp>
+#include <boost/units/pow.hpp>
+#include <boost/units/static_rational.hpp>
 #include <boost/units/systems/si/amount.hpp>
 #include <boost/units/systems/si/codata/physico-chemical_constants.hpp>
 #include <boost/units/systems/si/energy.hpp>
 #include <boost/units/systems/si/length.hpp>
-#include <glog/logging.h>
-
-#include <boost/random/discrete_distribution.hpp>
-#include <boost/random/mersenne_twister.hpp>
-#include <boost/random/uniform_01.hpp>
-
-#include <boost/units/cmath.hpp>
-#include <boost/units/pow.hpp>
-#include <boost/units/static_rational.hpp>
 #include <boost/units/systems/si/mass.hpp>
 
-#include <array>
+// #include <array>
 #include <cmath>
+#include <fstream>
 #include <numeric>
+#include <sstream>
 #include <stdexcept>
 
-#include "amcset_utilities.h"
+#include "amcset_utilities.h" // }}}
 
 namespace amcset {
 namespace common {
@@ -251,8 +254,8 @@ Simulation::Simulation(const Settings settings, Volume &&volume) try
     : settings_(settings), volume_(std::move(volume)),
       thread_pool_(settings.thread_count_) {
   LOG(INFO) << "Creating simulation with settings:\n"
-            << Simulation::print_settings(); // TODO: Print volume information
-                                             // as well.
+            << Simulation::print_settings(); // TODO: Print volume
+                                             // information as well.
   std::vector<Bombardment> bombardments;
   bombardments.reserve(settings.bombardment_count_);
 
@@ -351,7 +354,6 @@ void Bombardment::run_bombardment() try {
   rethrow(EXCEPTION_MESSAGE(""));
 } // }}}
 
-// Particle function implementations{{{
 Particle::Particle(size_t z_number, size_t mass_number,
                    const Simulation &simulation,
                    boost::random::uniform_01<double> &uniform_distribution,
@@ -360,11 +362,15 @@ Particle::Particle(size_t z_number, size_t mass_number,
       particles_(std::vector<std::unique_ptr<Particle>>()),
       coordinates_(std::vector<Coordinate>()), simulation_(simulation),
       velocity_(Velocity(
-          0, 0,
+          Quaternion(1.0, 1.0, 1.0, 1.0), // Point straight towards z-axis
           simulation.get_settings(&Simulation::Settings::incident_energy_))),
       coordinate_(Coordinate(0, 0, 0)),
       uniform_distribution_(uniform_distribution),
       random_number_generator_(random_number_generator) {
+  VLOG(1) << "Creating particle with velocity (" << velocity_.quaternion_.r_
+          << ", " << velocity_.quaternion_.z_ << ", "
+          << velocity_.quaternion_.y_ << ", " << velocity_.quaternion_.z_
+          << ").";
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
 }
@@ -382,6 +388,77 @@ mass_quantity Particle::reduced_mass(mass_quantity mass_1,
 energy_quantity Particle::cm_energy(mass_quantity reduced_mass,
                                     velocity_quantity velocity) const {
   return reduced_mass * boost::units::pow<2>(velocity) / 2.0;
+}
+
+// Ensure this does not fail with quaternions aligned with axes, nan components,
+// and zero-length vector.
+Particle &Particle::rotate_inplace(angle_quantity scattering_angle) {
+  VLOG(2) << "Beginning rotation with scattering_angle " << scattering_angle
+          << " velocity (" << velocity_.quaternion_.r_ << ", "
+          << velocity_.quaternion_.x_ << ", " << velocity_.quaternion_.y_
+          << ", " << velocity_.quaternion_.z_ << "). ";
+
+  auto x = velocity_.quaternion_.x_;
+  auto y = velocity_.quaternion_.y_;
+  auto z = velocity_.quaternion_.z_;
+
+  if (std::isnan(x) || std::isnan(y) || std::isnan(z)) {
+    throw std::invalid_argument("Input vector contains NaNs");
+  }
+
+  auto length = std::sqrt(x * x + y * y + z * z);
+  if (length == 0.0) {
+    throw std::invalid_argument("Input vector has zero length");
+  }
+
+  Quaternion rotation_quaternion;
+
+  // Special cases: TODO: Add [[likely]] and [[unlikely]] optimizations
+  if (x == 0 && y == 0) { // z-axis aligned
+    rotation_quaternion = Quaternion(0.0, 0.0, 1.0, 0.0);
+  } else if (x == 0 && z == 0) { // y-axis aligned
+    rotation_quaternion = Quaternion(0.0, 1.0, 0.0, 0.0);
+  } else if (y == 0.0 && z == 0.0) { // x-axis aligned
+    rotation_quaternion = Quaternion(0.0, 0.0, 0.0, 1.0);
+  } else { // Non-axis aligned, manual alignment instead.
+    rotation_quaternion = Quaternion(0.0, y, x,
+                                     0.0); // Direction is not important,
+                                           // rotation has random alpha tilt.
+  }
+
+  const auto alpha_angle =
+      radian * 2.0 * pi *
+      (0.5 - uniform_distribution_(random_number_generator_));
+
+  auto alpha_scalar = cos(alpha_angle / 2.0);
+  auto alpha_pos = sin(alpha_angle / 2.0);
+  auto quaternion_alpha =
+      Quaternion(alpha_scalar, x * alpha_pos, y * alpha_pos, z * alpha_pos);
+
+  // TODO: Try pythagorean identity to make more efficient.
+  auto beta_angle = scattering_angle;
+
+  // beta_angle = radian * 0.001; // TODO: Temp, remove
+
+  auto beta_scalar = cos(beta_angle / 2.0);
+  auto beta_pos = sin(beta_angle / 2.0);
+  auto quaternion_beta = Quaternion(
+      beta_scalar, rotation_quaternion.x_ * beta_pos,
+      rotation_quaternion.y_ * beta_pos, rotation_quaternion.z_ * beta_pos);
+
+  velocity_.quaternion_ =
+      (quaternion_alpha * (quaternion_beta * velocity_.quaternion_) *
+       quaternion_beta.conjugate_copy()) *
+      quaternion_alpha.conjugate_copy();
+  velocity_.quaternion_.r_ = 0.0;
+  velocity_.quaternion_.normalize_inplace();
+
+  VLOG(2) << "Post-rotation position-only normalized result quaternion ("
+          << velocity_.quaternion_.r_ << ", " << velocity_.quaternion_.x_
+          << ", " << velocity_.quaternion_.y_ << ", "
+          << velocity_.quaternion_.z_ << ")";
+
+  return *this;
 }
 
 dimensionless_quantity
@@ -502,7 +579,7 @@ length_quantity Ion::collision_diameter(dimensionless_quantity z_1,
 length_quantity Ion::closest_approach(dimensionless_quantity z_1,
                                       dimensionless_quantity z_2,
                                       energy_quantity cm_energy,
-                                      length_quantity impact_param, ) const {
+                                      length_quantity impact_param) const {
   // Potential function
   auto F = [&](length_quantity closest_approach) {
     return 1 - screening_potential(closest_approach, z_1, z_2) / cm_energy -
@@ -515,8 +592,8 @@ length_quantity Ion::closest_approach(dimensionless_quantity z_1,
            2.0 * impact_param * impact_param /
                pow<static_rational<3>>(closest_approach);
   };
-  auto old_result =
-      impact_param; // Initial guess, adjust if encountering convergence issues
+  auto old_result = impact_param; // Initial guess, adjust if encountering
+                                  // convergence issues
   VLOG(3) << "Closest approach initial guess " << old_result;
   auto old_pot = F(old_result);
   auto result = old_result - old_pot / dF(old_result); // First iteration
@@ -587,8 +664,8 @@ length_quantity Ion::closest_approach(dimensionless_quantity z_1,
             << rel_tolerance << ", relative difference " << rel_diff;
   }
 
-  // TODO: Write more graceful code to handle this. And throw an exception to be
-  // handled by the GUI if convergence doesn't occur.
+  // TODO: Write more graceful code to handle this. And throw an exception to
+  // be handled by the GUI if convergence doesn't occur.
   LOG(ERROR) << "Convergence error. Please adjust closest approach parameters. "
                 "Previous result "
              << old_result << ", current result " << result;
@@ -655,7 +732,6 @@ energy_quantity
 Ion::nuclear_energy_loss(mass_quantity atom_mass, mass_quantity target_mass,
                          energy_quantity incident_energy,
                          angle_quantity scattering_angle) const {
-
   auto result = 4.0 * atom_mass * target_mass /
                 pow<2>(atom_mass * target_mass) * incident_energy *
                 pow<2>(sin(scattering_angle));
@@ -679,100 +755,99 @@ Ion::laboratory_scattering_angle(angle_quantity cm_scattering_angle,
   return result;
 }
 
-std::array<angle_quantity, 4>
-Ion::relative_to_absolute_angle(angle_quantity initial_altitude,
-                                angle_quantity initial_azimuth,
-                                angle_quantity incident_deflection,
-                                angle_quantity target_deflection) const {
-  auto THETA1RELATIVE = incident_deflection;
-  auto THETA2RELATIVE = target_deflection;
-  auto ALPHA1RELATIVE =
-      uniform_distribution_(random_number_generator_) * 2.0 * pi;
-  auto ALPHA2RELATIVE = ALPHA1RELATIVE + pi;
+// TODO: Switched to quaternions, likely to remove.{{{
+// std::array<angle_quantity, 4>
+// Ion::relative_to_absolute_angle(angle_quantity initial_altitude,
+//                                 angle_quantity initial_azimuth,
+//                                 angle_quantity incident_deflection,
+//                                 angle_quantity target_deflection) const {
+//   auto THETA1RELATIVE = incident_deflection;
+//   auto THETA2RELATIVE = target_deflection;
+//   auto ALPHA1RELATIVE =
+//       uniform_distribution_(random_number_generator_) * 2.0 * pi;
+//   auto ALPHA2RELATIVE = ALPHA1RELATIVE + pi;
 
-  auto THETAO = initial_altitude;
-  auto ALPHAO = initial_azimuth;
+//   auto THETAO = initial_altitude;
+//   auto ALPHAO = initial_azimuth;
 
-  // Angle
-  auto X1 = sin(THETA1RELATIVE) * cos(ALPHA1RELATIVE);
-  auto Y1 = sin(THETA1RELATIVE) * sin(ALPHA1RELATIVE);
-  auto Z1 = cos(THETA1RELATIVE);
+//   // Angle
+//   auto X1 = sin(THETA1RELATIVE) * cos(ALPHA1RELATIVE);
+//   auto Y1 = sin(THETA1RELATIVE) * sin(ALPHA1RELATIVE);
+//   auto Z1 = cos(THETA1RELATIVE);
 
-  auto Y0 = Y1 * cos(THETAO) + Z1 * sin(THETAO);
-  auto Z0 = -Y1 * sin(THETAO) + Z1 * cos(THETAO);
-  auto X0 = X1;
+//   auto Y0 = Y1 * cos(THETAO) + Z1 * sin(THETAO);
+//   auto Z0 = -Y1 * sin(THETAO) + Z1 * cos(THETAO);
+//   auto X0 = X1;
 
-  auto Z = Z0;
-  auto X = X0 * sin(ALPHAO) + Y0 * cos(ALPHAO);
-  auto Y = -X0 * cos(ALPHAO) + Y0 * sin(ALPHAO);
+//   auto Z = Z0;
+//   auto X = X0 * sin(ALPHAO) + Y0 * cos(ALPHAO);
+//   auto Y = -X0 * cos(ALPHAO) + Y0 * sin(ALPHAO);
 
-  angle_quantity THETA1;
+//   angle_quantity THETA1;
 
-  if (Z > 0.0) {
-    THETA1 = atan(sqrt(X * X + Y * Y) / Z);
-  } else if (Z < 0.0) {
-    THETA1 = radian * pi + atan(sqrt(X * X + Y * Y) / Z);
-  } else {
-    THETA1 = radian * pi / 2.0;
-  }
+//   if (Z > 0.0) {
+//     THETA1 = atan(sqrt(X * X + Y * Y) / Z);
+//   } else if (Z < 0.0) {
+//     THETA1 = radian * pi + atan(sqrt(X * X + Y * Y) / Z);
+//   } else {
+//     THETA1 = radian * pi / 2.0;
+//   }
 
-  angle_quantity ALPHA1;
+//   angle_quantity ALPHA1;
 
-  if (sin(THETA1) != 0.0) {
-    if (X > 0.0) {
-      ALPHA1 = atan(Y / X);
-    } else if (X == 0.0) {
-      ALPHA1 = radian * (pi - (Y > 0.0 ? 1.0 : -1.0) * pi / 2.0);
-    } else {
-      ALPHA1 = radian * pi + atan(Y / X);
-    }
-  } else {
-    ALPHA1 = 0.0 * radian;
-  }
+//   if (sin(THETA1) != 0.0) {
+//     if (X > 0.0) {
+//       ALPHA1 = atan(Y / X);
+//     } else if (X == 0.0) {
+//       ALPHA1 = radian * (pi - (Y > 0.0 ? 1.0 : -1.0) * pi / 2.0);
+//     } else {
+//       ALPHA1 = radian * pi + atan(Y / X);
+//     }
+//   } else {
+//     ALPHA1 = 0.0 * radian;
+//   }
 
-  // Target
-  auto X3 = sin(THETA2RELATIVE) * cos(ALPHA2RELATIVE);
-  auto Y3 = sin(THETA2RELATIVE) * sin(ALPHA2RELATIVE);
-  auto Z3 = cos(THETA2RELATIVE);
+//   // Target
+//   auto X3 = sin(THETA2RELATIVE) * cos(ALPHA2RELATIVE);
+//   auto Y3 = sin(THETA2RELATIVE) * sin(ALPHA2RELATIVE);
+//   auto Z3 = cos(THETA2RELATIVE);
 
-  auto Y2 = Y3 * cos(THETAO) + Z3 * sin(THETAO);
-  auto Z2 = -Y3 * sin(THETAO) + Z3 * cos(THETAO);
-  auto X2 = X3;
+//   auto Y2 = Y3 * cos(THETAO) + Z3 * sin(THETAO);
+//   auto Z2 = -Y3 * sin(THETAO) + Z3 * cos(THETAO);
+//   auto X2 = X3;
 
-  auto Z5 = Z2;
-  auto X5 = X2 * sin(ALPHAO) + Y2 * cos(ALPHAO);
-  auto Y5 = -X2 * cos(ALPHAO) + Y2 * sin(ALPHAO);
+//   auto Z5 = Z2;
+//   auto X5 = X2 * sin(ALPHAO) + Y2 * cos(ALPHAO);
+//   auto Y5 = -X2 * cos(ALPHAO) + Y2 * sin(ALPHAO);
 
-  angle_quantity THETA2;
-  if (Z5 < 0.0) {
-    THETA2 = radian * pi + atan(sqrt(X5 * X5 + Y5 * Y5) / Z5);
-  } else if (Z5 > 0.0) {
-    THETA2 = atan(sqrt(X5 * X5 + Y5 * Y5) / Z5);
-  } else {
-    THETA2 = radian * pi / 2.0;
-  }
+//   angle_quantity THETA2;
+//   if (Z5 < 0.0) {
+//     THETA2 = radian * pi + atan(sqrt(X5 * X5 + Y5 * Y5) / Z5);
+//   } else if (Z5 > 0.0) {
+//     THETA2 = atan(sqrt(X5 * X5 + Y5 * Y5) / Z5);
+//   } else {
+//     THETA2 = radian * pi / 2.0;
+//   }
 
-  angle_quantity ALPHA2;
+//   angle_quantity ALPHA2;
 
-  if (sin(THETA2) != 0.0) {
-    if (X5 < 0.0) {
-      ALPHA2 = radian * pi + atan(Y5 / X5);
-    } else if (X5 > 0.0) {
-      atan(Y5 / X5);
-    } else {
-      ALPHA2 = radian * (pi - 0.5 * ((Y5 > 0.0) ? 1 : -1) * pi);
-    }
-  } else {
-    ALPHA2 = radian * 0.0;
-  }
-  // newVelocity.zAngle = THETA1;
-  // newVelocity.xAngle = ALPHA1;
-  // targetVelocity.zAngle = THETA2;
-  // targetVelocity.xAngle = ALPHA2;
-  return {{THETA1, ALPHA1, THETA2, ALPHA2}};
-}
-
-// }}}
+//   if (sin(THETA2) != 0.0) {
+//     if (X5 < 0.0) {
+//       ALPHA2 = radian * pi + atan(Y5 / X5);
+//     } else if (X5 > 0.0) {
+//       atan(Y5 / X5);
+//     } else {
+//       ALPHA2 = radian * (pi - 0.5 * ((Y5 > 0.0) ? 1 : -1) * pi);
+//     }
+//   } else {
+//     ALPHA2 = radian * 0.0;
+//   }
+//   // newVelocity.zAngle = THETA1;
+//   // newVelocity.xAngle = ALPHA1;
+//   // targetVelocity.zAngle = THETA2;
+//   // targetVelocity.xAngle = ALPHA2;
+//   return {{THETA1, ALPHA1, THETA2, ALPHA2}};
+// } // }}}
 
 // Electron function implementations{{{
 void Electron::fire() try {
@@ -784,6 +859,7 @@ void Electron::fire() try {
 
 // Ion function implementations // {{{
 void Ion::fire() try {
+  std::ostringstream string_stream;
   LOG(INFO) << "Firing ion with initial energy " << velocity_.energy_;
   const auto ion_stopping_energy =
       simulation_.get_settings(&Simulation::Settings::ion_stopping_energy_);
@@ -804,58 +880,94 @@ void Ion::fire() try {
   }
 #endif /*}}}*/
 
-  while (velocity_.energy_ > ion_stopping_energy) {
-    // TODO:
-    const size_t atom_index =
-        current_layer.get_discrete_distribution()(random_number_generator_);
-    const auto layer_properties = current_layer.get_property(atom_index);
+  for (int i = 0; i < 100; i++) {
+    coordinate_ = Coordinate(angstrom * 0.0, angstrom * 0.0, angstrom * 0.0);
+    velocity_.energy_ = 100.0 * kilo_electron_volt;
+    velocity_.quaternion_ = Quaternion(0.0, 0.0, 0.0, 1.0);
 
-    auto z_1 = properties_.charge_;
-    auto z_2 = layer_properties.charge_;
-    auto m_1 = properties_.mass_;
-    auto m_2 = layer_properties.mass_;
-    auto number_density = current_layer.get_number_density();
-    auto energy = velocity_.energy_;
+    auto &energy = velocity_.energy_;
+    // auto &coordinate = coordinate_;
+    while (velocity_.energy_ > ion_stopping_energy) {
+      // TODO:
+      const size_t atom_index =
+          current_layer.get_discrete_distribution()(random_number_generator_);
+      const auto layer_properties = current_layer.get_property(atom_index);
 
-    // TODO: Implement simulation calculations
-    //
-    // 1. Subtract electronic stopping energy
-    velocity_.energy_ = electronic_stopping_energy(
-        z_1, m_1, energy, number_density, layer_properties);
+      auto z_1 = properties_.charge_;
+      auto z_2 = layer_properties.charge_;
+      auto m_1 = properties_.mass_;
+      auto m_2 = layer_properties.mass_;
+      auto number_density = current_layer.get_number_density();
 
-    VLOG(2) << "New energy " << velocity_.energy_;
-    auto speed = speed_from_energy(energy, m_1);
-    auto rd_mass = reduced_mass(m_1, m_2);
-    auto c_mass_energy = cm_energy(m_1, speed);
-    auto screen_length = screening_length(z_1, z_2);
-    auto rd_energy = reduced_energy(screen_length, c_mass_energy, z_1, z_2);
-    auto path_length = free_flying_path_length(m_1, m_2, rd_energy,
-                                               screen_length, number_density);
-    auto i_param = impact_parameter(number_density, path_length, rd_energy);
+      // TODO: Implement simulation calculations
+      //
+      // 1. Subtract electronic stopping energy
+      velocity_.energy_ = electronic_stopping_energy(
+          z_1, m_1, energy, number_density, layer_properties);
 
-    auto coll_diameter = collision_diameter(z_1, z_2, rd_mass, speed);
-    auto closest_appr = closest_approach(z_1, z_2, c_mass_energy, i_param);
-    auto rad_curv = radius_of_curvature(closest_appr, c_mass_energy, z_1, z_2);
-    auto magic_correction = magic_formula_correction_parameter(
-        rd_energy, i_param, screen_length, closest_appr);
-    auto cm_scatter_angle = magic_formula_scattering_angle(
-        i_param, closest_appr, rad_curv, magic_correction, screen_length);
-    auto nuclear_e_loss =
-        nuclear_energy_loss(m_1, m_2, energy, cm_scatter_angle);
-    auto laboratory_scatter_angle =
-        laboratory_scattering_angle(cm_scatter_angle, m_1, m_2);
+      VLOG(2) << "New energy " << velocity_.energy_;
+      auto speed = speed_from_energy(energy, m_1);
+      // auto rd_mass = reduced_mass(m_1, m_2);
+      auto c_mass_energy = cm_energy(m_1, speed);
+      auto screen_length = screening_length(z_1, z_2);
+      auto rd_energy = reduced_energy(screen_length, c_mass_energy, z_1, z_2);
+      auto path_length = free_flying_path_length(m_1, m_2, rd_energy,
+                                                 screen_length, number_density);
+      auto i_param = impact_parameter(number_density, path_length, rd_energy);
 
-    // auto relative_to_absolute = relative_to_absolute();
+      // auto coll_diameter = collision_diameter(z_1, z_2, rd_mass, speed);
+      auto closest_appr = closest_approach(z_1, z_2, c_mass_energy, i_param);
+      auto rad_curv =
+          radius_of_curvature(closest_appr, c_mass_energy, z_1, z_2);
+      auto magic_correction = magic_formula_correction_parameter(
+          rd_energy, i_param, screen_length, closest_appr);
+      auto cm_scatter_angle = magic_formula_scattering_angle(
+          i_param, closest_appr, rad_curv, magic_correction, screen_length);
+      auto nuclear_e_loss =
+          nuclear_energy_loss(m_1, m_2, energy, cm_scatter_angle);
+      energy -= nuclear_e_loss; // TODO: Check for knock-ons
+      auto laboratory_scatter_angle =
+          laboratory_scattering_angle(cm_scatter_angle, m_1, m_2);
+      rotate_inplace(laboratory_scatter_angle); // Changes velocity in-place
+      auto &velocity = velocity_.quaternion_;
 
-    // TODO: Implement derivative of screening potential
+      VLOG(2) << "Original coordinate (" << coordinate_.x_ << ", "
+              << coordinate_.y_ << ", " << coordinate_.z_ << ")";
 
-    // 2. Calculate recoil energy and velocity
-    // 3. Calculate new coordinate (push old coordinate to vector)
-    // 4. Determine if sputtering occured
-    // 5. Check if damage cascade occurs
-    //    a. If so, if energy difference is larger than displacement energy,
-    //    create a cascade particle and push it to the particles_ vector
+      VLOG(2) << "Original velocity (" << velocity.x_ << ", " << velocity.y_
+              << ", " << velocity.z_ << ")";
+      // TODO: Replace with more elegant code
+      auto new_coordinate =
+          Coordinate{coordinate_.x_ + path_length * velocity.x_,
+                     coordinate_.y_ + path_length * velocity.y_,
+                     coordinate_.z_ + path_length * velocity.z_};
+
+      coordinate_.operator=(new_coordinate);
+      string_stream << velocity.r_ << "," << coordinate_.x_.value() << ","
+                    << coordinate_.y_.value() << "," << coordinate_.z_.value()
+                    << "\n";
+
+      VLOG(2) << "Final coordinate moved " << path_length << " away: ("
+              << coordinate_.x_ << ", " << coordinate_.y_ << ", "
+              << coordinate_.z_ << ")";
+
+      // TODO: Implement derivative of screening potential
+
+      // 2. Calculate recoil energy and velocity
+      // 3. Calculate new coordinate (push old coordinate to vector)
+      // 4. Determine if sputtering occured
+      // 5. Check if damage cascade occurs
+      //    a. If so, if energy difference is larger than displacement
+      //    energy, create a cascade particle and push it to the particles_
+      //    vector
+    }
   }
+
+  // TODO: FIX
+  std::ofstream file_stream("output.csv");
+  file_stream << "scalar,x,y,z\n";
+  file_stream << string_stream.str();
+
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
 }
@@ -921,6 +1033,101 @@ Ion::electronic_stopping_energy(dimensionless_quantity charge,
   return energy - energy_loss;
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
+} // }}}
+
+// Quaternion function implementations{{{
+
+Quaternion &Quaternion::operator+=(const Quaternion &b) {
+  r_ += b.r_;
+  x_ += b.x_;
+  y_ += b.y_;
+  z_ += b.z_;
+  return *this;
+}
+
+Quaternion Quaternion::operator+(const Quaternion &b) const {
+  return Quaternion(*this) += b;
+}
+
+Quaternion operator+(const Quaternion &a, const Quaternion &b) {
+  return Quaternion(a) += b;
+}
+
+Quaternion &Quaternion::operator*=(const Quaternion &b) {
+  auto r_1 = r_;
+  auto r_2 = b.r_;
+  auto x_1 = x_;
+  auto y_1 = y_;
+  auto z_1 = z_;
+  auto x_2 = b.x_;
+  auto y_2 = b.y_;
+  auto z_2 = b.z_;
+
+  r_ = r_1 * r_2 - x_1 * x_2 - y_1 * y_2 - z_1 * z_2;
+  x_ = r_1 * x_2 + r_2 * x_1 + y_1 * z_2 - z_1 * y_2;
+  y_ = r_1 * y_2 + r_2 * y_1 + z_1 * x_2 - x_1 * z_2;
+  z_ = r_1 * z_2 + r_2 * z_1 + x_1 * y_2 - y_1 * x_2;
+  return *this;
+}
+
+Quaternion Quaternion::operator*(const Quaternion &b) const {
+  return Quaternion(*this) *= b;
+}
+
+// Quaternion operator*(const Quaternion &a, const Quaternion &b) {
+//   return Quaternion(a) *= b;
+// }
+
+Quaternion &Quaternion::operator*=(double a) {
+  r_ *= a;
+  x_ *= a;
+  y_ *= a;
+  z_ *= a;
+  return *this;
+}
+
+Quaternion Quaternion::operator*(const double b) const {
+  return Quaternion(*this) *= b;
+}
+
+Quaternion operator*(double a, const Quaternion &b) {
+  return Quaternion(b) *= a;
+}
+
+Quaternion &Quaternion::operator/=(double a) {
+  r_ /= a;
+  x_ /= a;
+  y_ /= a;
+  z_ /= a;
+  return *this;
+}
+
+Quaternion Quaternion::operator/(const double b) const {
+  return Quaternion(*this) /= b;
+}
+
+Quaternion operator/(const Quaternion &a, double b) {
+  return Quaternion(a) /= b;
+}
+
+Quaternion &Quaternion::normalize_inplace() {
+  *this /= (this->magnitude());
+  return *this;
+}
+
+Quaternion &Quaternion::conjugate_inplace() {
+  x_ = -x_;
+  y_ = -y_;
+  z_ = -z_;
+  return *this;
+}
+
+Quaternion Quaternion::conjugate_copy() const {
+  return Quaternion(r_, -x_, -y_, -z_);
+}
+
+double Quaternion::magnitude() const {
+  return std::sqrt(r_ * r_ + x_ * x_ + y_ * y_ + z_ * z_);
 } // }}}
 
 } // namespace common

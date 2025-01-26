@@ -62,7 +62,7 @@ public:
    * \param argv Strings of the command line arguments.
    */
   Application(int &argc, char **argv, amcset::common::Simulation *simulation)
-      : QApplication(argc, argv), simulation(simulation) {
+      : QApplication(argc, argv), simulation_(simulation) {
     dark_mode = false;
     toggleDarkMode();
   }
@@ -89,12 +89,12 @@ public:
    */
   void runSimulation() {
     LOG(INFO) << "Starting simulation";
-    simulation->run_simulation();
+    simulation_->run_simulation();
   };
 
 private:
   bool dark_mode;
-  amcset::common::Simulation *simulation;
+  amcset::common::Simulation *simulation_;
 };
 
 class Window1 : public QMainWindow {
@@ -105,6 +105,7 @@ public:
   Window1(Application *app_in);
 
 private:
+  // TODO: Add '_' to members
   QFrame frame;
   QFrame testZone{&frame};
   QPushButton generateHandledExceptionButton{&frame};

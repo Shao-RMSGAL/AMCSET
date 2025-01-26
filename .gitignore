@@ -4,3 +4,5 @@ doc/
 ConanPresets.json
 CMakeLists.txt.user
 .cache
+testing/output.csv
+testing/test

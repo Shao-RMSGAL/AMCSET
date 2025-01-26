@@ -1,10 +1,13 @@
+// Returns a normalized quaternion
 #include <cmath>
-#include <exception>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <random>
 #include <sstream>
 #include <string>
+#include <thread>
+#include <vector>
 
 struct quaternion {
   double r;
@@ -56,7 +59,6 @@ quaternion quaternion_conjugate(const quaternion &a) {
   return quaternion{a.r, -a.x, -a.y, -a.z};
 }
 
-// Returns a normalized quaternion
 quaternion quaternion_normalize(const quaternion &a) {
   if (iszero(quaternion_magnitude(a))) {
     throw std::logic_error("Attempt to normalize 0-length quaternion");
@@ -83,7 +85,90 @@ size_t sysrandom(void *dst, size_t dstlen) {
   stream.read(buffer, dstlen);
   return dstlen;
 }
+// {{{
+// int main() {
+//   std::cout << "Starting quaternion experiment..." << std::endl;
+//   std::uint_least32_t seed;
+//   sysrandom(&seed, sizeof(seed));
+//   std::mt19937 gen(seed);
+//   std::uniform_real_distribution real_distribution;
+//   std::ofstream file_stream("output.csv");
+//   file_stream << "scalar,x,y,z\n";
 
+//   for (int particle = 0; particle < 100; particle++) {
+//     quaternion particle_position{0.0, 0.0, 0.0, 1.0};
+//     quaternion particle_velocity =
+//         quaternion_normalize(quaternion{0.0, 0.0, 0.0, 1.0});
+
+//     double speed = 1.0;
+
+//     for (int i = 0; i < 1000; i++) {
+//       // Generate random deflection angles
+//       double alpha_change =
+//           2 * M_PI * (0.5 - real_distribution(gen)); // Azimuthal
+//       // std::cout << "Alpha tilt: " << alpha_change * 180.0 / (2 * M_PI)
+//       //           << " degrees" << std::endl;
+
+//       double beta_change = 0.05 * real_distribution(gen); // Altitude
+//       // std::cout << "Beta tilt: " << beta_change * 180.0 / (2 * M_PI)
+//       //           << " degrees\n";
+
+//       // Quaternion for azimuthal rotation around the local z-axis
+//       auto q_alpha =
+//           quaternion{std::cos(alpha_change / 2.0),
+//                      particle_velocity.x * std::sin(alpha_change / 2.0),
+//                      particle_velocity.y * std::sin(alpha_change / 2.0),
+//                      particle_velocity.z * std::sin(alpha_change / 2.0)};
+
+//       // std::cout << "Alpha quaternion: " << print_quaternion(q_alpha)
+//       //           << " degrees\n";
+
+//       quaternion rotation_axis;
+//       // Calculate axis perpendicular to the current velocity for altitude
+//       // rotation
+//       if (particle_velocity.z == 1.0) {
+//         rotation_axis = quaternion{0.0, 1.0, 0.0, 0.0};
+
+//       } else {
+//         rotation_axis = quaternion_normalize(
+//             quaternion{0.0, particle_velocity.y, -particle_velocity.x, 0.0});
+//       }
+
+//       // std::cout << "Perpendicular axis: " <<
+//       print_quaternion(rotation_axis)
+//       //           << " degrees\n";
+
+//       // Quaternion for altitude rotation around the perpendicular axis
+//       auto q_beta = quaternion{std::cos(beta_change / 2.0),
+//                                rotation_axis.x * std::sin(beta_change / 2.0),
+//                                rotation_axis.y * std::sin(beta_change / 2.0),
+//                                rotation_axis.z * std::sin(beta_change
+//                                / 2.0)};
+
+//       // std::cout << "Beta quaternion: " << print_quaternion(q_beta)
+//       //           << " degrees\n";
+
+//       // Apply altitude rotation
+//       particle_velocity =
+//           q_alpha *
+//           ((q_beta * particle_velocity) * quaternion_conjugate(q_beta)) *
+//           quaternion_conjugate(q_alpha);
+
+//       particle_velocity.r = 0;
+//       particle_velocity = quaternion_normalize(particle_velocity);
+
+//       // Update particle position
+//       particle_position = particle_position + speed * particle_velocity;
+
+//       // Write results to the file
+//       file_stream << print_quaternion(particle_position) << "\n";
+//     }
+//   }
+
+//   std::cout << "...Calculation complete." << std::endl;
+
+//   return 0;
+// }}}}
 int main() {
   std::cout << "Starting quaternion experiment..." << std::endl;
   std::uint_least32_t seed;
@@ -93,73 +178,108 @@ int main() {
   std::ofstream file_stream("output.csv");
   file_stream << "scalar,x,y,z\n";
 
-  for (int particle = 0; particle < 100; particle++) {
-    quaternion particle_position{0.0, 0.0, 0.0, 1.0};
-    quaternion particle_velocity =
-        quaternion_normalize(quaternion{0.0, 0.0, 0.0, 1.0});
+  int num_particles = 1000000;
+  int num_threads = std::thread::hardware_concurrency();
+  // num_threads = 1;
+  std::cout << "Found " << num_threads << " threads." << std::endl;
+  std::mutex mtx;
 
-    double speed = 1.0;
+  std::vector<std::thread> threads;
+  threads.reserve(num_threads);
 
-    for (int i = 0; i < 1000; i++) {
-      // Generate random deflection angles
-      double alpha_change =
-          2 * M_PI * (0.5 - real_distribution(gen)); // Azimuthal
-      // std::cout << "Alpha tilt: " << alpha_change * 180.0 / (2 * M_PI)
-      //           << " degrees" << std::endl;
+  for (int i = 0; i < num_threads; ++i) {
+    threads.emplace_back([&, i] {
+      int start = (num_particles * i) / num_threads;
+      int end = (num_particles * (i + 1)) / num_threads;
+      std::ostringstream string_stream;
 
-      double beta_change = 0.05 * real_distribution(gen); // Altitude
-      // std::cout << "Beta tilt: " << beta_change * 180.0 / (2 * M_PI)
-      //           << " degrees\n";
+      for (int particle = start; particle < end; particle++) {
+        quaternion particle_position{0.0, 0.0, 0.0, 1.0};
+        quaternion particle_velocity =
+            quaternion_normalize(quaternion{0.0, 0.0, 0.0, 1.0});
 
-      // Quaternion for azimuthal rotation around the local z-axis
-      auto q_alpha =
-          quaternion{std::cos(alpha_change / 2.0),
-                     particle_velocity.x * std::sin(alpha_change / 2.0),
-                     particle_velocity.y * std::sin(alpha_change / 2.0),
-                     particle_velocity.z * std::sin(alpha_change / 2.0)};
+        double speed = 1.0;
 
-      // std::cout << "Alpha quaternion: " << print_quaternion(q_alpha)
-      //           << " degrees\n";
+        int count = 0;
+        for (int j = 0; j < 1000; j++) {
+          double alpha_change =
+              2 * M_PI * (0.5 - real_distribution(gen)); // Azimuthal
+          // std::cout << "Alpha tilt: " << alpha_change * 180.0 / (2 * M_PI)
+          //           << " degrees" << std::endl;
 
-      quaternion rotation_axis;
-      // Calculate axis perpendicular to the current velocity for altitude
-      // rotation
-      if (particle_velocity.z == 1.0) {
-        rotation_axis = quaternion{0.0, 1.0, 0.0, 0.0};
+          double beta_change = 0.05 * real_distribution(gen); // Altitude
+          // std::cout << "Beta tilt: " << beta_change * 180.0 / (2 * M_PI)
+          //           << " degrees\n";
 
-      } else {
-        rotation_axis = quaternion_normalize(
-            quaternion{0.0, particle_velocity.y, -particle_velocity.x, 0.0});
+          // Quaternion for azimuthal rotation around the local z-axis
+          auto q_alpha =
+              quaternion{std::cos(alpha_change / 2.0),
+                         particle_velocity.x * std::sin(alpha_change / 2.0),
+                         particle_velocity.y * std::sin(alpha_change / 2.0),
+                         particle_velocity.z * std::sin(alpha_change / 2.0)};
+
+          // std::cout << "Alpha quaternion: " << print_quaternion(q_alpha)
+          //           << " degrees\n";
+
+          quaternion rotation_axis;
+          // Calculate axis perpendicular to the current velocity for altitude
+          // rotation
+          if (particle_velocity.z == 1.0) {
+            rotation_axis = quaternion{0.0, 1.0, 0.0, 0.0};
+
+          } else {
+            rotation_axis = quaternion_normalize(quaternion{
+                0.0, particle_velocity.y, -particle_velocity.x, 0.0});
+          }
+
+          // std::cout << "Perpendicular axis: " <<
+          // print_quaternion(rotation_axis)
+          //           << " degrees\n";
+
+          // Quaternion for altitude rotation around the perpendicular axis
+          auto q_beta =
+              quaternion{std::cos(beta_change / 2.0),
+                         rotation_axis.x * std::sin(beta_change / 2.0),
+                         rotation_axis.y * std::sin(beta_change / 2.0),
+                         rotation_axis.z * std::sin(beta_change / 2.0)};
+
+          // std::cout << "Beta quaternion: " << print_quaternion(q_beta)
+          //           << " degrees\n";
+
+          // Apply altitude rotation
+          particle_velocity =
+              q_alpha *
+              ((q_beta * particle_velocity) * quaternion_conjugate(q_beta)) *
+              quaternion_conjugate(q_alpha);
+
+          particle_velocity.r = 0;
+          particle_velocity = quaternion_normalize(particle_velocity);
+
+          // Update particle position
+          particle_position = particle_position + speed * particle_velocity;
+
+          // Write results to the file
+          // {
+          // std::lock_guard<std::mutex> lock(mtx);
+          count++;
+          if (count == 100) {
+            string_stream << print_quaternion(particle_position) << "\n";
+            count = 0;
+          }
+          // }
+        }
       }
 
-      // std::cout << "Perpendicular axis: " << print_quaternion(rotation_axis)
-      //           << " degrees\n";
-
-      // Quaternion for altitude rotation around the perpendicular axis
-      auto q_beta = quaternion{std::cos(beta_change / 2.0),
-                               rotation_axis.x * std::sin(beta_change / 2.0),
-                               rotation_axis.y * std::sin(beta_change / 2.0),
-                               rotation_axis.z * std::sin(beta_change / 2.0)};
-
-      // std::cout << "Beta quaternion: " << print_quaternion(q_beta)
-      //           << " degrees\n";
-
-      // Apply altitude rotation
-      particle_velocity =
-          q_alpha *
-          ((q_beta * particle_velocity) * quaternion_conjugate(q_beta)) *
-          quaternion_conjugate(q_alpha);
-
-      particle_velocity.r = 0;
-      particle_velocity = quaternion_normalize(particle_velocity);
-
-      // Update particle position
-      particle_position = particle_position + speed * particle_velocity;
-
       // Write results to the file
-      file_stream << print_quaternion(particle_position) << "\n";
-    }
+      {
+        std::lock_guard<std::mutex> lock(mtx);
+        file_stream << string_stream.str() << "\n";
+      }
+    });
   }
+
+  for (auto &th : threads)
+    th.join();
 
   std::cout << "...Calculation complete." << std::endl;
 

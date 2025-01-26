@@ -25,6 +25,8 @@
 
 #pragma once
 
+// Includes{{{
+
 #include <boost/units/systems/si/length.hpp>
 #include <memory>
 #if defined(_WIN32)
@@ -53,7 +55,7 @@
 #include <boost/asio.hpp>
 
 #include "amcset_utilities.h"
-#include "isotope_data.h"
+#include "isotope_data.h" // }}}
 
 /*!
  * \brief The namespace used for all library code related to AMCSET.
@@ -71,13 +73,18 @@ namespace common {
 using namespace amcset::common;
 using namespace amcset::common;
 
+// Struct declarations and definitions{{{
+
 //! A struct to store 3D coordinate data
 struct Coordinate {
-  const length_quantity x_; //!< X position in angstroms
-  const length_quantity y_; //!< Y position in angstroms
-  const length_quantity z_; //!< Z position in angstroms
+  length_quantity x_; //!< X position in angstroms
+  length_quantity y_; //!< Y position in angstroms
+  length_quantity z_; //!< Z position in angstroms
 
   Coordinate() = delete;
+
+  // Assignment copy operator
+  // Coordinate operator=(const Coordinate &a) { return Coordinate(a); };
 
   /*!
    * \brief Construct a Coordinate struct with \c double parameters.
@@ -94,10 +101,117 @@ struct Coordinate {
       : x_(x), y_(y), z_(z) {}
 };
 
-//! A struct for storing velocity information.
+struct Quaternion {
+  double r_; //!< The scalar portion of a quaterion.
+  double x_; //!< The x portion of a quaterion.
+  double y_; //!< The y portion of a quaterion.
+  double z_; //!< The z portion of a quaterion.
+
+  /*!
+   * \brief Uninitialized constructor. Use with caution.
+   */
+  Quaternion() {};
+
+  /*!
+   * \brief Constructor for a quaternion using direct values
+   */
+  Quaternion(double r, double x, double y, double z) {
+    double sum = std::sqrt(r * r + x * x + y * y + z * z);
+    r_ = r / sum;
+    x_ = x / sum;
+    y_ = y / sum;
+    z_ = z / sum;
+  }
+
+  // Compiler-generated copy and move constructors is sufficient.
+
+  /*!
+   * \brief += operator.
+   */
+  Quaternion &operator+=(const Quaternion &b);
+
+  /*!
+   * \brief + operator.
+   */
+  Quaternion operator+(const Quaternion &b) const;
+
+  /*!
+   * \brief *= operator.
+   */
+  Quaternion &operator*=(const Quaternion &b);
+
+  /*!
+   * \brief * operator.
+   */
+  Quaternion operator*(const Quaternion &b) const;
+
+  /*!
+   * \brief *= operator for scalar multiplication.
+   */
+  Quaternion &operator*=(double b);
+
+  /*!
+   * \brief * operator for scalar multiplication.
+   */
+  Quaternion operator*(double b) const;
+
+  /*!
+   * \brief /= operator for scalar division.
+   */
+  Quaternion &operator/=(double b);
+
+  /*!
+   * \brief / operator for scalar division.
+   */
+  Quaternion operator/(double b) const;
+
+  /*!
+   * \brief Noramlize the Quaternion.
+   */
+  Quaternion &normalize_inplace();
+
+  /*!
+   * \brief Create and return a normalized Quaternion.
+   */
+  Quaternion normalize_copy() const;
+
+  /*!
+   * \brief Conjugate the Quaternion.
+   */
+  Quaternion &conjugate_inplace();
+
+  /*!
+   * \brief Create and return a conjugated Quaternion.
+   */
+  Quaternion conjugate_copy() const;
+
+  /*!
+   * \brief Retrieve the magnitude of the quaternion
+   */
+  double magnitude() const;
+};
+
+Quaternion operator+(const Quaternion &a, const Quaternion &b);
+// Quaternion operator*(const Quaternion &a, const Quaternion &b);
+Quaternion operator*(double a, const Quaternion &b);
+Quaternion operator/(const Quaternion &a, double b);
+
+/*! \brief A struct for storing velocity information.
+ *
+ * A Quaternion is used to represent the orientation information
+ * of the velocity:
+ *
+ * (scalar, x, y, z)
+ *
+ * where the scalar is related to the rotation of the vector around
+ * the x,y,z vector. See (https://en.wikipedia.org/wiki/Quaternion) for more
+ * information.
+ *
+ * The quaternion should be normalized, or close to normalized, while the energy
+ * is used to represent the speed of the particle.
+ */
 struct Velocity {
-  angle_quantity x_angle_; //!< Angle relative to the x-axis in radians
-  angle_quantity z_angle_; //!< Angle relative to the z-axis in  radians
+  Quaternion quaternion_;
   energy_quantity energy_; //!< Energy of the particle in keV
 
   Velocity() = delete;
@@ -112,14 +226,15 @@ struct Velocity {
    * \param z_angle The value to set to z_angle_
    * \param energy The value to set to energy_
    */
-  constexpr Velocity(angle_quantity x_angle, angle_quantity z_angle,
-                     energy_quantity energy) noexcept
-      : x_angle_(x_angle), z_angle_(z_angle), energy_(energy) {};
-};
+  constexpr Velocity(Quaternion quaternion, energy_quantity energy) noexcept
+      : quaternion_(quaternion), energy_(energy) {};
+}; // }}}
 
 class Simulation;
 class Volume;
 class Layer;
+
+// Particle class declarations{{{
 
 /*!
  * \brief A class for representing simulation particles.
@@ -220,6 +335,15 @@ protected:
   virtual energy_quantity cm_energy(mass_quantity reduced_mass,
                                     velocity_quantity velocity) const;
 
+  /*!
+   * \brief Rotate a particle.
+   *
+   * Rotates a particle around an axis perpendicular to its velocity
+   * vector to apply a scattering angle, as well as a randomized azimuthal
+   * rotation between 0 and 2pi.
+   */
+  virtual Particle &rotate_inplace(angle_quantity scattering_angle);
+
   Properties properties_; //!< Properties of the particle
   std::vector<std::unique_ptr<Particle>>
       particles_; //!< List of cascade particles
@@ -233,7 +357,9 @@ protected:
                               //!< and 1 for various uses.
   boost::random::mt19937
       &random_number_generator_; //!< Reference to random number generator
-};
+}; // }}}
+
+// Electron class declarations{{{
 
 /*!
  *  \brief A class to represent electrons.
@@ -262,9 +388,11 @@ public:
    * Fires an electron using electron-specific energy loss functions.
    */
   void fire() override;
-};
+}; // }}}
 
 class Volume;
+
+// Ion class declarations{{{
 
 /*!
  * \brief A class to represent ions.
@@ -387,7 +515,7 @@ private:
   length_quantity closest_approach(dimensionless_quantity z_1,
                                    dimensionless_quantity z_2,
                                    energy_quantity cm_energy,
-                                   length_quantity impact_param, ) const;
+                                   length_quantity impact_param) const;
 
   /*!
    * \brief Radius of curvature
@@ -429,15 +557,17 @@ private:
                                              mass_quantity atom_mass,
                                              mass_quantity target_mass) const;
 
-  /*!
-   * \brief Convert relative angle to absolute angle.
-   */
-  std::array<angle_quantity, 4>
-  relative_to_absolute_angle(angle_quantity initial_altitude,
-                             angle_quantity initial_azimuth,
-                             angle_quantity incident_deflection,
-                             angle_quantity target_deflection) const;
-};
+  // /*! TODO: Likely to remove
+  //  * \brief Convert relative angle to absolute angle.
+  //  */
+  // std::array<angle_quantity, 4>
+  // relative_to_absolute_angle(angle_quantity initial_altitude,
+  //                            angle_quantity initial_azimuth,
+  //                            angle_quantity incident_deflection,
+  //                            angle_quantity target_deflection) const;
+}; // }}}
+
+// Layer class declarations{{{
 
 /*!
  * \brief A class for representing a single layer of material in the Volume
@@ -576,7 +706,10 @@ private:
   const mass_density_quantity mass_density_;
   const number_density_quantity number_density_;
   boost::random::discrete_distribution<size_t, double> discrete_distribution_;
-};
+}; // }}}
+
+// Volume classs declarations{{{
+
 /*!
  * \brief A class for representing the simulation environment.
  *
@@ -627,7 +760,9 @@ public:
 
 private:
   const std::vector<Layer> layers_;
-};
+}; // }}}
+
+// Bombardment class declarations{{{
 
 /*!
  * \brief Representation of a single particle bombardment.
@@ -672,7 +807,9 @@ private:
   boost::random::mt19937 random_number_generator_;
   boost::random::uniform_01<double> uniform_distribution_;
   size_t id_;
-};
+}; // }}}
+
+// Simulation class declarations{{{
 
 /*!
  * \brief A class for initating, running, and terminating a multi-bombardment
@@ -824,7 +961,7 @@ private:
   Volume volume_;
   std::vector<Bombardment> bombardments_;
   boost::asio::thread_pool thread_pool_;
-};
+}; // }}}
 
 } // namespace common
 } // namespace amcset

@@ -139,12 +139,17 @@ TEST_F(CommonTest, coordinate_constructor_test) try {
 
 //! Velocity struct test.
 TEST_F(CommonTest, velocity_constructor_test) try {
-  constexpr Velocity velocity(angle_quantity(-pi * si::radian),
-                              angle_quantity(pi * si::radian),
-                              energy_quantity(10000.0 * kilo_electron_volt));
+  // constexpr Velocity velocity(angle_quantity(-pi * si::radian),
+  //                             angle_quantity(pi * si::radian),
+  //                             energy_quantity(10000.0 * kilo_electron_volt));
+  Velocity velocity(Quaternion(0.0, 0.0, 0.0, 2.0),
+                    energy_quantity(10000.0 * kilo_electron_volt));
 
-  ASSERT_EQ(to_string(velocity.x_angle_), "-3.14159 rad");
-  ASSERT_EQ(to_string(velocity.z_angle_), "3.14159 rad");
+  // ASSERT_EQ(to_string(velocity.x_angle_), "-3.14159 rad");
+  ASSERT_EQ(velocity.quaternion_.r_, 0.0);
+  ASSERT_EQ(velocity.quaternion_.x_, 0.0);
+  ASSERT_EQ(velocity.quaternion_.y_, 0.0);
+  ASSERT_EQ(velocity.quaternion_.z_, 1.0);
   ASSERT_EQ(to_string(velocity.energy_), "1.60218e-12 m^2 kg s^-2");
 } catch (const std::exception &e) {
   print_exception(e);
