@@ -30,62 +30,27 @@
 #include "amcset_common.h"
 #include "amcset_server.h"
 #include "amcset_utilities.h"
+#include "config.h"
 
-DEFINE_bool(no_gui, true, "Include 'advanced' options in the menu listing");
+DEFINE_bool(gui, true, "Enable or disable the graphical user interface (GUI)");
 
 using namespace amcset::server;
 using namespace amcset::common;
 
 int main(int argc, char *argv[]) {
-  try {
+  try { // {{{
 
-    /*{{{*/
-    // boost::interprocess::message_queue::remove("server_to_client_message_queue");
-    // boost::interprocess::message_queue::remove("client_to_server_message_queue");
-
-    // boost::interprocess::message_queue server_to_client_message_queue(
-    //     boost::interprocess::create_only, "server_to_client_message_queue",
-    //     100, 256);
-    // boost::interprocess::message_queue client_to_server_message_queue(
-    //     boost::interprocess::create_only, "client_to_server_message_queue",
-    //     100, 256);
-
-    // size_t count = 0;
-
-    // while (true) {
-    //   char recieved_message[256];
-    //   size_t recieved_size;
-    //   unsigned int priority;
-    //   client_to_server_message_queue.receive(
-    //       &recieved_message, sizeof(recieved_message), recieved_size,
-    //       priority);
-    //   recieved_message[recieved_size] = '\0';
-
-    //   if (std::string(recieved_message) == "exit") {
-    //       std::cout << "Exiting..." << std::endl;
-    //     return 0;
-    //   }
-
-    //   std::cout << "Recieved: " << recieved_message << std::endl;
-
-    //   count++;
-
-    //   std::string message = "Server call count: " + std::to_string(count);
-
-    //   server_to_client_message_queue.send(message.c_str(), message.size(),
-    //   0);
-    // }
-
-    // boost::interprocess::message_queue::remove("server_to_client_message_queue");
-    // boost::interprocess::message_queue::remove("client_to_server_message_queue");
-    /*}}}*/
     // Initialize logger
     google::InitGoogleLogging(argv[0]);
     FLAGS_alsologtostderr = 1;
 
     std::string usage_message = "AMCSET. Call " + std::string(argv[0]);
     gflags::SetUsageMessage(usage_message);
-    gflags::SetVersionString("0.0.1");
+
+    std::ostringstream version;
+    version << amcset_VERSION_MAJOR << '.' << amcset_VERSION_MINOR << '.'
+            << amcset_VERSION_PATCH;
+    gflags::SetVersionString(version.str());
     // Process flags
     gflags::ParseCommandLineFlags(&argc, &argv, true);
 
@@ -95,30 +60,31 @@ int main(int argc, char *argv[]) {
         40.0 * electron_volt;           // Energy at which electrons stop
     size_t z_number = 1;                // Hydrogen
     size_t mass_number = 1;             // Hydrogen
-    bool enable_damage_cascade = false; // TODO: Update to test cascades
+    bool enable_damage_cascade = false; // TEST: Update to test cascades
     energy_quantity ion_stopping_energy =
         40.0 * electron_volt; // Typical for iron
     energy_quantity ion_displacement_energy =
         40.0 * electron_volt; // Typical for iron
     bool log_single_displacement =
-        false; // TODO: Test later, will consume a LOT of memory/disk space.
+        false; // TEST: Test later, will consume a LOT of memory/disk space.
     size_t divisor_angle_number =
         1000; // Break angle range into 1000 segements.
-              // TODO: Test with different numbers
+              // TEST: Test with different numbers
     size_t flying_distance_number =
-        1000; // Break flying distnaces into groups of 1000. TODO: Test with
+        1000; // Break flying distnaces into groups of 1000. TEST: Test with
               // different numbers
     length_quantity range =
-        100000.0 * angstrom; // Target range. Should be unused. TODO: Remove
+        100000.0 * angstrom; // Target range. Should be unused. HACK: Remove
                              // once confirmed to be unused.
-    size_t bombardment_count = 1; // TODO: Test with more later.
+    size_t bombardment_count = 1; // TEST: Test with more later.
     bool is_electron =
-        false; // Start with ions. TODO: Test with electrons later.
+        false; // Start with ions. TEST: Test with electrons later.
     energy_quantity incident_energy =
-        100.0 * kilo_electron_volt; // TODO: Test with other energies
+        100.0 * kilo_electron_volt; // TEST: Test with other energies
     size_t thread_count =
-        1; // Try with single threading, TODO: Try with multithreading
-    // TODO: Add an option to use GPU (Use Kokkos for cross-platform
+        1; // Try with single threading, PERF: Try with multithreading
+
+    // PERF: Add an option to use GPU (Use Kokkos for cross-platform
     // compatability. Note that it is not available in conan. Either make a
     // conan recipe for it or use another installation method.
 
@@ -149,27 +115,30 @@ int main(int argc, char *argv[]) {
     auto volume = Volume(std::move(single_layer));
 
     // Create the AMCSET simulation object
-
     auto simulation = Simulation(settings, std::move(volume));
     int exit_code;
 
-    if (FLAGS_no_gui) {
+    if (FLAGS_gui) {
+      LOG(INFO) << "Starting AMCSET GUI...";
+      auto application = Application{argc, argv, &simulation};
+      VLOG(1) << "Initializing window";
+      auto main_window = MainWindow{&application};
+      VLOG(1) << "Resizing window";
+      main_window.resize(800, 600); // TODO: Make this a setting/ store it when
+                                    // the user manually resizes.
+      VLOG(1) << "Showing window";
+      main_window.show();
+      VLOG(1) << "Executing application";
+      exit_code = application.exec();
+      LOG(INFO) << "...Quitting AMCSET GUI. Exit code: " << exit_code;
+      return exit_code;
+    } else {
       LOG(INFO) << "Starting AMCSET in CLI mode...";
       exit_code = simulation.run_simulation();
       LOG(INFO) << "...Quitting AMCSET CLI.";
       return 0;
-    } else {
-      LOG(INFO) << "Starting AMCSET GUI...";
-      auto application = Application{argc, argv, &simulation};
-      auto window1 = Window1{&application};
-      window1.resize(800, 600);
-      window1.show();
-
-      exit_code = application.exec();
-      LOG(INFO) << "...Quitting AMCSET GUI. Exit code: " << exit_code;
-      return exit_code;
     }
   } catch (const std::exception &e) {
     LOG(FATAL) << (e.what());
-  }
+  } // }}}
 }

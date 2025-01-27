@@ -28,6 +28,7 @@
 
 // Qt libraries
 #include <QApplication>
+#include <QBoxLayout>
 #include <QCheckBox>
 #include <QCursor>
 #include <QFrame>
@@ -63,8 +64,9 @@ public:
    */
   Application(int &argc, char **argv, amcset::common::Simulation *simulation)
       : QApplication(argc, argv), simulation_(simulation) {
+    VLOG(1) << "Constructing application";
     dark_mode = false;
-    toggleDarkMode();
+    toggle_dark_mode();
   }
 
   /*!
@@ -73,12 +75,12 @@ public:
    * This function sets background colors to a dark color and text colors to
    * white when enabling dark mode. Vice versa when enabling light mode.
    */
-  void toggleDarkMode();
+  void toggle_dark_mode();
 
   /*!
    * \brief return whether dark mode is enabled or not.
    */
-  bool getDarkMode() { return dark_mode; };
+  bool get_dark_mode() { return dark_mode; };
 
   /*!
    * \brief Start a simulation.
@@ -94,34 +96,34 @@ public:
 
 private:
   bool dark_mode;
-  amcset::common::Simulation *simulation_;
+  amcset::common::Simulation *simulation_; // HACK Remove raw pointer
 };
 
-class Window1 : public QMainWindow {
+class MainWindow : public QMainWindow {
   Q_OBJECT
 
 public:
   Application *app;
-  Window1(Application *app_in);
+  MainWindow(Application *app_in);
 
 private:
-  // TODO: Add '_' to members
-  QFrame frame;
-  QFrame testZone{&frame};
-  QPushButton generateHandledExceptionButton{&frame};
-  QPushButton generateExceptionButton{&frame};
-  QPushButton generateUnknownExceptionButton{&frame};
-  int button1Clicked = 0;
-  int button2Clicked = 0;
-  QLabel label1{&frame};
-  QLabel label{&frame};
-  QPushButton pushButton{&frame};
-  QListWidget listWidget{&frame};
-  QRadioButton radioButton1{&frame};
-  QRadioButton radioButton2{&frame};
-  QCheckBox checkBox1{&frame};
-  QCheckBox checkBox2{&frame};
-  QPushButton startSimulationButton{&frame};
+  QFrame *base_frame_;
+  // QBoxLayout *base_layout_;
+  // QFrame testZone{&frame};
+  // QPushButton generateHandledExceptionButton{&frame};
+  // QPushButton generateExceptionButton{&frame};
+  // QPushButton generateUnknownExceptionButton{&frame};
+  // int button1Clicked = 0;
+  // int button2Clicked = 0;
+  // QLabel label1{&frame};
+  // QLabel label{&frame};
+  QPushButton *dark_mode_button_;
+  // QListWidget listWidget{&frame};
+  // QRadioButton radioButton1{&frame};
+  // QRadioButton radioButton2{&frame};
+  // QCheckBox checkBox1{&frame};
+  // QCheckBox checkBox2{&frame};
+  QPushButton *start_simulation_button_;
 };
 // common::Simulation start_simulation();
 

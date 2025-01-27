@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.23)
-project(amcset VERSION 1.0)
+project(amcset VERSION 0.0.1)
 
+# Use the conanfile.py version number
+if(NOT DEFINED PROJECT_VERSION)
+    message(FATAL_ERROR "Version components not defined! Are you running through Conan?")
+endif()
 # For clangd lsp
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -23,8 +27,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
 
 # Pass version number to compiler
-configure_file(common/include/config.h.in config.h)
-
+configure_file(${PROJECT_SOURCE_DIR}/common/include/config.h.in ${PROJECT_SOURCE_DIR}/common/include/config.h)
 
 # Packages
 find_package(Boost 1.85.0 REQUIRED)

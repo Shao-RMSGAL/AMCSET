@@ -6,3 +6,4 @@ CMakeLists.txt.user
 .cache
 testing/output.csv
 testing/test
+common/include/config.h

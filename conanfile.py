@@ -5,7 +5,7 @@ import os
 
 class amcsetRecipe(ConanFile):
     name = "amcset"
-    version = "1.0"
+    version = "0.0.1"
     package_type = "application"
 
     # Optional metadata
@@ -45,8 +45,7 @@ class amcsetRecipe(ConanFile):
         build_dir = self.build_folder
         src_dir = self.source_folder
         build_dir = self.build_folder
-        compile_commands_path = os.path.join(
-            build_dir, "compile_commands.json")
+        compile_commands_path = os.path.join(build_dir, "compile_commands.json")
         symlink_path = os.path.join(src_dir, "compile_commands.json")
 
         # Remove existing symlink if it exists
@@ -57,8 +56,7 @@ class amcsetRecipe(ConanFile):
         if os.path.exists(compile_commands_path):
             os.symlink(compile_commands_path, symlink_path)
         else:
-            self.output.warning(
-                "compile_commands.json not found in build directory")
+            self.output.warning("compile_commands.json not found in build directory")
 
     def package(self):
         cmake = CMake(self)
@@ -81,10 +79,12 @@ class amcsetRecipe(ConanFile):
         #  self.options["qt"].with_openssl = True
         # Qt must be built as shared libraries
         self.options["qt"].shared = True
-        self.options["qt"].with_openssl = True  # You already had this
+        self.options["qt"].openssl = True  # You already had this
 
         # Enable required Qt modules
         self.options["qt"].qtbase = True
         self.options["qt"].qttools = True
         self.options["qt"].qtdeclarative = True
+        self.options["qt"].qtwayland = True
         self.options["qt"].with_host_tools = True
+        self.options["qt"].with_vulkan = False  # Consider changing
