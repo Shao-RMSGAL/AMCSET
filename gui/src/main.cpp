@@ -15,6 +15,7 @@
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
 #include <iostream>
+#include <thread>
 
 #include <boost/interprocess/ipc/message_queue.hpp>
 #include <boost/math/constants/constants.hpp>
@@ -76,13 +77,14 @@ int main(int argc, char *argv[]) {
     length_quantity range =
         100000.0 * angstrom; // Target range. Should be unused. HACK: Remove
                              // once confirmed to be unused.
-    size_t bombardment_count = 1; // TEST: Test with more later.
+    size_t bombardment_count = 1000; // TEST: Test with more later.
     bool is_electron =
         false; // Start with ions. TEST: Test with electrons later.
     energy_quantity incident_energy =
         100.0 * kilo_electron_volt; // TEST: Test with other energies
     size_t thread_count =
-        1; // Try with single threading, PERF: Try with multithreading
+        std::thread::hardware_concurrency(); // Try with single threading, PERF:
+                                             // Try with multithreading
 
     // PERF: Add an option to use GPU (Use Kokkos for cross-platform
     // compatability. Note that it is not available in conan. Either make a

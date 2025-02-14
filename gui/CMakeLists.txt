@@ -3,7 +3,7 @@ add_executable(amcset-gui
     ${PROJECT_SOURCE_DIR}/gui/src/amcset_gui.cpp
     ${PROJECT_SOURCE_DIR}/gui/src/application.cpp
     ${PROJECT_SOURCE_DIR}/gui/src/mainwindow.cpp
-    ${PROJECT_SOURCE_DIR}/gui/include/canvas.cpp
+    ${PROJECT_SOURCE_DIR}/gui/src/canvas.cpp
     ${PROJECT_SOURCE_DIR}/gui/include/amcset_gui.h
     ${PROJECT_SOURCE_DIR}/gui/include/application.h
     ${PROJECT_SOURCE_DIR}/gui/include/mainwindow.h

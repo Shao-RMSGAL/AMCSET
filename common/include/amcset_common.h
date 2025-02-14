@@ -228,13 +228,48 @@ struct Velocity {
    */
   constexpr Velocity(Quaternion quaternion, energy_quantity energy) noexcept
       : quaternion_(quaternion), energy_(energy) {};
-}; // }}}
+};
+
+/*!
+ * \brief A class for storing data generated during a history. This includes
+ * coordinate data. TODO: Add other types of raw data to track.
+ *
+ * This class holds coordinate data, as well as pointers to ParticleDataLeafs
+ * of generated knock-on particles.
+ */
+class ParticleDataLeaf {
+public:
+  //!< Construct a ParticleDataLeaf using a move constructor
+  ParticleDataLeaf() = default;
+
+  //!< Add a coordinate to the data vector.
+  void add_coordinate(const Coordinate &coordinate) {
+    data.push_back(coordinate);
+  };
+
+  //!< Add a child to a ParticleDataLeaf
+  void add_child(const ParticleDataLeaf &child) { children.push_back(child); };
+
+  //!< Access the data of a CoordinateChildLeaf
+  const std::vector<Coordinate> &get_data() const { return data; }
+
+  //!< Access the children of a CoordinateChildLeaf
+  const std::vector<ParticleDataLeaf> &get_children() const { return children; }
+
+private:
+  std::vector<ParticleDataLeaf> children;
+  std::vector<Coordinate> data;
+};
+
+// }}}
 
 class Simulation;
 class Volume;
 class Layer;
 
 // Particle class declarations{{{
+
+class ParticleDataLeaf;
 
 /*!
  * \brief A class for representing simulation particles.
@@ -314,6 +349,14 @@ public:
   virtual void fire() = 0;
 
   /*!
+   * \brief Returns a reference to the ParticleDataLeaf.
+   *
+   * The ParticleDataLeaf contains data that is generated during a particle
+   * history.
+   */
+  virtual const ParticleDataLeaf get_data_leaf() const { return data_leaf_; };
+
+  /*!
    * \brief Default destructor for Particle
    */
   virtual ~Particle() = default;
@@ -357,6 +400,8 @@ protected:
                               //!< and 1 for various uses.
   boost::random::mt19937
       &random_number_generator_; //!< Reference to random number generator
+  ParticleDataLeaf data_leaf_;   //!< A structure for holding data generated
+                                 //!< during a particle history.
 }; // }}}
 
 // Electron class declarations{{{
@@ -708,13 +753,13 @@ private:
   boost::random::discrete_distribution<size_t, double> discrete_distribution_;
 }; // }}}
 
-// Volume classs declarations{{{
+// Volume class declarations{{{
 
 /*!
  * \brief A class for representing the simulation environment.
  *
  * This class allows for one or more layers of materials to be
- * simulated. A material is composed of reltiave fractions of one or more
+ * simulated. A material is composed of relatiave fractions of one or more
  * isotopes of any element.
  */
 class Volume final {
@@ -768,7 +813,7 @@ private:
  * \brief Representation of a single particle bombardment.
  *
  * This class represents a bombardment of a single particle incident on a
- * volume. It initiates a particle bobardment and manages IO of the
+ * volume. It initiates a particle bombardment and manages IO of the
  * bombardment information, including what information is sent to the front
  * end, and what is saved to a file on disk.
  */
@@ -812,10 +857,10 @@ private:
 // Simulation class declarations{{{
 
 /*!
- * \brief A class for initating, running, and terminating a multi-bombardment
+ * \brief A class for initiating, running, and terminating a multi-bombardment
  * simulation.
  *
- * This simulation class mangages particle simulations. It accepts a number of
+ * This simulation class manages particle simulations. It accepts a number of
  * settings for a simulation, and then performs those simulations, before
  * reporting the results to the front end. For example, the front end may
  * request a 1,000 electron bombardment in Iron, which will cause the back-end
@@ -844,7 +889,7 @@ public:
     const struct Particle::Properties
         incident_particle_properties_; //!< Properties of the incident
                                        //!< particle
-    const bool enable_damage_cascade_; //!< Control whether damange cascade
+    const bool enable_damage_cascade_; //!< Control whether damage cascade
                                        //!< is enabled
     const energy_quantity ion_stopping_energy_; //!< Energy at which ions stop
     const energy_quantity ion_displacement_energy_; //!< Energy to displace ions
@@ -872,13 +917,13 @@ public:
     const size_t
         thread_count_; //!< The number of threads to use in the simulation
 
-    Settings() = delete; //!< Default constructor ensures intialization
+    Settings() = delete; //!< Default constructor ensures initialization
 
     /*!
      * \brief Constructor for a Settings struct.
      *
      * By deleting the default constructor and allowing construction using
-     * this struct, initialization of all fields is guarenteed. All members
+     * this struct, initialization of all fields is guaranteed. All members
      * of Settings are represented as parameters in this constructor.
      *
      * TODO: Modify to accept a map instead
@@ -962,6 +1007,18 @@ private:
   std::vector<Bombardment> bombardments_;
   boost::asio::thread_pool thread_pool_;
 }; // }}}
+
+/*!
+ * \brief A class that provides a function to generate a random seed.
+ *
+ * The generate() function in this class attempts to use a hardware random,
+ * number generator to create a seed. If this is not possible, then the code
+ * falls back on the system time and thread information instead.
+ */
+class EntropySeeder {
+public:
+  static boost::mt19937::result_type generate();
+};
 
 } // namespace common
 } // namespace amcset
