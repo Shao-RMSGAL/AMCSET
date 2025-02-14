@@ -51,7 +51,7 @@ build_dir="$project_dir/build/$mode"
 
 conan_flags="--build=missing --settings=build_type=$mode"
 cmake_flags="--preset conan-$mode_lower"
-run_flags="-v=0 --gui=false"
+run_flags="-v=0 --gui=true"
 
 test_dir="$project_dir/build/$mode/test"
 export TESTDIR="$build_dir/log"

@@ -362,8 +362,9 @@ void Bombardment::run_bombardment() try {
   // hence why it is called a "leaf".
   // TODO:Remove this comment
 
-  for (auto particle_data : incident_particle_.get_data_leaf().get_children()) {
-  }
+  for (auto particle_data :
+       incident_particle_->get_data_leaf().get_children()) {
+  } // TODO: Complete data parsing
 
   VLOG(1) << "...Ion bombardment complete.";
 
@@ -374,7 +375,7 @@ void Bombardment::run_bombardment() try {
 Particle::Particle(size_t z_number, size_t mass_number,
                    const Simulation &simulation,
                    boost::random::uniform_01<double> &uniform_distribution,
-                   boost::random::mt19937 &random_number_generator, ) try
+                   boost::random::mt19937 &random_number_generator) try
     : properties_(Particle::Properties(z_number, mass_number)),
       particles_(std::vector<std::unique_ptr<Particle>>()),
       coordinates_(std::vector<Coordinate>()), simulation_(simulation),

@@ -240,7 +240,7 @@ struct Velocity {
 class ParticleDataLeaf {
 public:
   //!< Construct a ParticleDataLeaf using a move constructor
-  ParticleDataLeaf();
+  ParticleDataLeaf() = default;
 
   //!< Add a coordinate to the data vector.
   void add_coordinate(const Coordinate &coordinate) {
