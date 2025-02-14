@@ -34,10 +34,14 @@
 #include <boost/units/systems/si/length.hpp>
 #include <boost/units/systems/si/mass.hpp>
 
+#include <algorithm>
 // #include <array>
+#include <chrono>
 #include <cmath>
 #include <fstream>
+// #include <limits>
 #include <numeric>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 
@@ -274,13 +278,13 @@ int Simulation::run_simulation() try {
   LOG(INFO) << "Starting Simulation...";
   for (auto &bombardment : bombardments_) {
     // TODO: Enable multithreading
-    // boost::asio::post(thread_pool_, [&bombardment]() {
-    LOG(INFO) << "Starting Bombardment...";
-    bombardment.run_bombardment();
-    LOG(INFO) << "...Bombardment Complete!";
-    // });
+    boost::asio::post(thread_pool_, [&bombardment]() {
+      LOG(INFO) << "Starting Bombardment...";
+      bombardment.run_bombardment();
+      LOG(INFO) << "...Bombardment Complete!";
+    });
   }
-  // thread_pool_.join();
+  thread_pool_.join();
   LOG(INFO) << "...Simulation complete";
   return 0;
 } catch (...) {
@@ -322,8 +326,10 @@ std::string Simulation::print_settings() const try {
 
 // Bombardment function implementations{{{
 Bombardment::Bombardment(const Simulation &simulation, size_t id) try
-    : simulation_(simulation), random_number_generator_(),
-      uniform_distribution_(), id_(id) {
+    : simulation_(simulation),
+      random_number_generator_(EntropySeeder::generate()),
+      uniform_distribution_(), id_(id) { // TODO: Provide the option to set a
+                                         // seed instead of random generation.
   VLOG(1) << "Attempting random number: "
           << uniform_distribution_(random_number_generator_);
 
@@ -345,10 +351,21 @@ void Bombardment::run_bombardment() try {
         simulation_.get_settings(&Simulation::Settings::z_number_),
         simulation_.get_settings(&Simulation::Settings::mass_number_),
         simulation_, uniform_distribution_, random_number_generator_);
-    VLOG(1) << "...Ion bombardment complete.";
   }
 
   incident_particle_->fire();
+
+  // Post-bombardment processing.
+  // This goes through the incident_particle_ data_leaf_ and
+  // looks for knock-ons through the list of pointers
+  // contained within the ParticleDataLeaf class. It is a tree-structure,
+  // hence why it is called a "leaf".
+  // TODO:Remove this comment
+
+  for (auto particle_data : incident_particle_.get_data_leaf().get_children()) {
+  }
+
+  VLOG(1) << "...Ion bombardment complete.";
 
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
@@ -357,7 +374,7 @@ void Bombardment::run_bombardment() try {
 Particle::Particle(size_t z_number, size_t mass_number,
                    const Simulation &simulation,
                    boost::random::uniform_01<double> &uniform_distribution,
-                   boost::random::mt19937 &random_number_generator) try
+                   boost::random::mt19937 &random_number_generator, ) try
     : properties_(Particle::Properties(z_number, mass_number)),
       particles_(std::vector<std::unique_ptr<Particle>>()),
       coordinates_(std::vector<Coordinate>()), simulation_(simulation),
@@ -366,7 +383,7 @@ Particle::Particle(size_t z_number, size_t mass_number,
           simulation.get_settings(&Simulation::Settings::incident_energy_))),
       coordinate_(Coordinate(0, 0, 0)),
       uniform_distribution_(uniform_distribution),
-      random_number_generator_(random_number_generator) {
+      random_number_generator_(random_number_generator), data_leaf_() {
   VLOG(1) << "Creating particle with velocity (" << velocity_.quaternion_.r_
           << ", " << velocity_.quaternion_.z_ << ", "
           << velocity_.quaternion_.y_ << ", " << velocity_.quaternion_.z_
@@ -859,7 +876,7 @@ void Electron::fire() try {
 
 // Ion function implementations // {{{
 void Ion::fire() try {
-  std::ostringstream string_stream;
+  // std::ostringstream string_stream;
   LOG(INFO) << "Firing ion with initial energy " << velocity_.energy_;
   const auto ion_stopping_energy =
       simulation_.get_settings(&Simulation::Settings::ion_stopping_energy_);
@@ -868,7 +885,7 @@ void Ion::fire() try {
 
 #ifdef NDEBUG /*{{{*/
 #else
-  // Grad an iterator to a view of the first
+  // Grab an iterator to a view of the first (Debug code)
   auto comp_view = current_layer.get_relative_compositions().begin();
   for (size_t i = 0; i < current_layer.get_number_of_components(); i++) {
     auto direct_composition = current_layer.get_relative_composition(i);
@@ -880,93 +897,95 @@ void Ion::fire() try {
   }
 #endif /*}}}*/
 
-  for (int i = 0; i < 100; i++) {
-    coordinate_ = Coordinate(angstrom * 0.0, angstrom * 0.0, angstrom * 0.0);
-    velocity_.energy_ = 100.0 * kilo_electron_volt;
-    velocity_.quaternion_ = Quaternion(0.0, 0.0, 0.0, 1.0);
+  coordinate_ = Coordinate(angstrom * 0.0, angstrom * 0.0, angstrom * 0.0);
+  velocity_.energy_ = 100.0 * kilo_electron_volt;
+  velocity_.quaternion_ = Quaternion(0.0, 0.0, 0.0, 1.0);
 
-    auto &energy = velocity_.energy_;
-    // auto &coordinate = coordinate_;
-    while (velocity_.energy_ > ion_stopping_energy) {
-      // TODO:
-      const size_t atom_index =
-          current_layer.get_discrete_distribution()(random_number_generator_);
-      const auto layer_properties = current_layer.get_property(atom_index);
+  auto &energy = velocity_.energy_;
+  // auto &coordinate = coordinate_;
+  while (velocity_.energy_ > ion_stopping_energy) {
+    // TODO:
+    const size_t atom_index =
+        current_layer.get_discrete_distribution()(random_number_generator_);
+    const auto layer_properties = current_layer.get_property(atom_index);
 
-      auto z_1 = properties_.charge_;
-      auto z_2 = layer_properties.charge_;
-      auto m_1 = properties_.mass_;
-      auto m_2 = layer_properties.mass_;
-      auto number_density = current_layer.get_number_density();
+    auto z_1 = properties_.charge_;
+    auto z_2 = layer_properties.charge_;
+    auto m_1 = properties_.mass_;
+    auto m_2 = layer_properties.mass_;
+    auto number_density = current_layer.get_number_density();
 
-      // TODO: Implement simulation calculations
-      //
-      // 1. Subtract electronic stopping energy
-      velocity_.energy_ = electronic_stopping_energy(
-          z_1, m_1, energy, number_density, layer_properties);
+    // TODO: Implement simulation calculations
+    //
+    // 1. Subtract electronic stopping energy
+    velocity_.energy_ = electronic_stopping_energy(
+        z_1, m_1, energy, number_density, layer_properties);
 
-      VLOG(2) << "New energy " << velocity_.energy_;
-      auto speed = speed_from_energy(energy, m_1);
-      // auto rd_mass = reduced_mass(m_1, m_2);
-      auto c_mass_energy = cm_energy(m_1, speed);
-      auto screen_length = screening_length(z_1, z_2);
-      auto rd_energy = reduced_energy(screen_length, c_mass_energy, z_1, z_2);
-      auto path_length = free_flying_path_length(m_1, m_2, rd_energy,
-                                                 screen_length, number_density);
-      auto i_param = impact_parameter(number_density, path_length, rd_energy);
+    VLOG(2) << "New energy " << velocity_.energy_;
+    auto speed = speed_from_energy(energy, m_1);
+    // auto rd_mass = reduced_mass(m_1, m_2);
+    auto c_mass_energy = cm_energy(m_1, speed);
+    auto screen_length = screening_length(z_1, z_2);
+    auto rd_energy = reduced_energy(screen_length, c_mass_energy, z_1, z_2);
+    auto path_length = free_flying_path_length(m_1, m_2, rd_energy,
+                                               screen_length, number_density);
+    auto i_param = impact_parameter(number_density, path_length, rd_energy);
 
-      // auto coll_diameter = collision_diameter(z_1, z_2, rd_mass, speed);
-      auto closest_appr = closest_approach(z_1, z_2, c_mass_energy, i_param);
-      auto rad_curv =
-          radius_of_curvature(closest_appr, c_mass_energy, z_1, z_2);
-      auto magic_correction = magic_formula_correction_parameter(
-          rd_energy, i_param, screen_length, closest_appr);
-      auto cm_scatter_angle = magic_formula_scattering_angle(
-          i_param, closest_appr, rad_curv, magic_correction, screen_length);
-      auto nuclear_e_loss =
-          nuclear_energy_loss(m_1, m_2, energy, cm_scatter_angle);
-      energy -= nuclear_e_loss; // TODO: Check for knock-ons
-      auto laboratory_scatter_angle =
-          laboratory_scattering_angle(cm_scatter_angle, m_1, m_2);
-      rotate_inplace(laboratory_scatter_angle); // Changes velocity in-place
-      auto &velocity = velocity_.quaternion_;
+    // auto coll_diameter = collision_diameter(z_1, z_2, rd_mass, speed);
+    auto closest_appr = closest_approach(z_1, z_2, c_mass_energy, i_param);
+    auto rad_curv = radius_of_curvature(closest_appr, c_mass_energy, z_1, z_2);
+    auto magic_correction = magic_formula_correction_parameter(
+        rd_energy, i_param, screen_length, closest_appr);
+    auto cm_scatter_angle = magic_formula_scattering_angle(
+        i_param, closest_appr, rad_curv, magic_correction, screen_length);
+    auto nuclear_e_loss =
+        nuclear_energy_loss(m_1, m_2, energy, cm_scatter_angle);
+    energy -= nuclear_e_loss; // TODO: Check for knock-ons
+    auto laboratory_scatter_angle =
+        laboratory_scattering_angle(cm_scatter_angle, m_1, m_2);
+    rotate_inplace(laboratory_scatter_angle); // Changes velocity in-place
+    auto &velocity = velocity_.quaternion_;
 
-      VLOG(2) << "Original coordinate (" << coordinate_.x_ << ", "
-              << coordinate_.y_ << ", " << coordinate_.z_ << ")";
+    VLOG(2) << "Original coordinate (" << coordinate_.x_ << ", "
+            << coordinate_.y_ << ", " << coordinate_.z_ << ")";
 
-      VLOG(2) << "Original velocity (" << velocity.x_ << ", " << velocity.y_
-              << ", " << velocity.z_ << ")";
-      // TODO: Replace with more elegant code
-      auto new_coordinate =
-          Coordinate{coordinate_.x_ + path_length * velocity.x_,
-                     coordinate_.y_ + path_length * velocity.y_,
-                     coordinate_.z_ + path_length * velocity.z_};
+    VLOG(2) << "Original velocity (" << velocity.x_ << ", " << velocity.y_
+            << ", " << velocity.z_ << ")";
+    // TODO: Replace with more elegant code
+    auto new_coordinate =
+        Coordinate{coordinate_.x_ + path_length * velocity.x_,
+                   coordinate_.y_ + path_length * velocity.y_,
+                   coordinate_.z_ + path_length * velocity.z_};
+    data_leaf_.add_coordinate(new_coordinate);
 
-      coordinate_.operator=(new_coordinate);
-      string_stream << velocity.r_ << "," << coordinate_.x_.value() << ","
-                    << coordinate_.y_.value() << "," << coordinate_.z_.value()
-                    << "\n";
+    coordinate_.operator=(
+        new_coordinate); // HACK: Find why this is necessary. Something to do
+                         // with Coordinate being 'const' (this should no longer
+                         // be needed, just too scared to change)
+    // string_stream << velocity.r_ << "," << coordinate_.x_.value() << ","
+    //               << coordinate_.y_.value() << "," << coordinate_.z_.value()
+    //               << "\n"; TODO:  Remove
 
-      VLOG(2) << "Final coordinate moved " << path_length << " away: ("
-              << coordinate_.x_ << ", " << coordinate_.y_ << ", "
-              << coordinate_.z_ << ")";
+    VLOG(2) << "Final coordinate moved " << path_length << " away: ("
+            << coordinate_.x_ << ", " << coordinate_.y_ << ", "
+            << coordinate_.z_ << ")";
 
-      // TODO: Implement derivative of screening potential
+    // TODO: Implement derivative of screening potential
 
-      // 2. Calculate recoil energy and velocity
-      // 3. Calculate new coordinate (push old coordinate to vector)
-      // 4. Determine if sputtering occured
-      // 5. Check if damage cascade occurs
-      //    a. If so, if energy difference is larger than displacement
-      //    energy, create a cascade particle and push it to the particles_
-      //    vector
-    }
+    // 2. Calculate recoil energy and velocity
+    // 3. Calculate new coordinate (push old coordinate to vector)
+    // 4. Determine if sputtering occurred
+    // 5. Check if damage cascade occurs
+    //    a. If so, if energy difference is larger than displacement
+    //    energy, create a cascade particle and push it to the particles_
+    //    vector
+    // }
   }
 
-  // TODO: FIX
-  std::ofstream file_stream("output.csv");
-  file_stream << "scalar,x,y,z\n";
-  file_stream << string_stream.str();
+  // // TODO: Remove
+  // std::ofstream file_stream("output.csv");
+  // file_stream << "scalar,x,y,z\n";
+  // file_stream << string_stream.str();
 
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
@@ -1129,6 +1148,47 @@ Quaternion Quaternion::conjugate_copy() const {
 double Quaternion::magnitude() const {
   return std::sqrt(r_ * r_ + x_ * x_ + y_ * y_ + z_ * z_);
 } // }}}
+
+boost::mt19937::result_type EntropySeeder::generate() {
+  try {
+    VLOG(1) << "Attempting to seed with hardware entropy source.";
+    // Try hardware entropy first
+    std::random_device hw_rng;
+    // Test if hardware entropy is actually available
+    if (hw_rng.entropy() > 0) {
+      // Get multiple values to increase entropy
+      std::array<std::random_device::result_type, 10> entropy_values;
+      std::generate(entropy_values.begin(), entropy_values.end(),
+                    std::ref(hw_rng));
+
+      // Combine entropy values using XOR
+      std::random_device::result_type seed = 0;
+      for (const auto &value : entropy_values) {
+        seed ^= value;
+      }
+
+      VLOG(1) << "Hardware entropy-generated seed value is " << seed;
+      return static_cast<boost::mt19937::result_type>(seed);
+    } else {
+      VLOG(1) << "Hardware entropy generator not found";
+    }
+  } catch (const std::exception &e) {
+    VLOG(1) << "Exception caught after attempting hardware entropy generation: "
+            << e.what();
+    // Hardware RNG might not be available, fall through to backup method
+  }
+
+  // Fallback to combining system clock with process/thread specific information
+  auto time_seed =
+      std::chrono::high_resolution_clock::now().time_since_epoch().count();
+  auto pid_seed = static_cast<boost::mt19937::result_type>(
+      std::hash<std::thread::id>{}(std::this_thread::get_id()));
+  VLOG(1) << "Falling back on time " << time_seed << " and pid " << pid_seed;
+  auto seed = time_seed ^ pid_seed;
+  VLOG(1) << "Calculated fallback seed as " << seed;
+
+  return static_cast<boost::mt19937::result_type>(seed);
+}
 
 } // namespace common
 } // namespace amcset
