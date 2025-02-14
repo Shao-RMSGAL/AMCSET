@@ -29,13 +29,13 @@
 #include <glog/logging.h>
 
 #include "amcset_common.h"
-#include "amcset_server.h"
 #include "amcset_utilities.h"
+#include "application.h"
 #include "config.h"
+#include "mainwindow.h"
 
 DEFINE_bool(gui, true, "Enable or disable the graphical user interface (GUI)");
 
-using namespace amcset::server;
 using namespace amcset::common;
 
 int main(int argc, char *argv[]) {
@@ -122,16 +122,23 @@ int main(int argc, char *argv[]) {
 
     if (FLAGS_gui) {
       LOG(INFO) << "Starting AMCSET GUI...";
-      auto application = Application{argc, argv, &simulation};
+      QApplication app(argc, argv);
+
+      amcset::gui::Application application(&simulation);
+
       VLOG(1) << "Initializing window";
-      auto main_window = MainWindow{&application};
+      amcset::gui::MainWindow mainWindow(&application);
+
       VLOG(1) << "Resizing window";
-      main_window.resize(800, 600); // TODO: Make this a setting/ store it when
-                                    // the user manually resizes.
+
+      mainWindow.resize(800, 600); // TODO: Make this a setting/ store it when
+                                   // the user manually resizes.
+
       VLOG(1) << "Showing window";
-      main_window.show();
+      mainWindow.show();
+
       VLOG(1) << "Executing application";
-      exit_code = application.exec();
+      exit_code = app.exec();
       LOG(INFO) << "...Quitting AMCSET GUI. Exit code: " << exit_code;
       return exit_code;
     } else {

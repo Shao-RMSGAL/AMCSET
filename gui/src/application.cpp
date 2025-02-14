@@ -1,4 +1,4 @@
-// Copyright 2024, Texas A&M University
+// Copyright 2025, Texas A&M University
 //
 // This file is part of AMCSET.
 //
@@ -14,21 +14,31 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
-// Author note: I am not a UI dev. I just did what I needed to in order to get
-// this to work. Forgive any jankyness, and feel free to reimplement this.
+// Qt includes
+#include <QPalette>
 
-#include <QHBoxLayout>
-#include <QString>
-#include <QVBoxLayout>
+// Logging libraries
+#include <glog/logging.h>
 
-#include "amcset_server.h"
-#include "config.h"
+// Local library includes
+#include "application.h"
 
 namespace amcset {
-namespace server {
+namespace gui {
 
-// Dark mode toggle{{{
-void Application::toggle_dark_mode() {
+Application::Application(amcset::common::Simulation *simulation)
+    : QObject(nullptr), simulation_(simulation) {
+  // Initialize settings
+  darkMode_ = true;
+  settings_.beginGroup("MainWindow");
+}
+
+Application::~Application() {
+  // Save settings on destruction
+  settings_.sync();
+}
+
+void Application::toggleDarkMode() {
 #ifndef Q_OS_MACOS
   qApp->setStyle("Fusion");
   auto palette = QPalette();
@@ -40,21 +50,22 @@ void Application::toggle_dark_mode() {
   Qt::GlobalColor primaryColor;
   Qt::GlobalColor secondaryColor;
 
-  if (dark_mode) {
+  if (darkMode_) {
     LOG(INFO) << "Enabling Light Mode";
     color_1 = QColor(200, 200, 200);
     color = QColor(255, 255, 255);
     primaryColor = Qt::black;
     secondaryColor = Qt::white;
-    dark_mode = false;
   } else {
     LOG(INFO) << "Enabling Dark Mode";
     color_1 = QColor(18, 18, 18);
     color = QColor(38, 38, 38);
     primaryColor = Qt::white;
     secondaryColor = Qt::black;
-    dark_mode = true;
   }
+
+  darkMode_ = !darkMode_;
+
   palette.setColor(QPalette::Window, color);
   palette.setColor(QPalette::WindowText, primaryColor);
   palette.setColor(QPalette::Base, color);
@@ -77,56 +88,40 @@ void Application::toggle_dark_mode() {
   palette.setColor(QPalette::ButtonText, primaryColor);
 
   qApp->setPalette(palette);
-  qApp->setStyleSheet("QToolTip { color: #000000; background-color: #ffffff; "
+  qApp->setStyleSheet("QToolTip { color: #000000; background-color:#ffffff;"
                       "border: 1px solid black; }");
 #else
   LOG(INFO) << "Dark mode cannot be set. You are on MacOS."
 #endif
-} // }}}
+}
+// }}}
 
-// MainWindow {{{
-MainWindow::MainWindow(Application *app_in) {
-  app = app_in;
+bool Application::getDarkMode() const noexcept { return darkMode_; };
 
-  // Layout code
-  base_frame_ = new QFrame;
-  auto base_vbox = new QVBoxLayout;
-  base_frame_->setLayout(base_vbox);
+void Application::runSimulation() { simulation_->run_simulation(); }
 
-  dark_mode_button_ = new QPushButton;
-  start_simulation_button_ = new QPushButton;
-  base_vbox->addWidget(dark_mode_button_);
-  base_vbox->addWidget(start_simulation_button_);
+void Application::saveWindowSize(const QSize &size) {
+  settings_.setValue("size", size);
+}
 
-  if (app->get_dark_mode()) {
-    dark_mode_button_->setText("Switch to Light Mode");
-  } else {
-    dark_mode_button_->setText("Switch to Dark Mode");
-  }
-  connect(dark_mode_button_, &QPushButton::clicked, [&] {
-    try {
-      app->toggle_dark_mode();
-      if (app->get_dark_mode()) {
-        dark_mode_button_->setText("Switch to Light Mode");
-      } else {
-        dark_mode_button_->setText("Switch to Dark Mode");
-      }
-    } catch (const std::exception &e) {
-      QMessageBox::information(this, "Exception handled", e.what());
-    }
-  });
+void Application::saveWindowGeometry(const QByteArray &geometry) {
+  settings_.setValue("geometry", geometry);
+}
 
-  start_simulation_button_->setText("Run Simulation");
-  connect(start_simulation_button_, &QPushButton::clicked,
-          [&] { app->runSimulation(); });
+void Application::saveFullscreenState(bool isFullscreen) {
+  settings_.setValue("fullscreen", isFullscreen);
+}
 
-  setCentralWidget(base_frame_);
-  setWindowTitle(QString("AMCSET version %1.%2.%3")
-                     .arg(amcset_VERSION_MAJOR)
-                     .arg(amcset_VERSION_MINOR)
-                     .arg(amcset_VERSION_PATCH));
-  // resize(label1.sizeHint());
-} // }}}
+QSize Application::loadWindowSize() const {
+  return settings_.value("size", QSize(800, 600)).toSize();
+}
 
-} // namespace server
+QByteArray Application::loadWindowGeometry() const {
+  return settings_.value("geometry", QByteArray()).toByteArray();
+}
+
+bool Application::loadFullscreenState() const {
+  return settings_.value("fullscreen", false).toBool();
+}
+} // namespace gui
 } // namespace amcset
