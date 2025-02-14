@@ -40,7 +40,12 @@
 #endif
 
 // Standard library
+// #include <mutex>
 #include <ranges>
+#include <shared_mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 // Boost random numbers
 #include <boost/random/discrete_distribution.hpp>
@@ -54,6 +59,7 @@
 // Boost asio
 #include <boost/asio.hpp>
 
+// Local includes
 #include "amcset_utilities.h"
 #include "isotope_data.h" // }}}
 
@@ -237,6 +243,85 @@ struct Velocity {
  * This class holds coordinate data, as well as pointers to ParticleDataLeafs
  * of generated knock-on particles.
  */
+template <typename... Types> class DataFrame {
+public:
+  //!< For batch read operations
+  class ReadLock {
+  private:
+    std::shared_lock<std::shared_mutex> lock;
+
+  public:
+    explicit ReadLock(const DataFrame &df) : lock(df.frame_mutex) {}
+  };
+
+  //!< For batch write operations
+  class WriteLock {
+  private:
+    std::unique_lock<std::shared_mutex> lock;
+
+  public:
+    explicit WriteLock(const DataFrame &df) : lock(df.frame_mutex) {}
+  };
+
+  //!< Read-only column-wise access
+  template <typename T>
+  const std::vector<T> &get_column(const std::string &column_name,
+                                   const ReadLock &) const {
+    return std::get<std::vector<T>>(columns.at(column_name));
+  }
+
+  //!< Read/Write column-wise access
+  template <typename T>
+  std::vector<T> &get_column(const std::string &column_name,
+                             const WriteLock &) {
+    return std::get<std::vector<T>>(columns.at(column_name));
+  }
+
+  //!< Add a column.
+  template <typename T> constexpr void add_column(const std::string &name) {
+    std::unique_lock lock(frame_mutex);
+    columns[name] = std::vector<T>(num_rows);
+  }
+
+  //!< Read a single cell
+  template <typename T>
+  T read_cell(const std::string &column_name, size_t row) {
+    std::shared_lock lock(frame_mutex);
+    auto &column = std::get<std::vector<T>>(columns[column_name]);
+    return column[row];
+  }
+
+  //!< Write to a single cell
+  template <typename T>
+  void write_cell(const std::string &column_name, size_t row, T value) {
+    std::unique_lock lock(frame_mutex);
+    auto &column = std::get<std::vector<T>>(columns[column_name]);
+    column[row] = value;
+  }
+
+  //!< Add a new row
+  void add_row() {
+    std::unique_lock lock(frame_mutex);
+    for (auto &[_, column] : columns) {
+      std::visit([](auto &vec) { vec.push_back({}); }, column);
+    }
+    num_rows++;
+  }
+
+  //!< Get number of rows
+  size_t size() const {
+    std::shared_lock lock(frame_mutex);
+    return num_rows;
+  }
+
+private:
+  using ColumnData = std::variant<std::vector<Types>...>;
+
+  std::unordered_map<std::string, ColumnData> columns;
+  mutable std::shared_mutex frame_mutex;
+  size_t num_rows = 0;
+};
+
 class ParticleDataLeaf {
 public:
   //!< Construct a ParticleDataLeaf using a move constructor
@@ -260,6 +345,13 @@ private:
   std::vector<ParticleDataLeaf> children;
   std::vector<Coordinate> data;
 };
+
+/*!
+ * \brief A class for storing various tallies that are collected across
+ * simulations.
+ *
+ * A Simulation object will have several
+ */
 
 // }}}
 
@@ -354,7 +446,14 @@ public:
    * The ParticleDataLeaf contains data that is generated during a particle
    * history.
    */
-  virtual const ParticleDataLeaf get_data_leaf() const { return data_leaf_; };
+  virtual const ParticleDataLeaf &get_data_leaf() const { return data_leaf_; };
+
+  /*!
+   * \brief Returns a const reference to the particle coordinate data
+   */
+  virtual const std::vector<Coordinate> &get_coordinates() const {
+    return coordinates_;
+  };
 
   /*!
    * \brief Default destructor for Particle
@@ -829,7 +928,7 @@ public:
    * Simulation parameters are extracted from this.
    * \param id The ID of the bombardment
    */
-  Bombardment(const Simulation &simulation, size_t id);
+  Bombardment(Simulation &simulation, size_t id);
 
   /*!
    * \brief Run a bombardment;
@@ -847,7 +946,7 @@ public:
   size_t get_id() const noexcept { return id_; }
 
 private:
-  const Simulation &simulation_;
+  Simulation &simulation_;
   std::unique_ptr<Particle> incident_particle_;
   boost::random::mt19937 random_number_generator_;
   boost::random::uniform_01<double> uniform_distribution_;
@@ -1001,11 +1100,21 @@ public:
    */
   const Volume &get_volume() const { return volume_; };
 
+  /*!
+   * \brief Return a mutable reference to the Simulation dataframe.
+   *
+   * This allows bombardment threads to access the simulation tallies and
+   * modify them. It can store either integer types or data types.
+   */
+  DataFrame<double, int> &get_dataframe() { return dataframe; };
+
 private:
   const Settings settings_;
   Volume volume_;
   std::vector<Bombardment> bombardments_;
   boost::asio::thread_pool thread_pool_;
+  DataFrame<double, int> dataframe; //!< Stores simulation tallies contributed
+                                    //!< by multiple bombardments.
 }; // }}}
 
 /*!

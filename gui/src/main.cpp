@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
     length_quantity range =
         100000.0 * angstrom; // Target range. Should be unused. HACK: Remove
                              // once confirmed to be unused.
-    size_t bombardment_count = 1000; // TEST: Test with more later.
+    size_t bombardment_count = 1; // TEST: Test with more later.
     bool is_electron =
         false; // Start with ions. TEST: Test with electrons later.
     energy_quantity incident_energy =

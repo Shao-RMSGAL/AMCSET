@@ -256,7 +256,7 @@ Simulation::Settings::Settings(
 
 Simulation::Simulation(const Settings settings, Volume &&volume) try
     : settings_(settings), volume_(std::move(volume)),
-      thread_pool_(settings.thread_count_) {
+      thread_pool_(settings.thread_count_), dataframe() {
   LOG(INFO) << "Creating simulation with settings:\n"
             << Simulation::print_settings(); // TODO: Print volume
                                              // information as well.
@@ -269,6 +269,36 @@ Simulation::Simulation(const Settings settings, Volume &&volume) try
   }
   bombardments_ = std::move(bombardments);
   LOG(INFO) << "Bombardments Created";
+
+  // TODO:  Make tallies user-configurable.
+  dataframe.add_column<double>("Depth");
+  dataframe.add_column<double>("Interstitial Count");
+  dataframe.add_column<double>("Vacancy Count");
+  dataframe.add_column<double>("Collision Count");
+
+  // TODO: Allow user-configurable bin numbers.
+  auto bin_count = 100;
+  auto write_lock = DataFrame<double, int>::WriteLock(dataframe);
+
+  auto &range_vector = dataframe.get_column<double>("Depth", write_lock);
+  range_vector.reserve(bin_count);
+  auto &interstitial_vector =
+      dataframe.get_column<double>("Interstitial Count", write_lock);
+  interstitial_vector.reserve(bin_count);
+  auto &vacancy_vector =
+      dataframe.get_column<double>("Interstitial Count", write_lock);
+  vacancy_vector.reserve(bin_count);
+  auto &collision_vector =
+      dataframe.get_column<double>("Interstitial Count", write_lock);
+  collision_vector.reserve(bin_count);
+  for (int i = 0; i < bin_count; i++) { // Initialize tallies
+    range_vector.push_back((double)i / settings.range_.value());
+    interstitial_vector.push_back(0.0);
+    vacancy_vector.push_back(0.0);
+    collision_vector.push_back(0.0);
+  }
+
+  LOG(INFO) << "Tallies created";
 
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
@@ -325,7 +355,7 @@ std::string Simulation::print_settings() const try {
 } // }}}
 
 // Bombardment function implementations{{{
-Bombardment::Bombardment(const Simulation &simulation, size_t id) try
+Bombardment::Bombardment(Simulation &simulation, size_t id) try
     : simulation_(simulation),
       random_number_generator_(EntropySeeder::generate()),
       uniform_distribution_(), id_(id) { // TODO: Provide the option to set a
@@ -351,6 +381,7 @@ void Bombardment::run_bombardment() try {
         simulation_.get_settings(&Simulation::Settings::z_number_),
         simulation_.get_settings(&Simulation::Settings::mass_number_),
         simulation_, uniform_distribution_, random_number_generator_);
+    VLOG(1) << "...Ion bombardment complete.";
   }
 
   incident_particle_->fire();
@@ -362,11 +393,19 @@ void Bombardment::run_bombardment() try {
   // hence why it is called a "leaf".
   // TODO:Remove this comment
 
+  // Collect collision tallies
+  auto &dataframe = simulation_.get_dataframe();
+  auto write_lock = DataFrame<double, int>::WriteLock(dataframe);
+  auto &collision_vector =
+      dataframe.get_column<double>("Collision Count", write_lock);
+  // Start with the incident particle's data.
+
+  for (auto coordinate : incident_particle_->get_coordinates()) {
+  }
+
   for (auto particle_data :
        incident_particle_->get_data_leaf().get_children()) {
   } // TODO: Complete data parsing
-
-  VLOG(1) << "...Ion bombardment complete.";
 
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
