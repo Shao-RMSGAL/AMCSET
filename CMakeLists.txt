@@ -42,7 +42,7 @@ endif ()
 
 # Configure subdirectories
 add_subdirectory(common)
-add_subdirectory(server)
+add_subdirectory(gui)
 add_subdirectory(test)
 
 # Add package includes and link common
@@ -53,8 +53,8 @@ target_include_directories(amcset-common SYSTEM PUBLIC
 # target_include_directories(amcset-gui PRIVATE ${Boost_INCLUDE_DIRS})
 target_link_libraries(amcset-common PUBLIC ${Boost_LIBRARY_DIRS} glog::glog)
 
-# Allow link access for common library to server
-target_link_libraries(amcset-server PRIVATE amcset-common 
+# Allow link access for common library to gui
+target_link_libraries(amcset-gui PRIVATE amcset-common 
     Qt6::Core
     Qt6::Widgets
     Qt6::Gui

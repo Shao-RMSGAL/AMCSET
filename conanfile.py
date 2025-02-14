@@ -1,14 +1,25 @@
 from conan import ConanFile
 from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout, CMakeDeps
 import os
+import sys
+
+
+def display_server():
+    if 'WAYLAND_DISPLAY' in os.environ:
+        return 'Wayland'
+    elif 'DISPLAY' in os.environ:
+        return 'X11'
+    elif sys.platform.startswith('win'):
+        return 'Windows'
+    else:
+        raise Exception("Unable to determine display server")
 
 
 class amcsetRecipe(ConanFile):
     name = "amcset"
     version = "0.0.1"
     package_type = "application"
-
-    # Optional metadata
+# Optional metadata
     license = "GPL 3.0"
     author = "Nathaniel Thomas, nathaniel@swbell.net"
     url = "https://github.com/Shao-RMSGAL/AMCSET"
@@ -39,13 +50,14 @@ class amcsetRecipe(ConanFile):
         cmake = CMake(self)
         cmake.configure()
         cmake.build()
-        self.conf["tools.system.package_manager:mode"] = "install"
-        self.conf["tools.system.package_manager:sudo"] = True
+        #  self.conf["tools.system.package_manager:mode"] = "install"
+        #  self.conf["tools.system.package_manager:sudo"] = True
         src_dir = self.source_folder
         build_dir = self.build_folder
         src_dir = self.source_folder
         build_dir = self.build_folder
-        compile_commands_path = os.path.join(build_dir, "compile_commands.json")
+        compile_commands_path = os.path.join(
+            build_dir, "compile_commands.json")
         symlink_path = os.path.join(src_dir, "compile_commands.json")
 
         # Remove existing symlink if it exists
@@ -56,18 +68,19 @@ class amcsetRecipe(ConanFile):
         if os.path.exists(compile_commands_path):
             os.symlink(compile_commands_path, symlink_path)
         else:
-            self.output.warning("compile_commands.json not found in build directory")
+            self.output.warning(
+                "compile_commands.json not found in build directory")
 
     def package(self):
         cmake = CMake(self)
         cmake.install()
 
     def requirements(self):
-        self.requires("boost/1.85.0")
-        self.requires("gtest/1.14.0")
-        self.requires("gflags/2.2.2")
-        self.requires("glog/0.7.1")
-        self.requires("qt/6.7.3")
+        self.requires("boost/[>=1.85.0]")
+        self.requires("gtest/[>=1.14.0]")
+        self.requires("gflags/[>=2.2.2]")
+        self.requires("glog/[>=0.7.1]")
+        self.requires("qt/[>=6.7.3]")
 
     def build_requirements(self):
         self.tool_requires("cmake/[>3.23]")
@@ -76,15 +89,17 @@ class amcsetRecipe(ConanFile):
         #      self.tool_requires("strawberryperl/5.32.1.1")  # Required for Qt on Windows
 
     def configure(self):
-        #  self.options["qt"].with_openssl = True
         # Qt must be built as shared libraries
         self.options["qt"].shared = True
-        self.options["qt"].openssl = True  # You already had this
+        #  self.options["qt"].openssl = True  # You already had this
 
         # Enable required Qt modules
-        self.options["qt"].qtbase = True
-        self.options["qt"].qttools = True
-        self.options["qt"].qtdeclarative = True
-        self.options["qt"].qtwayland = True
-        self.options["qt"].with_host_tools = True
+        #  self.options["qt"].qtbase = True
+        #  self.options["qt"].qttools = True
+        #  self.options["qt"].qtdeclarative = True
+        if display_server() == 'Wayland':
+            self.options["qt"].qtwayland = True
+        elif display_server() in ['X11', 'Windows']:
+            self.options["qt"].qtwayland = False
+        #  self.options["qt"].with_host_tools = True
         self.options["qt"].with_vulkan = False  # Consider changing
