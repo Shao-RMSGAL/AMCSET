@@ -226,7 +226,7 @@ struct Velocity {
    * \param z_angle The value to set to z_angle_
    * \param energy The value to set to energy_
    */
-  constexpr Velocity(Quaternion quaternion, energy_quantity energy) noexcept
+  Velocity(Quaternion quaternion, energy_quantity energy) noexcept
       : quaternion_(quaternion), energy_(energy) {};
 };
 

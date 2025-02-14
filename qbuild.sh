@@ -79,7 +79,7 @@ test() {
 }
 
 run() {
-    $build_dir/amcset-server $run_flags
+    $build_dir/amcset-gui $run_flags
     check_status
 }
 
