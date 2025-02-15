@@ -42,6 +42,7 @@
 // #include <limits>
 #include <numeric>
 #include <random>
+#include <ranges>
 #include <sstream>
 #include <stdexcept>
 
@@ -256,7 +257,7 @@ Simulation::Settings::Settings(
 
 Simulation::Simulation(const Settings settings, Volume &&volume) try
     : settings_(settings), volume_(std::move(volume)),
-      thread_pool_(settings.thread_count_), dataframe() {
+      thread_pool_(settings.thread_count_), dataframe_() {
   LOG(INFO) << "Creating simulation with settings:\n"
             << Simulation::print_settings(); // TODO: Print volume
                                              // information as well.
@@ -271,28 +272,29 @@ Simulation::Simulation(const Settings settings, Volume &&volume) try
   LOG(INFO) << "Bombardments Created";
 
   // TODO:  Make tallies user-configurable.
-  dataframe.add_column<double>("Depth");
-  dataframe.add_column<double>("Interstitial Count");
-  dataframe.add_column<double>("Vacancy Count");
-  dataframe.add_column<double>("Collision Count");
+  dataframe_.add_column<double>("Depth");
+  dataframe_.add_column<double>("Interstitial Count");
+  dataframe_.add_column<double>("Vacancy Count");
+  dataframe_.add_column<double>("Collision Count");
 
   // TODO: Allow user-configurable bin numbers.
   auto bin_count = 100;
-  auto write_lock = DataFrame<double, int>::WriteLock(dataframe);
+  auto write_lock = DataFrame<double, int>::WriteLock(dataframe_);
 
-  auto &range_vector = dataframe.get_column<double>("Depth", write_lock);
+  auto &range_vector = dataframe_.get_column<double>("Depth", write_lock);
   range_vector.reserve(bin_count);
   auto &interstitial_vector =
-      dataframe.get_column<double>("Interstitial Count", write_lock);
+      dataframe_.get_column<double>("Interstitial Count", write_lock);
   interstitial_vector.reserve(bin_count);
   auto &vacancy_vector =
-      dataframe.get_column<double>("Interstitial Count", write_lock);
+      dataframe_.get_column<double>("Vacancy Count", write_lock);
   vacancy_vector.reserve(bin_count);
   auto &collision_vector =
-      dataframe.get_column<double>("Interstitial Count", write_lock);
+      dataframe_.get_column<double>("Collision Count", write_lock);
   collision_vector.reserve(bin_count);
+  auto interval = settings.range_.value() / ((double)bin_count);
   for (int i = 0; i < bin_count; i++) { // Initialize tallies
-    range_vector.push_back((double)i / settings.range_.value());
+    range_vector.push_back(i * interval);
     interstitial_vector.push_back(0.0);
     vacancy_vector.push_back(0.0);
     collision_vector.push_back(0.0);
@@ -316,6 +318,21 @@ int Simulation::run_simulation() try {
   }
   thread_pool_.join();
   LOG(INFO) << "...Simulation complete";
+
+  // TODO: Come up with a more elegant solution to this.
+  LOG(INFO) << "Saving simulation data...";
+  std::ofstream file_stream("output/collisions.csv");
+  file_stream << "Depth,Collisions\n";
+
+  auto read_lock = DataFrame<double, int>::ReadLock(dataframe_);
+  auto depth_vector = dataframe_.get_column<double>("Depth", read_lock);
+  auto collision_vector =
+      dataframe_.get_column<double>("Collision Count", read_lock);
+
+  for (size_t i = 0; i < depth_vector.size(); i++) {
+    file_stream << depth_vector[i] << "," << collision_vector[i] << "\n";
+  }
+
   return 0;
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
@@ -394,18 +411,25 @@ void Bombardment::run_bombardment() try {
   // TODO:Remove this comment
 
   // Collect collision tallies
+  // TODO: Replace this with a recursive algorithm that processes the whole tree
   auto &dataframe = simulation_.get_dataframe();
   auto write_lock = DataFrame<double, int>::WriteLock(dataframe);
   auto &collision_vector =
       dataframe.get_column<double>("Collision Count", write_lock);
   // Start with the incident particle's data.
-
+  auto range = simulation_.get_settings(&Simulation::Settings::range_);
+  auto bin_count = 100; // TODO: Consolidate this value
+  auto interval = range / (double)bin_count;
   for (auto coordinate : incident_particle_->get_coordinates()) {
+    auto depth_index = (int)(coordinate.z_ / interval);
+    if (depth_index < bin_count) {
+      collision_vector[depth_index] += 1;
+    }
   }
 
-  for (auto particle_data :
+  for (auto particle_data : // TODO: Complete data parsing for children
        incident_particle_->get_data_leaf().get_children()) {
-  } // TODO: Complete data parsing
+  }
 
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
@@ -1005,6 +1029,8 @@ void Ion::fire() try {
     // string_stream << velocity.r_ << "," << coordinate_.x_.value() << ","
     //               << coordinate_.y_.value() << "," << coordinate_.z_.value()
     //               << "\n"; TODO:  Remove
+
+    coordinates_.push_back(coordinate_);
 
     VLOG(2) << "Final coordinate moved " << path_length << " away: ("
             << coordinate_.x_ << ", " << coordinate_.y_ << ", "

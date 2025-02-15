@@ -69,7 +69,7 @@ build() {
     check_status
     $cmake_cmd --build $cmake_flags
     check_status
-    cd -
+    # cd -
 }
 
 test() {

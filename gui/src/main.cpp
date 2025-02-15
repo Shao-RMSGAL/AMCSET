@@ -75,9 +75,9 @@ int main(int argc, char *argv[]) {
         1000; // Break flying distnaces into groups of 1000. TEST: Test with
               // different numbers
     length_quantity range =
-        100000.0 * angstrom; // Target range. Should be unused. HACK: Remove
-                             // once confirmed to be unused.
-    size_t bombardment_count = 1; // TEST: Test with more later.
+        5000.0 * angstrom; // Target range. Should be unused. HACK: Remove
+                           // once confirmed to be unused.
+    size_t bombardment_count = 10000; // TEST: Test with more later.
     bool is_electron =
         false; // Start with ions. TEST: Test with electrons later.
     energy_quantity incident_energy =

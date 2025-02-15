@@ -40,11 +40,12 @@
 #endif
 
 // Standard library
-// #include <mutex>
+#include <mutex>
 #include <ranges>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 // Boost random numbers
@@ -1106,15 +1107,15 @@ public:
    * This allows bombardment threads to access the simulation tallies and
    * modify them. It can store either integer types or data types.
    */
-  DataFrame<double, int> &get_dataframe() { return dataframe; };
+  DataFrame<double, int> &get_dataframe() { return dataframe_; };
 
 private:
   const Settings settings_;
   Volume volume_;
   std::vector<Bombardment> bombardments_;
   boost::asio::thread_pool thread_pool_;
-  DataFrame<double, int> dataframe; //!< Stores simulation tallies contributed
-                                    //!< by multiple bombardments.
+  DataFrame<double, int> dataframe_; //!< Stores simulation tallies contributed
+                                     //!< by multiple bombardments.
 }; // }}}
 
 /*!
