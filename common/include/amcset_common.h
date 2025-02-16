@@ -315,12 +315,18 @@ public:
     return num_rows;
   }
 
+  //!< Increment the sputtered atom count
+  void add_sputtered(size_t count) {
+    std::unique_lock lock(frame_mutex);
+    sputtered_count += count;
+  }
+
 private:
   using ColumnData = std::variant<std::vector<Types>...>;
-
   std::unordered_map<std::string, ColumnData> columns;
   mutable std::shared_mutex frame_mutex;
   size_t num_rows = 0;
+  size_t sputtered_count = 0;
 };
 
 class ParticleDataLeaf {
@@ -334,17 +340,25 @@ public:
   };
 
   //!< Add a child to a ParticleDataLeaf
-  void add_child(const ParticleDataLeaf &child) { children.push_back(child); };
+  void add_child(ParticleDataLeaf &&child) {
+    children.emplace_back(
+        std::move(child)); // Efficient construction of ParticleDataLeaf right
+                           // in the vector.
+  };
 
   //!< Access the data of a CoordinateChildLeaf
   const std::vector<Coordinate> &get_data() const { return data; }
 
   //!< Access the children of a CoordinateChildLeaf
-  const std::vector<ParticleDataLeaf> &get_children() const { return children; }
+  std::vector<ParticleDataLeaf> &get_children() { return children; }
+
+  //!< Set the particle to be sputtered
+  void sputter() { sputtered = true; }
 
 private:
   std::vector<ParticleDataLeaf> children;
   std::vector<Coordinate> data;
+  bool sputtered = false;
 };
 
 /*!
@@ -363,6 +377,7 @@ class Layer;
 // Particle class declarations{{{
 
 class ParticleDataLeaf;
+class Bombardment;
 
 /*!
  * \brief A class for representing simulation particles.
@@ -430,7 +445,8 @@ public:
    */
   Particle(size_t z_number, size_t mass_number, const Simulation &simulation,
            boost::random::uniform_01<double> &uniform_distribution,
-           boost::random::mt19937 &random_number_generator);
+           boost::random::mt19937 &random_number_generator,
+           ParticleDataLeaf &data_leaf, Bombardment &bomardment);
 
   /*!
    * \brief A pure virtual firing function for Particle.
@@ -442,19 +458,19 @@ public:
   virtual void fire() = 0;
 
   /*!
-   * \brief Returns a reference to the ParticleDataLeaf.
-   *
-   * The ParticleDataLeaf contains data that is generated during a particle
-   * history.
-   */
-  virtual const ParticleDataLeaf &get_data_leaf() const { return data_leaf_; };
-
-  /*!
    * \brief Returns a const reference to the particle coordinate data
    */
   virtual const std::vector<Coordinate> &get_coordinates() const {
     return coordinates_;
   };
+
+  /*!
+   * \brief Returns a reference to the ParticleDataLeaf.
+   *
+   * The ParticleDataLeaf contains data that is generated during a particle
+   * history.
+   */
+  virtual ParticleDataLeaf &get_data_leaf() { return data_leaf_; };
 
   /*!
    * \brief Default destructor for Particle
@@ -488,8 +504,8 @@ protected:
   virtual Particle &rotate_inplace(angle_quantity scattering_angle);
 
   Properties properties_; //!< Properties of the particle
-  std::vector<std::unique_ptr<Particle>>
-      particles_; //!< List of cascade particles
+  // std::vector<std::unique_ptr<Particle>>
+  //     particles_; //!< List of cascade particles // TODO: Remove permanently
   std::vector<Coordinate>
       coordinates_; //!< List of coordinates of the current particle
   const Simulation &simulation_; //!< Reference to the simulation object
@@ -500,8 +516,8 @@ protected:
                               //!< and 1 for various uses.
   boost::random::mt19937
       &random_number_generator_; //!< Reference to random number generator
-  ParticleDataLeaf data_leaf_;   //!< A structure for holding data generated
-                                 //!< during a particle history.
+  ParticleDataLeaf &data_leaf_;  //!< Reference to a ParticleDataLeaf
+  Bombardment &bombardment_;     //!< Particle bombardment_
 }; // }}}
 
 // Electron class declarations{{{
@@ -523,9 +539,10 @@ public:
    */
   Electron(size_t z_number, size_t mass_number, const Simulation &simulation,
            boost::random::uniform_01<double> &uniform_distribution,
-           boost::random::mt19937 &random_number_generator)
+           boost::random::mt19937 &random_number_generator,
+           ParticleDataLeaf &data_leaf, Bombardment &bombardment)
       : Particle(z_number, mass_number, simulation, uniform_distribution,
-                 random_number_generator) {};
+                 random_number_generator, data_leaf, bombardment) {};
 
   /*!
    * \brief Fire an electron
@@ -556,9 +573,10 @@ public:
    */
   Ion(size_t z_number, size_t mass_number, const Simulation &simulation,
       boost::random::uniform_01<double> &uniform_distribution,
-      boost::random::mt19937 &random_number_generator)
+      boost::random::mt19937 &random_number_generator,
+      ParticleDataLeaf &data_leaf, Bombardment &bombardment)
       : Particle(z_number, mass_number, simulation, uniform_distribution,
-                 random_number_generator) {};
+                 random_number_generator, data_leaf, bombardment) {};
 
   /*!
    * \brief Fire an ion
@@ -827,8 +845,12 @@ public:
    * \return Return the discrete distribution corresponding to the relative
    * composition of atoms in the layer
    */
-  boost::random::discrete_distribution<size_t, double>
+  boost::random::discrete_distribution<size_t, double> &
   get_discrete_distribution() const noexcept {
+    // Cannot return a const reference because calling a distribution is not
+    // const. However, this program does not really care what happens internally
+    // to discrete_distribution, so this non-const behavior is accepted, and
+    // distribution is marked 'mutable'
     return discrete_distribution_;
   }
 
@@ -850,7 +872,8 @@ private:
   const length_quantity depth_;
   const mass_density_quantity mass_density_;
   const number_density_quantity number_density_;
-  boost::random::discrete_distribution<size_t, double> discrete_distribution_;
+  mutable boost::random::discrete_distribution<size_t, double>
+      discrete_distribution_;
 }; // }}}
 
 // Volume class declarations{{{
@@ -892,7 +915,7 @@ public:
    *          which depth falls into, and the second being the index of the
    *          layer in the layers_ vector.
    */
-  std::pair<const Layer *, size_t> get_layer(length_quantity depth) const;
+  const std::pair<const Layer *, size_t> get_layer(length_quantity depth) const;
 
   /*!
    * \brief Get a layer using an index
@@ -946,12 +969,22 @@ public:
    */
   size_t get_id() const noexcept { return id_; }
 
+  /*!
+   * \brief Returns a reference to the ParticleDataLeaf.
+   *
+   * The ParticleDataLeaf contains data that is generated during a particle
+   * history.
+   */
+  ParticleDataLeaf &get_data_leaf() { return data_leaf_; };
+
 private:
   Simulation &simulation_;
   std::unique_ptr<Particle> incident_particle_;
   boost::random::mt19937 random_number_generator_;
   boost::random::uniform_01<double> uniform_distribution_;
   size_t id_;
+  ParticleDataLeaf data_leaf_; //!< A structure for holding data generated
+                               //!< during a particle history.
 }; // }}}
 
 // Simulation class declarations{{{

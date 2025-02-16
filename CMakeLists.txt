@@ -30,7 +30,7 @@ option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
 configure_file(${PROJECT_SOURCE_DIR}/common/include/config.h.in ${PROJECT_SOURCE_DIR}/common/include/config.h)
 
 # Packages
-find_package(Boost 1.85.0 REQUIRED)
+find_package(Boost 1.86.0 REQUIRED)
 find_package(GTest 1.14.0 REQUIRED)
 find_package(glog 0.7.1 REQUIRED)
 find_package(gflags 2.2.2 REQUIRED)
@@ -58,6 +58,5 @@ target_link_libraries(amcset-gui PRIVATE amcset-common
     Qt6::Core
     Qt6::Widgets
     Qt6::Gui
-    glog::glog
     gflags::gflags
 )

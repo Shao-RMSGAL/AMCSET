@@ -414,7 +414,7 @@ TEST_F(CommonTest, ion_test) try {
 
 //! Electronic stopping energy test
 TEST_F(CommonTest, electronic_stopping_energy_test) try {
-  const auto simulation = create_simulation();
+  auto simulation = create_simulation();
   std::cout << "Simulation created" << std::endl; // TODO: Remove
 
   // Populate discrete distribution with iron layer composition
@@ -427,8 +427,11 @@ TEST_F(CommonTest, electronic_stopping_energy_test) try {
   const size_t z_number = 14;
   const size_t mass_number = 28;
 
+  ParticleDataLeaf test_data_leaf; // Required for Ion constructor
+  Bombardment bombardment(simulation, 0);
+
   Ion test(z_number, mass_number, simulation, uniform_distribution,
-           random_number_generator);
+           random_number_generator, test_data_leaf, bombardment);
 
   // auto silicon_28_mass = IsotopeData::get_isotope_mass(14, 28);
 

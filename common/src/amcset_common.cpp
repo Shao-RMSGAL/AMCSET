@@ -162,8 +162,8 @@ const Layer &Volume::get_layer(size_t index) const try {
   rethrow();
 }
 
-std::pair<const Layer *, size_t> Volume::get_layer(length_quantity depth) const
-    try {
+const std::pair<const Layer *, size_t>
+Volume::get_layer(length_quantity depth) const try {
   VLOG(1) << "Getting layer at depth " << depth;
   if (depth < length_quantity(0.0 * angstrom)) {
     throw std::invalid_argument(EXCEPTION_MESSAGE(
@@ -375,8 +375,9 @@ std::string Simulation::print_settings() const try {
 Bombardment::Bombardment(Simulation &simulation, size_t id) try
     : simulation_(simulation),
       random_number_generator_(EntropySeeder::generate()),
-      uniform_distribution_(), id_(id) { // TODO: Provide the option to set a
-                                         // seed instead of random generation.
+      uniform_distribution_(), id_(id),
+      data_leaf_() { // TODO: Provide the option to set a
+                     // seed instead of random generation.
   VLOG(1) << "Attempting random number: "
           << uniform_distribution_(random_number_generator_);
 
@@ -390,14 +391,16 @@ void Bombardment::run_bombardment() try {
     incident_particle_ = std::make_unique<Electron>(
         simulation_.get_settings(&Simulation::Settings::z_number_),
         simulation_.get_settings(&Simulation::Settings::mass_number_),
-        simulation_, uniform_distribution_, random_number_generator_);
+        simulation_, uniform_distribution_, random_number_generator_,
+        get_data_leaf(), *(this));
     VLOG(1) << "...Electron bombardment complete.";
   } else {
     VLOG(1) << "Simulating ion bombardment";
     incident_particle_ = std::make_unique<Ion>(
         simulation_.get_settings(&Simulation::Settings::z_number_),
         simulation_.get_settings(&Simulation::Settings::mass_number_),
-        simulation_, uniform_distribution_, random_number_generator_);
+        simulation_, uniform_distribution_, random_number_generator_,
+        get_data_leaf(), *(this));
     VLOG(1) << "...Ion bombardment complete.";
   }
 
@@ -438,16 +441,22 @@ void Bombardment::run_bombardment() try {
 Particle::Particle(size_t z_number, size_t mass_number,
                    const Simulation &simulation,
                    boost::random::uniform_01<double> &uniform_distribution,
-                   boost::random::mt19937 &random_number_generator) try
+                   boost::random::mt19937 &random_number_generator,
+                   ParticleDataLeaf &data_leaf, Bombardment &bombardment) try
     : properties_(Particle::Properties(z_number, mass_number)),
-      particles_(std::vector<std::unique_ptr<Particle>>()),
+      // particles_(std::vector<std::unique_ptr<Particle>>()), // TODO: Remove
+      // the
+      //                                                       // unique_ptr
+      //                                                       vector
+      //                                                       // of Particles
       coordinates_(std::vector<Coordinate>()), simulation_(simulation),
       velocity_(Velocity(
           Quaternion(1.0, 1.0, 1.0, 1.0), // Point straight towards z-axis
           simulation.get_settings(&Simulation::Settings::incident_energy_))),
       coordinate_(Coordinate(0, 0, 0)),
       uniform_distribution_(uniform_distribution),
-      random_number_generator_(random_number_generator), data_leaf_() {
+      random_number_generator_(random_number_generator), data_leaf_(data_leaf),
+      bombardment_(bombardment) {
   VLOG(1) << "Creating particle with velocity (" << velocity_.quaternion_.r_
           << ", " << velocity_.quaternion_.z_ << ", "
           << velocity_.quaternion_.y_ << ", " << velocity_.quaternion_.z_
@@ -940,12 +949,16 @@ void Electron::fire() try {
 
 // Ion function implementations // {{{
 void Ion::fire() try {
-  // std::ostringstream string_stream;
-  LOG(INFO) << "Firing ion with initial energy " << velocity_.energy_;
-  const auto ion_stopping_energy =
-      simulation_.get_settings(&Simulation::Settings::ion_stopping_energy_);
-  auto current_layer_pair = simulation_.get_volume().get_layer(coordinate_.z_);
-  const Layer &current_layer = *(current_layer_pair.first);
+  VLOG(1) << "Firing ion with initial energy " << velocity_.energy_;
+  auto ion_stopping_energy = simulation_.get_settings(
+      &Simulation::Settings::
+          ion_stopping_energy_); // TODO: Make this a user-configurable
+                                 // element property. Each element may have a
+                                 // different value for this in each material.
+  const auto current_layer_pair =
+      simulation_.get_volume().get_layer(coordinate_.z_);
+  const Layer &current_layer =
+      *(current_layer_pair.first); // TODO: Check for next layer during history
 
 #ifdef NDEBUG /*{{{*/
 #else
@@ -962,40 +975,40 @@ void Ion::fire() try {
 #endif /*}}}*/
 
   coordinate_ = Coordinate(angstrom * 0.0, angstrom * 0.0, angstrom * 0.0);
-  velocity_.energy_ = 100.0 * kilo_electron_volt;
+  velocity_.energy_ =
+      simulation_.get_settings(&Simulation::Settings::incident_energy_);
   velocity_.quaternion_ = Quaternion(0.0, 0.0, 0.0, 1.0);
 
-  auto &energy = velocity_.energy_;
-  // auto &coordinate = coordinate_;
+  auto &energy = velocity_.energy_; // A reference is required so that energy
+                                    // can changed in-place through the alias.
+  auto knock_on_threshold =
+      simulation_.get_settings(&Simulation::Settings::ion_displacement_energy_);
+
   while (velocity_.energy_ > ion_stopping_energy) {
-    // TODO:
+    // Select atom type from current layer
     const size_t atom_index =
         current_layer.get_discrete_distribution()(random_number_generator_);
     const auto layer_properties = current_layer.get_property(atom_index);
-
     auto z_1 = properties_.charge_;
     auto z_2 = layer_properties.charge_;
     auto m_1 = properties_.mass_;
     auto m_2 = layer_properties.mass_;
     auto number_density = current_layer.get_number_density();
 
-    // TODO: Implement simulation calculations
-    //
-    // 1. Subtract electronic stopping energy
-    velocity_.energy_ = electronic_stopping_energy(
+    // Calculate electronic stopping energy
+    auto e_energy_loss = electronic_stopping_energy(
         z_1, m_1, energy, number_density, layer_properties);
+    energy -= e_energy_loss;
 
-    VLOG(2) << "New energy " << velocity_.energy_;
+    // Calculate nuclear scattering energy loss (energy, m_1, m_2, z_1, z_2,
+    // number_density)
     auto speed = speed_from_energy(energy, m_1);
-    // auto rd_mass = reduced_mass(m_1, m_2);
     auto c_mass_energy = cm_energy(m_1, speed);
     auto screen_length = screening_length(z_1, z_2);
     auto rd_energy = reduced_energy(screen_length, c_mass_energy, z_1, z_2);
     auto path_length = free_flying_path_length(m_1, m_2, rd_energy,
                                                screen_length, number_density);
     auto i_param = impact_parameter(number_density, path_length, rd_energy);
-
-    // auto coll_diameter = collision_diameter(z_1, z_2, rd_mass, speed);
     auto closest_appr = closest_approach(z_1, z_2, c_mass_energy, i_param);
     auto rad_curv = radius_of_curvature(closest_appr, c_mass_energy, z_1, z_2);
     auto magic_correction = magic_formula_correction_parameter(
@@ -1004,7 +1017,18 @@ void Ion::fire() try {
         i_param, closest_appr, rad_curv, magic_correction, screen_length);
     auto nuclear_e_loss =
         nuclear_energy_loss(m_1, m_2, energy, cm_scatter_angle);
+
+    if (nuclear_e_loss > knock_on_threshold) {
+      data_leaf_.add_child(ParticleDataLeaf());
+      auto knock_on_particle =
+          Ion(z_2, static_cast<size_t>((m_2 / atomic_mass_unit).value()),
+              simulation_, uniform_distribution_, random_number_generator_,
+              data_leaf_.get_children().back(), bombardment_);
+      knock_on_particle.fire();
+    }
+
     energy -= nuclear_e_loss; // TODO: Check for knock-ons
+
     auto laboratory_scatter_angle =
         laboratory_scattering_angle(cm_scatter_angle, m_1, m_2);
     rotate_inplace(laboratory_scatter_angle); // Changes velocity in-place
@@ -1012,34 +1036,25 @@ void Ion::fire() try {
 
     VLOG(2) << "Original coordinate (" << coordinate_.x_ << ", "
             << coordinate_.y_ << ", " << coordinate_.z_ << ")";
-
     VLOG(2) << "Original velocity (" << velocity.x_ << ", " << velocity.y_
             << ", " << velocity.z_ << ")";
-    // TODO: Replace with more elegant code
-    auto new_coordinate =
-        Coordinate{coordinate_.x_ + path_length * velocity.x_,
-                   coordinate_.y_ + path_length * velocity.y_,
-                   coordinate_.z_ + path_length * velocity.z_};
-    data_leaf_.add_coordinate(new_coordinate);
 
-    coordinate_.operator=(
-        new_coordinate); // HACK: Find why this is necessary. Something to do
-                         // with Coordinate being 'const' (this should no longer
-                         // be needed, just too scared to change)
-    // string_stream << velocity.r_ << "," << coordinate_.x_.value() << ","
-    //               << coordinate_.y_.value() << "," << coordinate_.z_.value()
-    //               << "\n"; TODO:  Remove
+    data_leaf_.add_coordinate(coordinate_);
+    coordinates_.emplace_back(coordinate_);
+    coordinate_.x_ += path_length * velocity.x_;
+    coordinate_.y_ += path_length * velocity.y_;
+    coordinate_.z_ += path_length * velocity.z_;
 
-    coordinates_.push_back(coordinate_);
+    if (coordinate_.z_ < 0.0 * angstrom) {
+      data_leaf_.sputter();
+      break;
+    }
 
     VLOG(2) << "Final coordinate moved " << path_length << " away: ("
             << coordinate_.x_ << ", " << coordinate_.y_ << ", "
             << coordinate_.z_ << ")";
 
-    // TODO: Implement derivative of screening potential
-
     // 2. Calculate recoil energy and velocity
-    // 3. Calculate new coordinate (push old coordinate to vector)
     // 4. Determine if sputtering occurred
     // 5. Check if damage cascade occurs
     //    a. If so, if energy difference is larger than displacement
@@ -1095,8 +1110,7 @@ Ion::electronic_stopping_energy(dimensionless_quantity charge,
                                 const Properties &properties) const try {
   VLOG(2) << "Calculating ion electronic stopping energy with charge " << charge
           << ", mass " << mass << ", and energy " << energy;
-
-  const auto c_1 =
+  auto c_1 =
       1.212 * root<2>(constants::m_u) * root<2>(electron_volt) / angstrom;
   VLOG(3) << "Value of c_1 " << c_1;
   const auto k_l = c_1 * pow<static_rational<7, 6>>(charge) *
@@ -1115,7 +1129,7 @@ Ion::electronic_stopping_energy(dimensionless_quantity charge,
   const auto energy_loss =
       c_2 * travel_length * number_density * constants::N_A * stopping_energy;
   VLOG(3) << "Value of energy_loss " << energy_loss;
-  return energy - energy_loss;
+  return energy_loss;
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
 } // }}}
