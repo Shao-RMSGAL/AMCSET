@@ -27,6 +27,10 @@
 // #include <QBoxLayout>
 #include <QCheckBox>
 #include <QFormLayout>
+#include <qcontainerfwd.h>
+#include <qdebug.h>
+#include <qtableview.h>
+#include <qtablewidget.h>
 
 // Local includes
 #include "application.h"
@@ -38,21 +42,23 @@ namespace amcset {
 namespace gui {
 
 MainWindow::MainWindow(Application *app) : app_(app) {
-  // Load window size and geometry from settings
-  auto size = app_->loadWindowSize();
-  auto geometry = app_->loadWindowGeometry();
-  if (!geometry.isEmpty()) {
-    restoreGeometry(geometry);
-  } else {
-    resize(size);
-  }
+  // // Load window size and geometry from settings
+  // auto size = app_->loadWindowSize(); // TODO: Try to get this to work
+  // auto geometry = app_->loadWindowGeometry();
+  // if (!geometry.isEmpty()) {
+  //   restoreGeometry(geometry);
+  // } else {
+  //   resize(size);
+  // }
 
-  // Load fullscreen state from settings
-  if (app_->loadFullscreenState()) {
-    showFullScreen();
-  } else {
-    showNormal();
-  }
+  // // Load fullscreen state from settings
+  // if (app_->loadFullscreenState()) {
+  //   showFullScreen();
+  // } else {
+  //   showNormal();
+  // }
+
+  resize(1920, 1080);
 
   // Create a central widget
   auto *topWidget = new QWidget(this); // TODO: Check if this is OK
@@ -69,7 +75,7 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   connect(runButton, &QPushButton::clicked, app_, &Application::runSimulation);
 
   auto *canvas = new Canvas;
-  canvas->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  canvas->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
 
   // Layouts
   auto *topLayout = new QVBoxLayout; // The outermost layout.
@@ -95,7 +101,6 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   statusBar()->showMessage(message);
   setWindowTitle(tr("AMCSET"));
   setMinimumSize(480, 480);
-  resize(1280, 720);
 }
 
 QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
@@ -105,6 +110,10 @@ QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
   incidentElectron = new QCheckBox();
   incidentElectron->setChecked(false); // Default to ion simulation
   incidentFormLayout->addRow("Incident electron?", incidentElectron);
+
+  damageCascade = new QCheckBox();
+  damageCascade->setChecked(true); // Default to ion simulation
+  incidentFormLayout->addRow("Simulate damage cascade?", damageCascade);
 
   incidentEnergy = new QDoubleSpinBox();
   incidentEnergy->setRange(0.0,
@@ -141,14 +150,37 @@ void MainWindow::toggleIncidentIonFormVisibility(int state) {
   incidentMass->setVisible(state != Qt::Checked);
 }
 
+void handleButtonClick(size_t row) {
+  qDebug() << "Button in row " << row << " clicked!";
+}
+
 QGroupBox *MainWindow::createLayerForms(QWidget *parent) {
   auto layerGroupBox = new QGroupBox("Layers", parent);
   auto layerVBox = new QVBoxLayout(layerGroupBox);
-  auto addLayerButton = new QPushButton("Edit Layers");
+  auto addLayerButton = new QPushButton("Add Layer");
   connect(addLayerButton, &QPushButton::clicked, this,
           &MainWindow::openLayerWindow);
 
+  layerModel = new QStandardItemModel(3, 6);
+  layerModel->setHorizontalHeaderLabels(
+      QStringList() << "Index" << "Layer" << "Density" << "Composition"
+                    << "Phase" << "Edit");
+  layerTable = new QTableView();
+  layerTable->setModel(layerModel);
+  layerTable->horizontalHeader()->setSectionResizeMode(
+      layerModel->columnCount() - 1, QHeaderView::ResizeToContents);
+
+  for (size_t row = 0; row < (size_t)layerModel->rowCount(); row++) {
+    auto *button = new QPushButton();
+    button->setIcon(QApplication::style()->standardIcon(QStyle::SP_FileIcon));
+    button->setToolTip("Edit");
+    connect(button, &QPushButton::clicked, this,
+            [row]() { handleButtonClick(row); });
+    layerTable->setIndexWidget(layerModel->index(row, 5), button);
+  }
+
   layerVBox->addWidget(addLayerButton);
+  layerVBox->addWidget(layerTable);
 
   return layerGroupBox;
 }

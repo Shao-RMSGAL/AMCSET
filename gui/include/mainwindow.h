@@ -27,6 +27,8 @@
 #include <QMainWindow>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QStandardItemModel>
+#include <QTableView>
 #include <QVBoxLayout>
 
 // Local includes
@@ -106,6 +108,7 @@ private:
 
   // Incident particle forms
   QCheckBox *incidentElectron;
+  QCheckBox *damageCascade;
   QDoubleSpinBox *incidentEnergy;
   QSpinBox *incidentMass;
   QSpinBox *incidentCharge;
@@ -113,6 +116,10 @@ private:
   QFormLayout *incidentFormLayout;
   size_t incidentChargeFormIndex;
   size_t incidentMassFormIndex;
+
+  // Layer forms
+  QStandardItemModel *layerModel;
+  QTableView *layerTable;
 
 private slots:
 

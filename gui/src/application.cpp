@@ -113,7 +113,7 @@ void Application::saveFullscreenState(bool isFullscreen) {
 }
 
 QSize Application::loadWindowSize() const {
-  return settings_.value("size", QSize(800, 600)).toSize();
+  return settings_.value("size", QSize(1920, 1080)).toSize();
 }
 
 QByteArray Application::loadWindowGeometry() const {

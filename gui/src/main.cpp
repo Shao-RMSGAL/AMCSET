@@ -160,9 +160,6 @@ int main(int argc, char *argv[]) {
 
       VLOG(1) << "Resizing window";
 
-      mainWindow.resize(800, 600); // TODO: Make this a setting/ store it when
-                                   // the user manually resizes.
-
       VLOG(1) << "Showing window";
       mainWindow.show();
 
