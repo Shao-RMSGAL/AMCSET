@@ -30,12 +30,12 @@ option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
 configure_file(${PROJECT_SOURCE_DIR}/common/include/config.h.in ${PROJECT_SOURCE_DIR}/common/include/config.h)
 
 # Packages
-find_package(Boost 1.86.0 REQUIRED)
+find_package(Boost 1.85.0 REQUIRED)
 find_package(GTest 1.14.0 REQUIRED)
 find_package(glog 0.7.1 REQUIRED)
 find_package(gflags 2.2.2 REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED)
+find_package(Qt6 COMPONENTS Core Gui Widgets 3DCore 3DExtras 3DRender 3DInput REQUIRED)
 if (Qt6_FOUND)
     qt_standard_project_setup()
 endif ()
@@ -46,17 +46,22 @@ add_subdirectory(gui)
 add_subdirectory(test)
 
 # Add package includes and link common
-target_include_directories(amcset-common SYSTEM PUBLIC 
+target_include_directories(amcset-common SYSTEM PUBLIC
     ${Boost_INCLUDE_DIRS}
     )
 
-# target_include_directories(amcset-gui PRIVATE ${Boost_INCLUDE_DIRS})
+target_include_directories(amcset-gui PRIVATE ${Boost_INCLUDE_DIRS})
 target_link_libraries(amcset-common PUBLIC ${Boost_LIBRARY_DIRS} glog::glog)
 
 # Allow link access for common library to gui
-target_link_libraries(amcset-gui PRIVATE amcset-common 
+target_link_libraries(amcset-gui PRIVATE 
+    amcset-common
     Qt6::Core
     Qt6::Widgets
     Qt6::Gui
+    Qt6::3DCore
+    Qt6::3DExtras
+    Qt6::3DRender
+    Qt6::3DInput
     gflags::gflags
 )

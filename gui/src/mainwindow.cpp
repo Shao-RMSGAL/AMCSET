@@ -17,17 +17,21 @@
 // Qt includes
 #include <QFormLayout>
 
-// #include <QMenu>
 #include <QMenu>
 #include <QMenuBar>
+#include <QSplitter>
 #include <QStatusBar>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QtWidgets>
+// #include <QBoxLayout>
+#include <QCheckBox>
+#include <QFormLayout>
 
 // Local includes
 #include "application.h"
 #include "canvas.h"
+#include "layerwindow.h"
 #include "mainwindow.h"
 
 namespace amcset {
@@ -35,8 +39,8 @@ namespace gui {
 
 MainWindow::MainWindow(Application *app) : app_(app) {
   // Load window size and geometry from settings
-  QSize size = app_->loadWindowSize();
-  QByteArray geometry = app_->loadWindowGeometry();
+  auto size = app_->loadWindowSize();
+  auto geometry = app_->loadWindowGeometry();
   if (!geometry.isEmpty()) {
     restoreGeometry(geometry);
   } else {
@@ -51,74 +55,113 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   }
 
   // Create a central widget
-  QWidget *widget = new QWidget(this); // TODO: Check if this is OK
-  setCentralWidget(widget);
-  QWidget *topFiller = new QWidget;
-  topFiller->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  auto *topWidget = new QWidget(this); // TODO: Check if this is OK
+  setCentralWidget(topWidget);
+
+  // Create form widgets
   infoLabel = new QLabel(tr("<i>Choose a menu option, or right-click to "
                             "invoke a context menu</i>"));
   infoLabel->setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
   infoLabel->setAlignment(Qt::AlignCenter);
 
-  Canvas *canvas = new Canvas;
-  canvas->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+  auto *runButton = new QPushButton("Run Simulation");
+  runButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  connect(runButton, &QPushButton::clicked, app_, &Application::runSimulation);
 
-  QWidget *bottomFiller = new QWidget;
-  bottomFiller->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  QVBoxLayout *layout = new QVBoxLayout;
-  layout->setContentsMargins(5, 5, 5, 5);
-  layout->addWidget(topFiller);
-  layout->addWidget(infoLabel);
-  layout->addWidget(canvas);
-  layout->addWidget(bottomFiller);
-  widget->setLayout(layout);
+  auto *canvas = new Canvas;
+  canvas->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+  // Layouts
+  auto *topLayout = new QVBoxLayout; // The outermost layout.
+  topLayout->setContentsMargins(5, 5, 5, 5);
+
+  auto *formBox = new QGroupBox(""); // Contains forms for user input.
+  auto *formLayout = new QVBoxLayout(formBox);
+
+  formLayout->addWidget(infoLabel);
+  formLayout->addWidget(
+      createIncidentParticleForms(formBox)); // Layout within the widget.
+  formLayout->addWidget(createLayerForms());
+  formLayout->addWidget(runButton);
+
+  auto *hPane = new QSplitter(Qt::Horizontal); // Split the forms and canvas
+  hPane->addWidget(formBox);
+  hPane->addWidget(canvas);
+  topLayout->addWidget(hPane);
+  topWidget->setLayout(topLayout);
   createActions();
   createMenus();
-  QString message = tr("A context menu is available by right-clicking");
+  auto message = tr("A context menu is available by right-clicking");
   statusBar()->showMessage(message);
-  setWindowTitle(tr("Menus"));
-  setMinimumSize(160, 160);
-  resize(480, 320);
-  /*{{{*/
-  // // Create a layout for the central widget
-  // QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
+  setWindowTitle(tr("AMCSET"));
+  setMinimumSize(480, 480);
+  resize(1280, 720);
+}
 
-  // // Create a menu bar
-  // QMenuBar *menuBar = new QMenuBar(this);
-  // setMenuBar(menuBar);
+QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
+  auto formGroupBox = new QGroupBox("Incident particle properties", parent);
+  incidentFormLayout = new QFormLayout(formGroupBox);
 
-  // // Create menus
-  // QMenu *fileMenu = new QMenu("File", this);
-  // QMenu *editMenu = new QMenu("Edit", this);
+  incidentElectron = new QCheckBox();
+  incidentElectron->setChecked(false); // Default to ion simulation
+  incidentFormLayout->addRow("Incident electron?", incidentElectron);
 
-  // // Add menus to the menu bar
-  // menuBar->addMenu(fileMenu);
-  // menuBar->addMenu(editMenu);
+  incidentEnergy = new QDoubleSpinBox();
+  incidentEnergy->setRange(0.0,
+                           10000.0); // TODO: Ensure that range is reasonable;
+  incidentEnergy->setDecimals(1);
+  incidentFormLayout->addRow("Incident Energy (keV)", incidentEnergy);
 
-  // // Add actions to the menus
-  // fileMenu->addAction(openAction);
+  incidentMass = new QSpinBox();
+  incidentMass->setRange(0, 295);
+  incidentMassFormIndex = incidentFormLayout->rowCount();
+  incidentFormLayout->addRow("Incident Mass (amu)", incidentMass);
 
-  // // Create a toolbar
-  // QToolBar *toolBar = new QToolBar(this);
-  // addToolBar(toolBar);
+  incidentCharge = new QSpinBox();
+  incidentCharge->setRange(0, 118);
+  incidentChargeFormIndex = incidentFormLayout->rowCount();
+  incidentFormLayout->addRow("Incident Z-number", incidentCharge);
 
-  // // Create a layout for the form
-  // QFormLayout *formLayout = new QFormLayout;
+  connect(incidentElectron, &QCheckBox::stateChanged, this,
+          &MainWindow::toggleIncidentIonFormVisibility);
 
-  // // Create a vertical box layout
-  // QVBoxLayout *vboxLayout = new QVBoxLayout;
-  // vboxLayout->addLayout(formLayout);
+  incidentAngle = new QDoubleSpinBox();
+  incidentAngle->setRange(0.0, 90.0);
+  incidentAngle->setDecimals(2);
+  incidentFormLayout->addRow("Incident Angle (degree)", incidentAngle);
 
-  // // Create a "Run Simulation" button
-  // QPushButton *runButton = new QPushButton("Run Simulation");
-  // vboxLayout->addWidget(runButton);
+  return formGroupBox;
+}
 
-  // // Connect the button to the Appliccation's runSimulation() function
-  // connect(runButton, &QPushButton::clicked, app_,
-  // &Application::runSimulation);
+void MainWindow::toggleIncidentIonFormVisibility(int state) {
+  incidentFormLayout->setRowVisible(incidentMassFormIndex,
+                                    state != Qt::Checked);
+  incidentFormLayout->setRowVisible(incidentChargeFormIndex,
+                                    state != Qt::Checked);
+  incidentMass->setVisible(state != Qt::Checked);
+}
 
-  // // Add the vbox layout to the main layout
-  // mainLayout->addLayout(vboxLayout);}}}
+QGroupBox *MainWindow::createLayerForms(QWidget *parent) {
+  auto layerGroupBox = new QGroupBox("Layers", parent);
+  auto layerVBox = new QVBoxLayout(layerGroupBox);
+  auto addLayerButton = new QPushButton("Edit Layers");
+  connect(addLayerButton, &QPushButton::clicked, this,
+          &MainWindow::openLayerWindow);
+
+  layerVBox->addWidget(addLayerButton);
+
+  return layerGroupBox;
+}
+
+void MainWindow::openLayerWindow() {
+  // Create and show the layerWindow
+  LayerWindow *layerWindow = new LayerWindow(this); // Pass 'this' as the parent
+  layerWindow->setWindowFlags(Qt::Window);
+  connect(layerWindow, &LayerWindow::okClicked, this, &MainWindow::onOkClicked);
+  connect(layerWindow, &LayerWindow::cancelClicked, this,
+          &MainWindow::onCancelClicked);
+  layerWindow->resize(400, 400);
+  layerWindow->show();
 }
 
 //! [2]

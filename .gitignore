@@ -8,4 +8,5 @@ testing/output.csv
 testing/test
 common/include/config.h
 output.csv
+output
 

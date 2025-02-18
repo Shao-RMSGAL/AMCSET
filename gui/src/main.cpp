@@ -21,9 +21,12 @@
 #include <boost/math/constants/constants.hpp>
 
 #include <QApplication>
+#include <QDebug>
+#include <QFile>
 #include <QFrame>
 #include <QLabel>
 #include <QMainWindow>
+#include <QTemporaryDir>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -39,6 +42,32 @@ DEFINE_bool(gui, true, "Enable or disable the graphical user interface (GUI)");
 using namespace amcset::common;
 // Wow
 int main(int argc, char *argv[]) {
+
+  // TODO: See how this behaves under Windows
+  QTemporaryDir tempDir;
+  if (tempDir.isValid()) {
+    // Extract fonts.conf from resources to temporary directory
+    QFile resFile(":resources/fonts.conf");
+    if (resFile.open(QIODevice::ReadOnly)) {
+      QString configPath = tempDir.filePath("fonts.conf");
+      QFile outFile(configPath);
+      if (outFile.open(QIODevice::WriteOnly)) {
+        outFile.write(resFile.readAll());
+        outFile.close();
+
+        // Set Fontconfig environment variables
+        qputenv("FONTCONFIG_FILE", configPath.toUtf8());
+        qputenv("FONTCONFIG_PATH", tempDir.path().toUtf8());
+      } else {
+        qWarning() << "Failed to write fonts.conf to temporary directory";
+      }
+    } else {
+      qWarning() << "Failed to open embedded fonts.conf resource";
+    }
+  } else {
+    qWarning() << "Failed to create temporary directory for Fontconfig";
+  }
+
   try { // {{{
 
     // Initialize logger

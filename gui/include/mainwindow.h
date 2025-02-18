@@ -17,15 +17,21 @@
 #pragma once
 
 // Qt includes
+#include <QCheckBox>
 #include <QContextMenuEvent>
+#include <QDoubleSpinBox>
+#include <QFormLayout>
+#include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMainWindow>
 #include <QPushButton>
-#include <QScopedPointer>
+#include <QSpinBox>
+#include <QVBoxLayout>
 
 // Local includes
 #include "application.h"
+#include "layerwindow.h"
 
 namespace amcset {
 namespace gui {
@@ -65,6 +71,10 @@ private slots:
 private:
   void createActions();
   void createMenus();
+  QGroupBox *createIncidentParticleForms(QWidget *parent = nullptr);
+  QGroupBox *createLayerForms(QWidget *parent = nullptr);
+  void openLayerWindow();
+  void toggleIncidentIonFormVisibility(int state);
 
   Application *app_;
   QMenu *fileMenu;
@@ -93,6 +103,28 @@ private:
   QAction *aboutAct;
   QAction *aboutQtAct;
   QLabel *infoLabel;
+
+  // Incident particle forms
+  QCheckBox *incidentElectron;
+  QDoubleSpinBox *incidentEnergy;
+  QSpinBox *incidentMass;
+  QSpinBox *incidentCharge;
+  QDoubleSpinBox *incidentAngle;
+  QFormLayout *incidentFormLayout;
+  size_t incidentChargeFormIndex;
+  size_t incidentMassFormIndex;
+
+private slots:
+
+  void onOkClicked() {
+    QMessageBox::information(this, "Info",
+                             "OK button was clicked in the subwindow!");
+  }
+
+  void onCancelClicked() {
+    QMessageBox::information(this, "Info",
+                             "Cancel button was clicked in the subwindow!");
+  }
 };
 
 } // namespace gui
