@@ -26,11 +26,11 @@
 #include <QtWidgets>
 // #include <QBoxLayout>
 #include <QCheckBox>
+#include <QDebug>
 #include <QFormLayout>
-#include <qcontainerfwd.h>
-#include <qdebug.h>
-#include <qtableview.h>
-#include <qtablewidget.h>
+#include <QTableView>
+#include <QtContainerFwd>
+#include <qsizepolicy.h>
 
 // Local includes
 #include "application.h"
@@ -150,8 +150,96 @@ void MainWindow::toggleIncidentIonFormVisibility(int state) {
   incidentMass->setVisible(state != Qt::Checked);
 }
 
-void handleButtonClick(size_t row) {
+void MainWindow::handleLayerButtonClicked(size_t row, QWidget *parent) {
+  // openLayerWindow(row, parent);
   qDebug() << "Button in row " << row << " clicked!";
+}
+
+// TODO: Finish this. Return false if depths are invalid.
+void MainWindow::updateLayerDepths() {
+  // Go through every column and update the absolute depths. Verify correct
+  // entries
+  for (size_t row = 1; row < (size_t)layerModel->rowCount(); row++) {
+    auto prevLabelIndex = layerModel->index(row - 1, 0);
+    auto prevEntryIndex = layerModel->index(row - 1, 1);
+    auto labelIndex = layerModel->index(row, 0);
+    auto *prevDepthEntry =
+        qobject_cast<QDoubleSpinBox *>(layerTable->indexWidget(prevEntryIndex));
+    auto *prevStartingDepthLabel =
+        qobject_cast<QLabel *>(layerTable->indexWidget(prevLabelIndex));
+    auto *startingDepthLabel =
+        qobject_cast<QLabel *>(layerTable->indexWidget(labelIndex));
+    auto totalDepth = QString::number(
+        prevStartingDepthLabel->text().toDouble() + prevDepthEntry->value());
+    startingDepthLabel->setText(totalDepth);
+  }
+}
+
+void MainWindow::createLayerRow() {
+  const size_t row = layerModel->rowCount();
+  const size_t columns = layerModel->columnCount();
+  layerModel->insertRow(row);
+
+  // TODO: Figure out how to do this dynamically (optional)
+  const size_t startDepthColumn = 0;
+  const size_t depthColumn = 1;
+
+  auto startDepthLabelIndex = layerModel->index(row, startDepthColumn);
+  auto depthFieldIndex = layerModel->index(row, depthColumn);
+
+  const size_t editButtonColumn = columns - 2;
+  auto editButtonIndex = layerModel->index(row, editButtonColumn);
+
+  const size_t deleteButtonColumn = columns - 1;
+  auto deleteButtonIndex = layerModel->index(row, deleteButtonColumn);
+
+  // Depth field and label
+  auto *startDepthLabel = new QLabel(this);
+  startDepthLabel->setText(QString::number(row));
+  auto *depthField = new QDoubleSpinBox(this);
+  const auto minDepth = 0.01;
+  const auto maxDepth = 1e10;
+  depthField->setRange(minDepth, maxDepth);
+  connect(depthField, &QDoubleSpinBox::valueChanged, this,
+          &MainWindow::updateLayerDepths);
+
+  // Setup edit button
+  auto *editButton = new QPushButton(this);
+  QPersistentModelIndex editButtonPersistentIndex(editButtonIndex);
+  editButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_FileIcon));
+  editButton->setToolTip("Edit");
+  connect(editButton, &QPushButton::clicked, this,
+          [this, editButtonPersistentIndex]() {
+            if (editButtonPersistentIndex.isValid()) {
+              handleLayerButtonClicked(editButtonPersistentIndex.row(), this);
+            }
+          });
+
+  // Setup delete button
+  auto *deleteButton = new QPushButton(this);
+  QPersistentModelIndex deleteButtonPersistentIndex(deleteButtonIndex);
+  deleteButton->setIcon(
+      QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton));
+  deleteButton->setToolTip("Delete");
+  connect(deleteButton, &QPushButton::clicked, this,
+          [this, deleteButtonPersistentIndex]() {
+            if (deleteButtonPersistentIndex.isValid()) {
+              layerModel->removeRow(deleteButtonPersistentIndex.row());
+            }
+          });
+
+  // Insert widgets
+  layerTable->setIndexWidget(startDepthLabelIndex, startDepthLabel);
+  layerTable->setIndexWidget(depthFieldIndex, depthField);
+  layerTable->setIndexWidget(editButtonPersistentIndex, editButton);
+  layerTable->setIndexWidget(deleteButtonPersistentIndex, deleteButton);
+
+  //  TODO: Finish logic for first row and following rows
+  if (row == 0) {
+    startDepthLabel->setText("0");
+  } else {
+    updateLayerDepths();
+  }
 }
 
 QGroupBox *MainWindow::createLayerForms(QWidget *parent) {
@@ -159,28 +247,27 @@ QGroupBox *MainWindow::createLayerForms(QWidget *parent) {
   auto layerVBox = new QVBoxLayout(layerGroupBox);
   auto addLayerButton = new QPushButton("Add Layer");
   connect(addLayerButton, &QPushButton::clicked, this,
-          &MainWindow::openLayerWindow);
+          &MainWindow::createLayerRow);
 
-  layerModel = new QStandardItemModel(3, 6);
-  layerModel->setHorizontalHeaderLabels(
-      QStringList() << "Index" << "Layer" << "Density" << "Composition"
-                    << "Phase" << "Edit");
+  // TODO: Change to allow arbitrary units
+  layerHeaders = QStringList{"Starting Depth (Angstrom)",
+                             "Depth (Angstrom)",
+                             "Layer",
+                             "Density",
+                             "Composition",
+                             "Phase",
+                             "Edit",
+                             "Remove"};
+  layerModel = new QStandardItemModel(0, layerHeaders.count());
+  layerModel->setHorizontalHeaderLabels(layerHeaders);
   layerTable = new QTableView();
   layerTable->setModel(layerModel);
   layerTable->horizontalHeader()->setSectionResizeMode(
-      layerModel->columnCount() - 1, QHeaderView::ResizeToContents);
+      QHeaderView::ResizeToContents);
+  layerTable->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-  for (size_t row = 0; row < (size_t)layerModel->rowCount(); row++) {
-    auto *button = new QPushButton();
-    button->setIcon(QApplication::style()->standardIcon(QStyle::SP_FileIcon));
-    button->setToolTip("Edit");
-    connect(button, &QPushButton::clicked, this,
-            [row]() { handleButtonClick(row); });
-    layerTable->setIndexWidget(layerModel->index(row, 5), button);
-  }
-
-  layerVBox->addWidget(addLayerButton);
   layerVBox->addWidget(layerTable);
+  layerVBox->addWidget(addLayerButton);
 
   return layerGroupBox;
 }

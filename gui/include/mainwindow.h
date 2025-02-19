@@ -29,6 +29,7 @@
 #include <QSpinBox>
 #include <QStandardItemModel>
 #include <QTableView>
+#include <QUndoStack>
 #include <QVBoxLayout>
 
 // Local includes
@@ -77,6 +78,9 @@ private:
   QGroupBox *createLayerForms(QWidget *parent = nullptr);
   void openLayerWindow();
   void toggleIncidentIonFormVisibility(int state);
+  void handleLayerButtonClicked(size_t row, QWidget *parent);
+  void createLayerRow();
+  void updateLayerDepths();
 
   Application *app_;
   QMenu *fileMenu;
@@ -120,6 +124,10 @@ private:
   // Layer forms
   QStandardItemModel *layerModel;
   QTableView *layerTable;
+  QStringList layerHeaders;
+
+  // For Undo/Redo
+  // QUndoStack *undoStack; // TODO: Implement undo/redo
 
 private slots:
 
