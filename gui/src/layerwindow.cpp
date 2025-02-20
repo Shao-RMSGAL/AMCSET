@@ -14,27 +14,47 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
+// Standard includes
+#include <iostream>
+
+// Qt includes
+#include <QBoxLayout>
+#include <QLabel>
+#include <QStandardItem>
+#include <QStandardItemModel>
+#include <QTableView>
+
+// Local includes
 #include "layerwindow.h"
 
-LayerWindow::LayerWindow(QWidget *parent) : QWidget(parent) {
-  // Set up the layout for the subwindow
-  QVBoxLayout *layout = new QVBoxLayout(this);
+LayerWindow::LayerWindow(QStandardItemModel *compositionModel,
+                         const QString &layerName, QWidget *parent)
+    : QWidget(parent) {
 
-  // Add an "OK" button
+  auto *compositionTable = new QTableView(this);
+  compositionTable->setModel(compositionModel);
+  compositionTable->resizeColumnsToContents();
+  compositionTable->resizeRowsToContents();
+
   QPushButton *okButton = new QPushButton("OK", this);
-  layout->addWidget(okButton);
-
-  // Add a "Cancel" button
-  QPushButton *cancelButton = new QPushButton("Cancel", this);
-  layout->addWidget(cancelButton);
-
-  // Connect the "OK" button to a slot that closes the window
   connect(okButton, &QPushButton::clicked, this, &LayerWindow::onOkClicked);
 
-  // Connect the "Cancel" button to a slot that closes the window
+  QPushButton *cancelButton = new QPushButton("Cancel", this);
   connect(cancelButton, &QPushButton::clicked, this,
           &LayerWindow::onCancelClicked);
 
-  setLayout(layout);
-  setWindowTitle("Edit Layers");
+  // Layout
+  auto *centralWidget = new QWidget(this);
+  auto *hLayout = new QHBoxLayout();
+  hLayout->addWidget(okButton);
+  hLayout->addWidget(cancelButton);
+
+  auto *vLayout = new QVBoxLayout(centralWidget);
+  vLayout->addWidget(compositionTable);
+  vLayout->addLayout(hLayout);
+
+  setLayout(vLayout);
+  setWindowTitle("Edit " + layerName);
+  setMinimumSize(480, 480);
+  resize(480, 480);
 }

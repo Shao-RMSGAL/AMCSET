@@ -22,12 +22,15 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <qstandarditemmodel.h>
 
 class LayerWindow : public QWidget {
   Q_OBJECT
 
 public:
-  explicit LayerWindow(QWidget *parent = nullptr);
+  explicit LayerWindow(QStandardItemModel *compositionModel,
+                       const QString &layerName = "Layer",
+                       QWidget *parent = nullptr);
 signals:
   void okClicked();     // Signal emitted when "OK" is clicked
   void cancelClicked(); // Signal emitted when "Cancel" is clicked

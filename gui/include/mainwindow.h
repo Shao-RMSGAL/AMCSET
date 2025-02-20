@@ -70,17 +70,17 @@ private slots:
   void setParagraphSpacing();
   void about();
   void aboutQt();
+  void openLayerWindow(size_t row);
+  void handleLayerButtonClicked(size_t row);
+  void toggleIncidentIonFormVisibility(int state);
+  void createLayerRow();
 
 private:
   void createActions();
   void createMenus();
   QGroupBox *createIncidentParticleForms(QWidget *parent = nullptr);
   QGroupBox *createLayerForms(QWidget *parent = nullptr);
-  void openLayerWindow();
-  void toggleIncidentIonFormVisibility(int state);
-  void handleLayerButtonClicked(size_t row, QWidget *parent);
-  void createLayerRow();
-  void updateLayerDepths();
+  double calculateLayerDensity();
 
   Application *app_;
   QMenu *fileMenu;
@@ -128,6 +128,9 @@ private:
 
   // For Undo/Redo
   // QUndoStack *undoStack; // TODO: Implement undo/redo
+
+public slots:
+  void updateLayerDepths();
 
 private slots:
 
