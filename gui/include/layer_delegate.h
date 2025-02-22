@@ -17,28 +17,30 @@
 #pragma once
 
 #include <QStyledItemDelegate>
+#include <qcoreevent.h>
 
 enum LayerWidgetType {
-  StartingDepthLabel,
-  DepthSpinBox,
+  // DepthSpinBox,
   LayerLineEdit,
   DensitySpinBox,
-  CompositionView,
-  PhaseDropDown,
-  EditButton,
-  RemoveButton,
+  ElementLineEdit,
+  FractionSpinBox,
+  PercentLabel,
+  ElementDeleteButton,
 };
 
 class LayerWidgetDelegate : public QStyledItemDelegate {
   Q_OBJECT
 
+public:
+  QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &,
+                        const QModelIndex &index) const override;
+
 signals:
 
-  void updateLayerDepths() const;
+  void deleteElement(QModelIndex index) const;
+  //   void updateLayerDepths() const;
 
 protected:
   using QStyledItemDelegate::QStyledItemDelegate;
-
-  QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &,
-                        const QModelIndex &index) const override;
 };

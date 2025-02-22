@@ -24,7 +24,8 @@
 #include <QPushButton>
 #include <QStandardItemModel>
 #include <QTableView>
-#include <qnamespace.h>
+
+#include <iostream>
 
 #include "layer_delegate.h"
 
@@ -39,26 +40,17 @@ QWidget *LayerWidgetDelegate::createEditor(QWidget *parent,
       static_cast<LayerWidgetType>(index.data(Qt::UserRole).toInt());
 
   switch (type) {
-  case StartingDepthLabel: {
-    auto *startingDepthLabel = new QLabel(parent);
-    startingDepthLabel->setText(index.data(Qt::DisplayRole).toString());
-    return startingDepthLabel;
-    ;
-  }
-  case DepthSpinBox: {
-    auto *depthSpinBox = new QDoubleSpinBox(parent);
-    const auto minDepth = index.data(Qt::DisplayRole).toString().toDouble();
-    const auto maxDepth = 1e10;
-    depthSpinBox->setRange(minDepth, maxDepth);
-    depthSpinBox->setSingleStep(0.01);
-    depthSpinBox->setValue(minDepth);
-    connect(depthSpinBox, &QDoubleSpinBox::valueChanged, this,
-            [this]() { emit updateLayerDepths(); });
-    index.data(Qt::DisplayRole);
-    return depthSpinBox;
-    // connect(depthSpinBox, &QDoubleSpinBox::valueChanged, this,
-    //         &MainWindow::updateLayerDepths);
-  }
+  // case DepthSpinBox: {
+  //   auto *depthSpinBox = new QDoubleSpinBox(parent);
+  //   const auto minDepth = index.data(Qt::DisplayRole).toString().toDouble();
+  //   const auto maxDepth = 1e10;
+  //   depthSpinBox->setRange(minDepth, maxDepth);
+  //   depthSpinBox->setSingleStep(0.01);
+  //   depthSpinBox->setValue(minDepth);
+  //   connect(depthSpinBox, &QDoubleSpinBox::valueChanged, this,
+  //           [this]() { emit updateLayerDepths(); });
+  //   return depthSpinBox;
+  // }
   case LayerLineEdit: {
     auto *layerLineEdit = new QLineEdit(parent);
     layerLineEdit->setText(index.data(Qt::DisplayRole).toString());
@@ -72,12 +64,29 @@ QWidget *LayerWidgetDelegate::createEditor(QWidget *parent,
     densityField->setSingleStep(0.01);
     return densityField;
   }
-  case PhaseDropDown: {
-    auto *phaseDropDown = new QComboBox(parent);
-    auto phaseList = QStringList{"Solid", "Liquid", "Gas"};
-    phaseDropDown->addItems(phaseList);
-    phaseDropDown->setCurrentIndex(0);
-    return phaseDropDown;
+  case ElementLineEdit: {
+    auto *elementLineEntry = new QLineEdit(parent);
+    elementLineEntry->setText(index.data(Qt::DisplayRole).toString());
+    return elementLineEntry;
+  }
+  case FractionSpinBox: {
+    auto *fractionSpinBox = new QDoubleSpinBox(parent);
+    // fractionSpinBox->setValue(
+    //     index.data(Qt::DisplayRole).toString().toDouble());
+    return fractionSpinBox;
+  }
+  case PercentLabel: {
+    auto *percentLabel = new QLabel(parent);
+    percentLabel->setText(index.data(Qt::DisplayRole).toString());
+    return percentLabel;
+  }
+  case ElementDeleteButton: {
+    auto *elementDeleteButton = new QPushButton(parent);
+    elementDeleteButton->setIcon(
+        QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton));
+    connect(elementDeleteButton, &QPushButton::clicked, this,
+            [this, index]() { emit deleteElement(index); });
+    return elementDeleteButton;
   }
   default:
     return nullptr;

@@ -30,7 +30,9 @@
 #include <QFormLayout>
 #include <QTableView>
 #include <QtContainerFwd>
+#include <qabstractitemmodel.h>
 #include <qcombobox.h>
+#include <qheaderview.h>
 #include <qnamespace.h>
 #include <qobject.h>
 #include <qsizepolicy.h>
@@ -172,15 +174,16 @@ void MainWindow::updateLayerDepths() {
     auto prevEntryIndex = layerModel->index(row - 1, 1);
     auto labelIndex = layerModel->index(row, 0);
     auto prevDepth =
-        layerModel->index(row - 1, 1).data(Qt::DisplayRole).toDouble();
-    // qobject_cast<QDoubleSpinBox *>(layerTable->indexWidget(prevEntryIndex));
-    auto *prevStartingDepthLabel =
-        qobject_cast<QLabel *>(layerTable->indexWidget(prevLabelIndex));
+        qobject_cast<QDoubleSpinBox *>(layerTable->indexWidget(prevEntryIndex))
+            ->value();
+    auto prevStartingDepth =
+        qobject_cast<QLabel *>(layerTable->indexWidget(prevLabelIndex))
+            ->text()
+            .toDouble();
     auto *startingDepthLabel =
         qobject_cast<QLabel *>(layerTable->indexWidget(labelIndex));
-    auto totalDepth =
-        QString::number(prevStartingDepthLabel->text().toDouble() + prevDepth);
-    startingDepthLabel->setText(totalDepth);
+    auto totalDepth = prevStartingDepth + prevDepth;
+    startingDepthLabel->setText(QString::number(totalDepth));
   }
 }
 
@@ -205,12 +208,12 @@ void MainWindow::createLayerRow() {
 
   const auto startingDepthLabelIndex =
       layerModel->index(row, startingDepthColumn);
-  // const auto depthFieldIndex = layerModel->index(row, depthColumn);
+  const auto depthSpinBoxIndex = layerModel->index(row, depthSpinBoxColumn);
   // const auto layerLineEditIndex = layerModel->index(row, layerColumn);
   // const auto densityFieldIndex = layerModel->index(row, densityColumn);
   const auto compositionViewIndex =
       layerModel->index(row, compositionViewColumn);
-  // const auto phaseDropDownIndex = layerModel->index(row, phaseColumn);
+  const auto phaseDropDownIndex = layerModel->index(row, phaseDropDownColumn);
   const auto editButtonIndex = layerModel->index(row, editButtonColumn);
   const auto removeButtonIndex = layerModel->index(row, removeButtonColumn);
 
@@ -230,9 +233,13 @@ void MainWindow::createLayerRow() {
   // startingDepthLabel->setData(QString::number(0), Qt::DisplayRole);
 
   const auto minDepth = 0.01; // TODO: More elegant solution (optional)
-  auto *depthSpinBox = new QStandardItem();
-  depthSpinBox->setData(DepthSpinBox, Qt::UserRole);
-  depthSpinBox->setData(QString::number(minDepth), Qt::DisplayRole);
+  const auto maxDepth = 1e10;
+  auto *depthSpinBox = new QDoubleSpinBox();
+  depthSpinBox->setValue(minDepth);
+  depthSpinBox->setSingleStep(minDepth);
+  depthSpinBox->setRange(minDepth, maxDepth);
+  connect(depthSpinBox, &QDoubleSpinBox::valueChanged, this,
+          &MainWindow::updateLayerDepths);
 
   auto *layerLineEdit = new QStandardItem(QString("Layer %1").arg(row + 1));
   layerLineEdit->setData(LayerLineEdit, Qt::UserRole);
@@ -242,8 +249,8 @@ void MainWindow::createLayerRow() {
   densitySpinBox->setData(DensitySpinBox, Qt::UserRole);
   densitySpinBox->setData(minDensity, Qt::DisplayRole);
 
-  auto *phaseDropDown = new QStandardItem();
-  phaseDropDown->setData(PhaseDropDown, Qt::UserRole);
+  // auto *phaseDropDown = new QStandardItem();
+  // phaseDropDown->setData(PhaseDropDown, Qt::UserRole);
 
   // // Layer  LineEdit
   // auto *layerLineEdit = new QLineEdit(this);
@@ -255,30 +262,98 @@ void MainWindow::createLayerRow() {
   // densityField->setSingleStep(0.01);
 
   // Composition
-  auto *compositionModel = new QStandardItemModel(1, 3, this);
+  const auto compositionColumns = 4;
+  auto *compositionModel = new QStandardItemModel(0, compositionColumns, this);
   auto *compositionTable = new QTableView(this);
+
+  // Fit inside the inner column
+  compositionTable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  compositionTable->horizontalHeader()->setSectionResizeMode(
+      QHeaderView::ResizeToContents);
+
+  auto *compositionDelegate = new LayerWidgetDelegate(compositionTable);
+  compositionTable->setItemDelegate(compositionDelegate);
+  connect(compositionDelegate, &LayerWidgetDelegate::deleteElement, this,
+          [compositionModel](QModelIndex index) {
+            compositionModel->removeRow(index.row());
+          });
   compositionModel->setHorizontalHeaderLabels(QStringList{
       "Element",
-      "Atomic Proportion",
+      "Atomic\nProportion",
       "Atomic %",
+      "Remove\nElement",
   }); // TODO: Support input of weight or atomic percent
-  compositionTable->setModel(compositionModel);
-  auto *compositionSpinBox = new QDoubleSpinBox(this);
-  compositionSpinBox->setRange(0.0, 100.0);
-  auto *compositionLabel = new QLabel("100");
-  compositionTable->setIndexWidget(compositionModel->index(0, 0),
-                                   new QLabel("H"));
-  compositionTable->setIndexWidget(compositionModel->index(0, 1),
-                                   compositionSpinBox);
-  compositionTable->setIndexWidget(compositionModel->index(0, 2),
-                                   compositionLabel);
-  compositionTable->resizeColumnsToContents();
-  compositionTable->resizeRowsToContents();
 
-  // // Phase drop down
-  // auto *phaseDropDown = new QComboBox(this);
-  // phaseDropDown->addItems(QStringList{"Solid", "Liquid", "Gas"});
-  // phaseDropDown->setCurrentIndex(0);
+  compositionTable->setModel(compositionModel);
+
+  // auto *compositionSpinBox = new QDoubleSpinBox(this);
+  // compositionSpinBox->setRange(0.0, 100.0);
+  // auto *compositionLabel = new QLabel("100");
+  // compositionTable->setIndexWidget(compositionModel->index(0, 0),
+  // new QLabel("H"));
+  // compositionTable->setIndexWidget(compositionModel->index(0, 1),
+  // compositionSpinBox);
+  // compositionTable->setIndexWidget(compositionModel->index(0, 2),
+  // compositionLabel);
+
+  auto *compositionLayoutWidget = new QWidget(this);
+  auto *compositionLayout = new QVBoxLayout(this);
+  compositionLayoutWidget->setLayout(compositionLayout);
+
+  auto compositionAddElementFunction = [compositionModel, compositionTable]() {
+    const auto defaultElement = "H";
+    const auto defaultFraction = 0.0;
+    const auto elementColumn = 0;
+    const auto fractionColumn = 1;
+    const auto percentColumn = 2;
+    const auto elementDeleteButtonColumn = 3;
+    auto index = compositionModel->rowCount();
+    auto *elementLabel = new QStandardItem();
+    elementLabel->setData(ElementLineEdit, Qt::UserRole);
+    elementLabel->setData(defaultElement, Qt::DisplayRole);
+
+    auto *fractionSpinBox = new QStandardItem();
+    fractionSpinBox->setData(FractionSpinBox, Qt::UserRole);
+    fractionSpinBox->setData(defaultFraction, Qt::DisplayRole);
+
+    auto *percentLabel = new QStandardItem();
+    percentLabel->setData(PercentLabel, Qt::UserRole);
+    percentLabel->setData(defaultFraction, Qt::DisplayRole);
+
+    auto *elementDeleteButton = new QStandardItem();
+    elementDeleteButton->setData(ElementDeleteButton, Qt::UserRole);
+
+    compositionModel->insertRow(index);
+    compositionModel->setItem(index, elementColumn, elementLabel);
+    compositionModel->setItem(index, fractionColumn, fractionSpinBox);
+    compositionModel->setItem(index, percentColumn, percentLabel);
+    compositionModel->setItem(index, elementDeleteButtonColumn,
+                              elementDeleteButton);
+    compositionTable->resizeColumnsToContents();
+    compositionTable->resizeRowsToContents();
+  };
+  compositionAddElementFunction(); // Start with one row
+
+  auto *compositionAddElementButton = new QPushButton("Add Element");
+  connect(compositionAddElementButton, &QPushButton::clicked, this,
+          compositionAddElementFunction);
+
+  compositionLayout->addWidget(compositionTable);
+  compositionLayout->addWidget(compositionAddElementButton);
+
+  for (int compositionRow = 0; compositionRow < compositionModel->rowCount();
+       ++compositionRow) {
+    QModelIndex index = compositionModel->index(compositionRow, 0);
+    QWidget *editor = compositionDelegate->createEditor(
+        compositionTable, QStyleOptionViewItem(), index);
+    compositionDelegate->updateEditorGeometry(editor, QStyleOptionViewItem(),
+                                              index);
+  }
+
+  // Phase drop down
+  auto *phaseDropDown = new QComboBox(this);
+  phaseDropDown->addItems(QStringList{"Solid", "Liquid", "Gas"});
+  phaseDropDown->setCurrentIndex(0);
 
   // Setup edit button
   auto *editButton = new QPushButton(this);
@@ -307,19 +382,20 @@ void MainWindow::createLayerRow() {
 
   // Insert widgets
   // layerModel->setItem(row, startingDepthColumn, startingDepthLabel);
-  layerModel->setItem(row, depthSpinBoxColumn, depthSpinBox);
+  // layerModel->setItem(row, depthSpinBoxColumn, depthSpinBox);
   layerModel->setItem(row, layerLineEditColumn, layerLineEdit);
   layerModel->setItem(row, densitySpinBoxColumn, densitySpinBox);
-  layerModel->setItem(row, phaseDropDownColumn, phaseDropDown);
+  // layerModel->setItem(row, phaseDropDownColumn, phaseDropDown);
   // layerModel->setItem(row, removeButtonColumn, removeButton);
   // layerModel->setItem(row, editButtonColumn, editButton);
 
   layerTable->setIndexWidget(startingDepthLabelIndex, startingDepthLabel);
-  // layerTable->setIndexWidget(depthFieldIndex, depthField);
+  layerTable->setIndexWidget(depthSpinBoxIndex, depthSpinBox);
   // layerTable->setIndexWidget(layerLineEditIndex, layerLineEdit);
   // layerTable->setIndexWidget(densityFieldIndex, densityField);
-  layerTable->setIndexWidget(compositionViewIndex, compositionTable);
-  // layerTable->setIndexWidget(phaseDropDownIndex, phaseDropDown);
+  // layerTable->setIndexWidget(compositionViewIndex, compositionTable);
+  layerTable->setIndexWidget(compositionViewIndex, compositionLayoutWidget);
+  layerTable->setIndexWidget(phaseDropDownIndex, phaseDropDown);
   layerTable->setIndexWidget(editButtonPersistentIndex, editButton);
   layerTable->setIndexWidget(removeButtonPersistentIndex, removeButton);
 
@@ -374,13 +450,15 @@ void MainWindow::openLayerWindow(size_t row) {
 
   auto *compositionView =
       qobject_cast<QTableView *>(layerTable->indexWidget(compositionIndex));
-  std::cout << "Comp View: " << compositionView << std::endl;
   auto *compositionModel =
       qobject_cast<QStandardItemModel *>(compositionView->model()); // Get model
-  std::cout << "Comp Model: " << compositionModel << std::endl;
+  compositionView =
+      new QTableView(this); // Reuse this pointer for a new TableView
+  auto *compositionDelegate = new LayerWidgetDelegate(compositionView);
+  compositionView->setItemDelegate(compositionDelegate);
+  compositionView->setModel(compositionModel);
   auto layerName =
       layerModel->index(row, layerNameColumn).data(Qt::DisplayRole).toString();
-  std::cout << "Layer Name: " << layerName.toStdString() << std::endl;
 
   LayerWindow *layerWindow = new LayerWindow(compositionModel, layerName,
                                              this); // Pass 'this' as the parent
