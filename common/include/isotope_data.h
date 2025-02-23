@@ -45,12 +45,14 @@ namespace common {
  * This class enables static access to isotopic data with minimal overhead. By
  * calling the IsotopeData::getIsotopicMass() function, one can access the exact
  * mass of any known isotope (As tabulated by NIST)
+ *
+ * This class also provides the natural isotopic abundances of various elements.
  */
 class IsotopeData {
- public:
-  static constexpr size_t MAX_Z = 118;  //!< The maximum allowed atomic number
+public:
+  static constexpr size_t MAX_Z = 118; //!< The maximum allowed atomic number
 
-  static constexpr size_t MAX_A = 295;  //!< The maximum allowed mass number
+  static constexpr size_t MAX_A = 295; //!< The maximum allowed mass number
 
   /*!
    * \brief A function that takes a Z number and mass number, and returns the
@@ -109,7 +111,7 @@ class IsotopeData {
   // get_relative_abundance(size_t atomic_number) {
   // }
 
- private:
+private:
   // Fancy way for instantiating a compile-time static data structure.
   static constexpr std::array<std::array<mass_quantity, MAX_A>, MAX_Z>
       isotopic_masses = []() {
@@ -118,5 +120,5 @@ class IsotopeData {
         return masses;
       }();
 };
-}  // namespace common
-}  // namespace amcset
+} // namespace common
+} // namespace amcset

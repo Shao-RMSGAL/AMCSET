@@ -14,29 +14,33 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
-// Qt includes
-#include <QFormLayout>
+// Standard library includes
+#include <limits>
 
-#include <QMenu>
-#include <QMenuBar>
-#include <QSplitter>
-#include <QStatusBar>
-#include <QToolBar>
-#include <QVBoxLayout>
-#include <QtWidgets>
-// #include <QBoxLayout>
+// Qt includes
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDebug>
 #include <QFormLayout>
+#include <QHeaderView>
+#include <QMenu>
+#include <QMenuBar>
+#include <QObject>
+#include <QSizePolicy>
+#include <QSplitter>
+#include <QStatusBar>
 #include <QTableView>
+#include <QToolBar>
+#include <QVBoxLayout>
 #include <QtContainerFwd>
+#include <QtWidgets>
 #include <qabstractitemmodel.h>
-#include <qcombobox.h>
-#include <qheaderview.h>
+#include <qboxlayout.h>
 #include <qnamespace.h>
 #include <qobject.h>
-#include <qsizepolicy.h>
 #include <qstandarditemmodel.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 // Local includes
 #include "amcset_common.h"
@@ -53,13 +57,12 @@ namespace gui {
 void MainWindow::runSimulation() {
   // Create AMCSET settings (TODO: Read this from a file and allow a user to
   // configure)
+
+  // TODO: Figure out how to set these parameters
   amcset::common::energy_quantity electron_stopping_energy =
-      40.0 * amcset::common::electron_volt; // Energy at which electrons stop
-  size_t z_number = 1;                      // Hydrogen
-  size_t mass_number = 1;                   // Hydrogen
-  bool enable_damage_cascade = false;       // TEST: Update to test cascades
+      40.0 * amcset::common::electron_volt; // Energy at which electrons stop.
   amcset::common::energy_quantity ion_stopping_energy =
-      40.0 * amcset::common::electron_volt; // Typical for iron
+      40.0 * amcset::common::electron_volt; // Typical for iron.
   amcset::common::energy_quantity ion_displacement_energy =
       40.0 * amcset::common::electron_volt; // Typical for iron
   bool log_single_displacement =
@@ -69,18 +72,28 @@ void MainWindow::runSimulation() {
   size_t flying_distance_number =
       1000; // Break flying distnaces into groups of 1000. TEST: Test with
             // different numbers
+
+  bool is_electron =
+      incidentElectron
+          ->checkState(); // Start with ions. TEST: Test with electrons later.
+  bool enable_damage_cascade =
+      damageCascade->checkState(); // TEST: Update to test cascades
+  size_t mass_number = incidentMass->value();
+  size_t z_number = incidentCharge->value();
+  double incident_angle =
+      incidentAngle->value(); // TODO: Add settings for this.
   amcset::common::length_quantity range =
-      5000.0 *
-      amcset::common::angstrom;  // Target range. Should be unused. HACK: Remove
-                                 // once confirmed to be unused.
-  size_t bombardment_count = 10; // TEST: Test with more later.
-  bool is_electron = false; // Start with ions. TEST: Test with electrons later.
+      rangeSpinBox->value() *
+      amcset::common::angstrom; // Target range. Should be unused. HACK: Remove
+                                // once confirmed to be unused.
+  size_t bombardment_count =
+      bombardmentCountSpinBox->value(); // TEST: Test with more later.
   amcset::common::energy_quantity incident_energy =
-      100.0 *
+      incidentEnergy->value() *
       amcset::common::kilo_electron_volt; // TEST: Test with other energies
   size_t thread_count =
-      std::thread::hardware_concurrency(); // Try with single threading, PERF:
-                                           // Try with multithreading
+      threadCountSpinBox->value(); // Try with single threading, PERF:
+                                   // Try with multithreading
 
   // PERF: Add an option to use GPU (Use Kokkos for cross-platform
   // compatability. Note that it is not available in conan. Either make a
@@ -91,9 +104,11 @@ void MainWindow::runSimulation() {
       ion_stopping_energy, ion_displacement_energy, log_single_displacement,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
       is_electron, incident_energy, thread_count);
+
   // Create AMCSET volume (TODO: Read this from a file and allow a user to
   // configure)
 
+  // TODO: Read from the 'Layers' section
   constexpr double natural_abundance_54 = 0.05845;
   constexpr double natural_abundance_56 = 0.91754;
   constexpr double natural_abundance_57 = 0.02119;
@@ -104,6 +119,7 @@ void MainWindow::runSimulation() {
       {natural_abundance_57, amcset::common::Particle::Properties(26, 57)},
       {natural_abundance_58, amcset::common::Particle::Properties(26, 58)},
   };
+
   auto depth = 10000.0 * amcset::common::angstrom;
   constexpr auto density = 7874.0 * amcset::common::kg_per_cubic_meter;
 
@@ -114,7 +130,17 @@ void MainWindow::runSimulation() {
 
   // Create the AMCSET simulation object
   auto simulation = amcset::common::Simulation(settings, std::move(volume));
-  simulation.run_simulation(); // TODO: Check return value
+
+  // sleep(3);
+  try {
+    auto exitCode =
+        simulation.run_simulation(); // TODO: Check return value. Run in a
+                                     // separate thread to prevent blocking.
+
+    std::cout << "Exit status: " << exitCode << std::endl;
+  } catch (std::exception &e) {
+    std::cout << e.what() << std::endl;
+  }
 }
 
 MainWindow::MainWindow(Application *app) : app_(app) {
@@ -146,9 +172,17 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   infoLabel->setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
   infoLabel->setAlignment(Qt::AlignCenter);
 
+  auto *runCancelButtonLayoutWidget = new QWidget(this);
+  auto *runCancelButtonLayout = new QHBoxLayout(runCancelButtonLayoutWidget);
   auto *runButton = new QPushButton("Run Simulation");
   runButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   connect(runButton, &QPushButton::clicked, this, &MainWindow::runSimulation);
+  auto *cancelButton = new QPushButton("Cancel Run");
+  cancelButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  // TODO: Figure out how to implement cancellation.
+
+  runCancelButtonLayout->addWidget(runButton);
+  runCancelButtonLayout->addWidget(cancelButton);
 
   auto *canvas = new Canvas;
   canvas->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
@@ -165,7 +199,7 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   formLayout->addWidget(
       createIncidentParticleForms(formBox)); // Layout within the widget. //
   layerSplitter->addWidget(createLayerForms());
-  layerSplitter->addWidget(runButton);
+  layerSplitter->addWidget(runCancelButtonLayoutWidget);
   formLayout->addWidget(layerSplitter);
 
   auto *hPane = new QSplitter(Qt::Horizontal); // Split the forms and canvas
@@ -189,37 +223,66 @@ QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
   auto formGroupBox = new QGroupBox("Incident particle properties", parent);
   incidentFormLayout = new QFormLayout(formGroupBox);
 
-  incidentElectron = new QCheckBox();
+  incidentElectron = new QCheckBox(this);
   incidentElectron->setChecked(false); // Default to ion simulation
   incidentFormLayout->addRow("Incident electron?", incidentElectron);
 
-  damageCascade = new QCheckBox();
+  damageCascade = new QCheckBox(this);
   damageCascade->setChecked(true); // Default to ion simulation
   incidentFormLayout->addRow("Simulate damage cascade?", damageCascade);
 
-  incidentEnergy = new QDoubleSpinBox();
+  incidentEnergy = new QDoubleSpinBox(this);
   incidentEnergy->setRange(0.0,
                            10000.0); // TODO: Ensure that range is reasonable;
   incidentEnergy->setDecimals(1);
+  const auto defaultEnergy = 10;
+  incidentEnergy->setValue(defaultEnergy);
   incidentFormLayout->addRow("Incident Energy (keV)", incidentEnergy);
 
-  incidentMass = new QSpinBox();
-  incidentMass->setRange(0, 295);
+  incidentMass = new QSpinBox(this);
+  incidentMass->setRange(1, 295);
+  const auto defaultMass = 1; // Hydrogen
+  incidentEnergy->setValue(defaultMass);
   incidentMassFormIndex = incidentFormLayout->rowCount();
   incidentFormLayout->addRow("Incident Mass (amu)", incidentMass);
 
-  incidentCharge = new QSpinBox();
-  incidentCharge->setRange(0, 118);
+  incidentCharge = new QSpinBox(this);
+  const auto defaultCharge = 1; // Hydrogen
+  incidentEnergy->setValue(defaultCharge);
+  incidentCharge->setRange(1, 118);
   incidentChargeFormIndex = incidentFormLayout->rowCount();
   incidentFormLayout->addRow("Incident Z-number", incidentCharge);
 
   connect(incidentElectron, &QCheckBox::stateChanged, this,
           &MainWindow::toggleIncidentIonFormVisibility);
 
-  incidentAngle = new QDoubleSpinBox();
+  incidentAngle = new QDoubleSpinBox(this);
   incidentAngle->setRange(0.0, 90.0);
   incidentAngle->setDecimals(2);
   incidentFormLayout->addRow("Incident Angle (degree)", incidentAngle);
+
+  bombardmentCountSpinBox = new QSpinBox(this);
+  bombardmentCountSpinBox->setRange(
+      1,
+      std::numeric_limits<int>::max()); // TODO: add a cancel button to cancel
+                                        // exceedingly long simulations
+  const auto defaultBombardments = 10000;
+  bombardmentCountSpinBox->setValue(defaultBombardments);
+  incidentFormLayout->addRow("Number of Bombardments", bombardmentCountSpinBox);
+
+  threadCountSpinBox = new QSpinBox(this);
+  const auto numberOfThreads = std::thread::hardware_concurrency();
+  threadCountSpinBox->setRange(1, numberOfThreads);
+  threadCountSpinBox->setValue(numberOfThreads);
+  incidentFormLayout->addRow("Number of Threads", threadCountSpinBox);
+
+  rangeSpinBox = new QDoubleSpinBox(this);
+  const auto minRange = 0.1;
+  const auto maxRange = std::numeric_limits<typeof(minRange)>::max();
+  const auto defaultDepth = 1000;
+  rangeSpinBox->setRange(minRange, maxRange);
+  rangeSpinBox->setValue(defaultDepth);
+  incidentFormLayout->addRow("Range (Angstrom)", rangeSpinBox);
 
   return formGroupBox;
 }
@@ -238,6 +301,8 @@ void MainWindow::handleLayerButtonClicked(size_t row) { openLayerWindow(row); }
 void MainWindow::updateLayerDepths() {
   // Go through every column and update the absolute depths. Verify correct
   // entries
+  auto totalDepth = 0.0;
+  auto range = rangeSpinBox->value();
   for (size_t row = 1; row < (size_t)layerModel->rowCount(); row++) {
     auto prevLabelIndex = layerModel->index(row - 1, 0);
     auto prevEntryIndex = layerModel->index(row - 1, 1);
@@ -251,8 +316,18 @@ void MainWindow::updateLayerDepths() {
             .toDouble();
     auto *startingDepthLabel =
         qobject_cast<QLabel *>(layerTable->indexWidget(labelIndex));
-    auto totalDepth = prevStartingDepth + prevDepth;
+    totalDepth = prevStartingDepth + prevDepth;
     startingDepthLabel->setText(QString::number(totalDepth));
+  }
+
+  auto depthEntryIndex = layerModel->index(layerModel->rowCount() - 1, 1);
+  auto lastDepth =
+      qobject_cast<QDoubleSpinBox *>(layerTable->indexWidget(depthEntryIndex))
+          ->value();
+  totalDepth += lastDepth;
+
+  if ((totalDepth) > range) { // Only set if the range is too small.
+    rangeSpinBox->setValue(totalDepth);
   }
 }
 
@@ -515,6 +590,9 @@ QGroupBox *MainWindow::createLayerForms(QWidget *parent) {
   layerTable->setModel(layerModel);
   layerTable->horizontalHeader()->setSectionResizeMode(
       QHeaderView::ResizeToContents);
+  const auto compositionColumn = 4;
+  layerTable->horizontalHeader()->setSectionResizeMode(compositionColumn,
+                                                       QHeaderView::Stretch);
   layerTable->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
   layerVBox->addWidget(layerTable);

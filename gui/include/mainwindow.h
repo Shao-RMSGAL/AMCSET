@@ -121,6 +121,9 @@ private:
   QFormLayout *incidentFormLayout;
   size_t incidentChargeFormIndex;
   size_t incidentMassFormIndex;
+  QSpinBox *bombardmentCountSpinBox;
+  QSpinBox *threadCountSpinBox;
+  QDoubleSpinBox *rangeSpinBox;
 
   // Layer forms
   QStandardItemModel *layerModel;
