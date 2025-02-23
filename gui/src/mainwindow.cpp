@@ -39,6 +39,8 @@
 #include <qstandarditemmodel.h>
 
 // Local includes
+#include "amcset_common.h"
+#include "amcset_utilities.h"
 #include "application.h"
 #include "canvas.h"
 #include "layer_delegate.h"
@@ -47,6 +49,73 @@
 
 namespace amcset {
 namespace gui {
+
+void MainWindow::runSimulation() {
+  // Create AMCSET settings (TODO: Read this from a file and allow a user to
+  // configure)
+  amcset::common::energy_quantity electron_stopping_energy =
+      40.0 * amcset::common::electron_volt; // Energy at which electrons stop
+  size_t z_number = 1;                      // Hydrogen
+  size_t mass_number = 1;                   // Hydrogen
+  bool enable_damage_cascade = false;       // TEST: Update to test cascades
+  amcset::common::energy_quantity ion_stopping_energy =
+      40.0 * amcset::common::electron_volt; // Typical for iron
+  amcset::common::energy_quantity ion_displacement_energy =
+      40.0 * amcset::common::electron_volt; // Typical for iron
+  bool log_single_displacement =
+      false; // TEST: Test later, will consume a LOT of memory/disk space.
+  size_t divisor_angle_number = 1000; // Break angle range into 1000 segements.
+                                      // TEST: Test with different numbers
+  size_t flying_distance_number =
+      1000; // Break flying distnaces into groups of 1000. TEST: Test with
+            // different numbers
+  amcset::common::length_quantity range =
+      5000.0 *
+      amcset::common::angstrom;  // Target range. Should be unused. HACK: Remove
+                                 // once confirmed to be unused.
+  size_t bombardment_count = 10; // TEST: Test with more later.
+  bool is_electron = false; // Start with ions. TEST: Test with electrons later.
+  amcset::common::energy_quantity incident_energy =
+      100.0 *
+      amcset::common::kilo_electron_volt; // TEST: Test with other energies
+  size_t thread_count =
+      std::thread::hardware_concurrency(); // Try with single threading, PERF:
+                                           // Try with multithreading
+
+  // PERF: Add an option to use GPU (Use Kokkos for cross-platform
+  // compatability. Note that it is not available in conan. Either make a
+  // conan recipe for it or use another installation method.
+
+  auto settings = amcset::common::Simulation::Settings(
+      electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
+      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      divisor_angle_number, flying_distance_number, range, bombardment_count,
+      is_electron, incident_energy, thread_count);
+  // Create AMCSET volume (TODO: Read this from a file and allow a user to
+  // configure)
+
+  constexpr double natural_abundance_54 = 0.05845;
+  constexpr double natural_abundance_56 = 0.91754;
+  constexpr double natural_abundance_57 = 0.02119;
+  constexpr double natural_abundance_58 = 0.00282;
+  amcset::common::Layer::material_vector material{
+      {natural_abundance_54, amcset::common::Particle::Properties(26, 54)},
+      {natural_abundance_56, amcset::common::Particle::Properties(26, 56)},
+      {natural_abundance_57, amcset::common::Particle::Properties(26, 57)},
+      {natural_abundance_58, amcset::common::Particle::Properties(26, 58)},
+  };
+  auto depth = 10000.0 * amcset::common::angstrom;
+  constexpr auto density = 7874.0 * amcset::common::kg_per_cubic_meter;
+
+  std::vector<amcset::common::Layer> single_layer;
+  single_layer.push_back(
+      amcset::common::Layer(std::move(material), depth, density));
+  auto volume = amcset::common::Volume(std::move(single_layer));
+
+  // Create the AMCSET simulation object
+  auto simulation = amcset::common::Simulation(settings, std::move(volume));
+  simulation.run_simulation(); // TODO: Check return value
+}
 
 MainWindow::MainWindow(Application *app) : app_(app) {
   // // Load window size and geometry from settings
@@ -79,13 +148,13 @@ MainWindow::MainWindow(Application *app) : app_(app) {
 
   auto *runButton = new QPushButton("Run Simulation");
   runButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  connect(runButton, &QPushButton::clicked, app_, &Application::runSimulation);
+  connect(runButton, &QPushButton::clicked, this, &MainWindow::runSimulation);
 
   auto *canvas = new Canvas;
   canvas->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
 
   // Layouts
-  auto *topLayout = new QVBoxLayout; // The outermost layout.
+  auto *topLayout = new QVBoxLayout(); // The outermost layout.
   topLayout->setContentsMargins(5, 5, 5, 5);
 
   auto *formBox = new QGroupBox(this); // Contains forms for user input.
@@ -262,12 +331,12 @@ void MainWindow::createLayerRow() {
   // densityField->setSingleStep(0.01);
 
   // Composition
-  const auto compositionColumns = 4;
+  const auto compositionColumns = 5;
   auto *compositionModel = new QStandardItemModel(0, compositionColumns, this);
   auto *compositionTable = new QTableView(this);
 
   // Fit inside the inner column
-  compositionTable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  // compositionTable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   compositionTable->horizontalHeader()->setSectionResizeMode(
       QHeaderView::ResizeToContents);
 
@@ -281,7 +350,8 @@ void MainWindow::createLayerRow() {
       "Element",
       "Atomic\nProportion",
       "Atomic %",
-      "Remove\nElement",
+      "Displacement\nEnergy (eV)",
+      "Remove",
   }); // TODO: Support input of weight or atomic percent
 
   compositionTable->setModel(compositionModel);
@@ -297,7 +367,7 @@ void MainWindow::createLayerRow() {
   // compositionLabel);
 
   auto *compositionLayoutWidget = new QWidget(this);
-  auto *compositionLayout = new QVBoxLayout(this);
+  auto *compositionLayout = new QVBoxLayout();
   compositionLayoutWidget->setLayout(compositionLayout);
 
   auto compositionAddElementFunction = [compositionModel, compositionTable]() {
@@ -306,7 +376,8 @@ void MainWindow::createLayerRow() {
     const auto elementColumn = 0;
     const auto fractionColumn = 1;
     const auto percentColumn = 2;
-    const auto elementDeleteButtonColumn = 3;
+    const auto displacementEnergyColumn = 3;
+    const auto elementDeleteButtonColumn = 4;
     auto index = compositionModel->rowCount();
     auto *elementLabel = new QStandardItem();
     elementLabel->setData(ElementLineEdit, Qt::UserRole);
@@ -320,13 +391,22 @@ void MainWindow::createLayerRow() {
     percentLabel->setData(PercentLabel, Qt::UserRole);
     percentLabel->setData(defaultFraction, Qt::DisplayRole);
 
-    auto *elementDeleteButton = new QStandardItem();
+    const auto minValue = 0.01;
+    auto *displacementEnergySpinBox = new QStandardItem(minValue);
+    displacementEnergySpinBox->setData(QString::number(minValue),
+                                       Qt::DisplayRole);
+    displacementEnergySpinBox->setData(DisplacementEnergySpinBox, Qt::UserRole);
+    percentLabel->setData(defaultFraction, Qt::DisplayRole);
+
+    auto *elementDeleteButton = new QStandardItem("Dbl Clk");
     elementDeleteButton->setData(ElementDeleteButton, Qt::UserRole);
 
     compositionModel->insertRow(index);
     compositionModel->setItem(index, elementColumn, elementLabel);
     compositionModel->setItem(index, fractionColumn, fractionSpinBox);
     compositionModel->setItem(index, percentColumn, percentLabel);
+    compositionModel->setItem(index, displacementEnergyColumn,
+                              displacementEnergySpinBox);
     compositionModel->setItem(index, elementDeleteButtonColumn,
                               elementDeleteButton);
     compositionTable->resizeColumnsToContents();
@@ -401,6 +481,7 @@ void MainWindow::createLayerRow() {
 
   layerTable->resizeColumnsToContents();
   layerTable->resizeRowsToContents();
+
   layerTable->show();
 
   updateLayerDepths();
@@ -414,13 +495,13 @@ QGroupBox *MainWindow::createLayerForms(QWidget *parent) {
           &MainWindow::createLayerRow);
 
   // TODO: Change to allow arbitrary units
-  layerHeaders = QStringList{"Starting Depth (Angstrom)",
-                             "Depth (Angstrom)",
+  layerHeaders = QStringList{"Starting Depth\n(Angstrom)",
+                             "Depth\n(Angstrom)",
                              "Layer",
-                             QString("Density (g/cm%1)").arg(QChar(0x00B3)),
+                             QString("Density\n(g/cm%1)").arg(QChar(0x00B3)),
                              "Composition",
                              "Phase",
-                             "Edit",
+                             "Edit\n(WIP)",
                              "Remove"};
   layerModel = new QStandardItemModel(0, layerHeaders.count());
   layerModel->setHorizontalHeaderLabels(layerHeaders);
@@ -447,11 +528,24 @@ void MainWindow::openLayerWindow(size_t row) {
   const auto compositionIndex = layerModel->index(row, compositionColumn);
   const size_t layerNameColumn = 2;
   // const auto layerNameIndex = layerModel->index(row, layerNameColumn);
+  std::cout << "Test" << std::endl;
 
+  // The QTableView containing the element data is inside of the
+  // Layer QTableView, in a QWidget with a QVboxLayout at index 0.
+  // We need to do some pointer magic to obtain this pointer, before
+  // finally getting the model we need to open the data in a separate window.
+  auto *compositionViewWidget =
+      qobject_cast<QWidget *>(layerTable->indexWidget(compositionIndex));
+  std::cout << "View: " << compositionViewWidget << std::endl;
+  auto *compositionViewLayout =
+      compositionViewWidget->findChild<QVBoxLayout *>();
   auto *compositionView =
-      qobject_cast<QTableView *>(layerTable->indexWidget(compositionIndex));
+      qobject_cast<QTableView *>(compositionViewLayout->itemAt(0)->widget());
   auto *compositionModel =
       qobject_cast<QStandardItemModel *>(compositionView->model()); // Get model
+                                                                    //
+  std::cout << "Model: " << compositionModel << std::endl;
+
   compositionView =
       new QTableView(this); // Reuse this pointer for a new TableView
   auto *compositionDelegate = new LayerWidgetDelegate(compositionView);

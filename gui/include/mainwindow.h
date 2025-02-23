@@ -74,6 +74,7 @@ private slots:
   void handleLayerButtonClicked(size_t row);
   void toggleIncidentIonFormVisibility(int state);
   void createLayerRow();
+  void runSimulation();
 
 private:
   void createActions();

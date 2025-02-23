@@ -27,6 +27,7 @@ enum LayerWidgetType {
   FractionSpinBox,
   PercentLabel,
   ElementDeleteButton,
+  DisplacementEnergySpinBox,
 };
 
 class LayerWidgetDelegate : public QStyledItemDelegate {

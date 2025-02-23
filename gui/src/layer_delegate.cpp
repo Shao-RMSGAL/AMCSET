@@ -88,6 +88,13 @@ QWidget *LayerWidgetDelegate::createEditor(QWidget *parent,
             [this, index]() { emit deleteElement(index); });
     return elementDeleteButton;
   }
+  case DisplacementEnergySpinBox: {
+    auto *displacementEnergySpinBox = new QDoubleSpinBox(parent);
+    auto minValue = 0.01;
+    auto maxValue = 1e6;
+    displacementEnergySpinBox->setRange(minValue, maxValue);
+    return displacementEnergySpinBox;
+  }
   default:
     return nullptr;
   }
