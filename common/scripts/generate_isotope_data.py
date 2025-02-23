@@ -43,23 +43,14 @@ def generate_cpp_code(input_file):
 
     # Generate C++ code
     cpp_code = """// Auto-generated code - DO NOT EDIT
-#include <map>
+#include <array>
 #include <string>
-#include "isotope.h"
+#include "isotope_data.h"
 
-namespace chemistry {
-
-struct Isotope {
-    int atomic_number;
-    std::string atomic_symbol;
-    int mass_number;
-    double relative_atomic_mass;
-    double isotopic_composition;
-    double standard_atomic_weight;
-};
-
-std::map<std::string, std::map<int, Isotope>> createIsotopeDatabase() {
-    std::map<std::string, std::map<int, Isotope>> database;
+namespace amcset {
+namespace common {
+    constexpr const IsotopeData::Isotope* IsotopeData::find_isotope(std::string_view atomic_symbol , int atomic_number) {
+    constexpr std::array database = {
 """
 
     for isotope in isotopes:
@@ -71,20 +62,29 @@ std::map<std::string, std::map<int, Isotope>> createIsotopeDatabase() {
         symbol = isotope["Atomic Symbol"]
         mass_number = int(isotope["Mass Number"])
 
-        cpp_code += f"""    database["{symbol}"][{mass_number}] = Isotope{{
+        cpp_code += f"""
+        Isotope{{
         .atomic_number = {isotope['Atomic Number']},
         .atomic_symbol = "{symbol}",
         .mass_number = {mass_number},
         .relative_atomic_mass = {parse_value(isotope.get('Relative Atomic Mass', '0'))},
         .isotopic_composition = {parse_value(isotope.get('Isotopic Composition', '0'))},
         .standard_atomic_weight = {parse_value(isotope.get('Standard Atomic Weight', '0'))}
-    }};\n"""
+        }},
+        """
 
     cpp_code += """
-    return database;
+    }; 
+    for (const auto& entry : database) {
+        if (entry.atomic_symbol == atomic_symbol && entry.atomic_number == atomic_number) {
+            return &entry;
+        }
+    }
+    return nullptr;
 }
 
-} // namespace chemistry
+} // namespace common
+} // namespace amcset
 """
     return cpp_code
 
@@ -102,26 +102,3 @@ if __name__ == "__main__":
     cpp_code = generate_cpp_code(input_file)
     with open(output_file, "w") as f:
         f.write(cpp_code)
-
-#  # Add the custom command to generate the isotope database
-#  add_custom_command(
-#      OUTPUT ${CMAKE_BINARY_DIR}/generated/isotope_database.cpp
-#      COMMAND ${Python_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/generate_isotope_data.py
-#              ${CMAKE_SOURCE_DIR}/assets/isotope_data.txt
-#              ${CMAKE_BINARY_DIR}/generated/isotope_database.cpp
-#      DEPENDS ${CMAKE_SOURCE_DIR}/assets/isotope_data.txt
-#              ${CMAKE_SOURCE_DIR}/scripts/generate_isotope_data.py
-#      COMMENT "Generating isotope database"
-#  )
-
-#  # Create a library that includes the generated code
-#  add_library(isotope_database
-#      ${CMAKE_BINARY_DIR}/generated/isotope_database.cpp
-#      include/isotope.h
-#  )
-
-#  target_include_directories(isotope_database
-#      PUBLIC
-#          ${CMAKE_SOURCE_DIR}/include
-#          ${CMAKE_BINARY_DIR}/generated
-#  )

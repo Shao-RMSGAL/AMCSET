@@ -28,7 +28,7 @@
 
 // Standard library
 #include <array>
-#include <stdexcept>
+#include <map>
 #include <string>
 
 // AMCSET includes
@@ -37,6 +37,7 @@
 
 namespace amcset {
 namespace common {
+
 /*!
  * \class IsotopeData
  * \brief Class for allowing static access to isotopic data given a mass and z
@@ -50,6 +51,19 @@ namespace common {
  */
 class IsotopeData {
 public:
+  /*!
+   * \struct Isotope
+   * \brief Stores information about isotopes
+   */
+  struct Isotope {
+    int atomic_number;
+    std::string_view atomic_symbol;
+    int mass_number;
+    double relative_atomic_mass;
+    double isotopic_composition;
+    double standard_atomic_weight;
+  };
+
   static constexpr size_t MAX_Z = 118; //!< The maximum allowed atomic number
 
   static constexpr size_t MAX_A = 295; //!< The maximum allowed mass number
@@ -67,8 +81,8 @@ public:
    * \param mass_number The mass number of the isotope
    * \return The exact mass of the corresponding isotope in Relative Atomic Mass
    */
-  static constexpr mass_quantity get_isotope_mass(size_t atomic_number,
-                                                  size_t mass_number) try {
+  inline static constexpr mass_quantity
+  get_isotope_mass(size_t atomic_number, size_t mass_number) try {
     if (atomic_number == 0 && mass_number == 0) {
       return constants::m_e;
     }
@@ -98,6 +112,12 @@ public:
   } catch (...) {
     rethrow();
   };
+
+  /*!
+   * \brief A helper function for retrieving isotope data
+   */
+  inline static constexpr const Isotope *
+  find_isotope(std::string_view atomic_symbol, int atomic_number);
 
   /*!
    * \brief Return a material_vector of a natural sample of an element.
