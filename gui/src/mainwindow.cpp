@@ -15,6 +15,7 @@
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
 // Standard library includes
+#include <exception>
 #include <limits>
 
 // Qt includes
@@ -59,12 +60,12 @@ void MainWindow::runSimulation() {
   // configure)
 
   // TODO: Figure out how to set these parameters
-  amcset::common::energy_quantity electron_stopping_energy =
-      40.0 * amcset::common::electron_volt; // Energy at which electrons stop.
-  amcset::common::energy_quantity ion_stopping_energy =
-      40.0 * amcset::common::electron_volt; // Typical for iron.
-  amcset::common::energy_quantity ion_displacement_energy =
-      40.0 * amcset::common::electron_volt; // Typical for iron
+  common::energy_quantity electron_stopping_energy =
+      40.0 * common::electron_volt; // Energy at which electrons stop.
+  common::energy_quantity ion_stopping_energy =
+      40.0 * common::electron_volt; // Typical for iron.
+  common::energy_quantity ion_displacement_energy =
+      40.0 * common::electron_volt; // Typical for iron
   bool log_single_displacement =
       false; // TEST: Test later, will consume a LOT of memory/disk space.
   size_t divisor_angle_number = 1000; // Break angle range into 1000 segements.
@@ -80,17 +81,17 @@ void MainWindow::runSimulation() {
       damageCascade->checkState(); // TEST: Update to test cascades
   size_t mass_number = incidentMass->value();
   size_t z_number = incidentCharge->value();
-  double incident_angle =
-      incidentAngle->value(); // TODO: Add settings for this.
-  amcset::common::length_quantity range =
+  // double incident_angle =
+  //     incidentAngle->value(); // TODO: Add settings for this.
+  common::length_quantity range =
       rangeSpinBox->value() *
-      amcset::common::angstrom; // Target range. Should be unused. HACK: Remove
-                                // once confirmed to be unused.
+      common::angstrom; // Target range. Should be unused. HACK: Remove
+                        // once confirmed to be unused.
   size_t bombardment_count =
       bombardmentCountSpinBox->value(); // TEST: Test with more later.
-  amcset::common::energy_quantity incident_energy =
+  common::energy_quantity incident_energy =
       incidentEnergy->value() *
-      amcset::common::kilo_electron_volt; // TEST: Test with other energies
+      common::kilo_electron_volt; // TEST: Test with other energies
   size_t thread_count =
       threadCountSpinBox->value(); // Try with single threading, PERF:
                                    // Try with multithreading
@@ -99,7 +100,7 @@ void MainWindow::runSimulation() {
   // compatability. Note that it is not available in conan. Either make a
   // conan recipe for it or use another installation method.
 
-  auto settings = amcset::common::Simulation::Settings(
+  auto settings = common::Simulation::Settings(
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
       ion_stopping_energy, ion_displacement_energy, log_single_displacement,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
@@ -108,28 +109,100 @@ void MainWindow::runSimulation() {
   // Create AMCSET volume (TODO: Read this from a file and allow a user to
   // configure)
 
+  const size_t layerCount = layerModel->rowCount();
+
+  if (layerCount == 0) {
+    throw std::logic_error("Layer count cannot be zero.");
+  }
+
+  for (size_t layerRow = 0; layerRow < layerCount; layerRow++) {
+    const auto compositionColumn = 4;
+    auto materialIndex = layerModel->index(layerRow, compositionColumn);
+    auto *materialWidget =
+        qobject_cast<QWidget *>(layerTable->indexWidget(materialIndex));
+    auto *materialLayout = materialWidget->layout();
+    auto *materialTable =
+        qobject_cast<QTableView *>(materialLayout->itemAt(0)->widget());
+    auto *materialModel = materialTable->model();
+    std::cout << "Test: " << materialModel << std::endl;
+    // TODO: Check for duplicate elements
+    size_t elementCount = materialModel->rowCount();
+    common::Layer::material_vector material;
+    for (size_t elementRow = 0; elementRow < elementCount; elementRow++) {
+      const auto atomicSymbolColumn = 0;
+      const auto proportionColumn = 1;
+      const auto displacementEnergyColumn = 3;
+
+      auto atomicSymbol = materialModel->index(elementRow, atomicSymbolColumn)
+                              .data(Qt::DisplayRole)
+                              .toString();
+      auto atomicProportion = materialModel->index(elementRow, proportionColumn)
+                                  .data(Qt::DisplayRole)
+                                  .toDouble();
+      auto displacementEnergy =
+          materialModel->index(elementRow, displacementEnergyColumn)
+              .data(Qt::DisplayRole)
+              .toDouble();
+
+      std::cout << "Element: " << atomicSymbol.toStdString()
+                << ". Proportion: " << atomicProportion
+                << " Displacement Energy: " << displacementEnergy << std::endl;
+      // Handle elements
+      auto atomicNumber = common::IsotopeData::element_to_atomic_number(
+          atomicSymbol.toStdString());
+
+      std::vector<std::pair<size_t, double>> isotopicCompositions;
+      auto proportion_sum = 0.0;
+      if (atomicNumber != 0) {
+        isotopicCompositions =
+            common::IsotopeData::get_relative_abundance(atomicNumber);
+        for (auto abundance : isotopicCompositions) {
+
+          const auto proportion = abundance.second * atomicProportion;
+          proportion_sum += proportion;
+          material.emplace_back(std::pair(
+              proportion,
+              common::Particle::Properties(atomicNumber, abundance.first)));
+        }
+      } else {
+        // TODO: Handle specific isotopes
+      }
+
+      for (auto &entry : material) {
+        entry.first /= proportion_sum;
+        std::cout << "wow " << entry.first << " " << entry.second.charge_ << " "
+                  << entry.second.mass_ / common::atomic_mass_unit << std::endl;
+      }
+    }
+  }
+
   // TODO: Read from the 'Layers' section
   constexpr double natural_abundance_54 = 0.05845;
   constexpr double natural_abundance_56 = 0.91754;
   constexpr double natural_abundance_57 = 0.02119;
   constexpr double natural_abundance_58 = 0.00282;
-  amcset::common::Layer::material_vector material{
-      {natural_abundance_54, amcset::common::Particle::Properties(26, 54)},
-      {natural_abundance_56, amcset::common::Particle::Properties(26, 56)},
-      {natural_abundance_57, amcset::common::Particle::Properties(26, 57)},
-      {natural_abundance_58, amcset::common::Particle::Properties(26, 58)},
+  common::Layer::material_vector material{
+      {natural_abundance_54, common::Particle::Properties(26, 54)},
+      {natural_abundance_56, common::Particle::Properties(26, 56)},
+      {natural_abundance_57, common::Particle::Properties(26, 57)},
+      {natural_abundance_58, common::Particle::Properties(26, 58)},
   };
 
-  auto depth = 10000.0 * amcset::common::angstrom;
-  constexpr auto density = 7874.0 * amcset::common::kg_per_cubic_meter;
+  auto result = common::IsotopeData::get_relative_abundance(26);
+  for (auto entry : result) {
+    std::cout << "Entry: (" << entry.first << ", " << entry.second << ")"
+              << std::endl;
+  }
 
-  std::vector<amcset::common::Layer> single_layer;
-  single_layer.push_back(
-      amcset::common::Layer(std::move(material), depth, density));
-  auto volume = amcset::common::Volume(std::move(single_layer));
+  auto depth = 10000.0 * common::angstrom;
+  constexpr auto density = 7874.0 * common::kg_per_cubic_meter;
+
+  std::vector<common::Layer> single_layer;
+  single_layer.push_back(common::Layer(std::move(material), depth, density));
+  auto volume = common::Volume(std::move(single_layer));
 
   // Create the AMCSET simulation object
-  auto simulation = amcset::common::Simulation(settings, std::move(volume));
+  auto simulation = common::Simulation(settings, std::move(volume));
 
   // sleep(3);
   try {
@@ -447,7 +520,7 @@ void MainWindow::createLayerRow() {
 
   auto compositionAddElementFunction = [compositionModel, compositionTable]() {
     const auto defaultElement = "H";
-    const auto defaultFraction = 0.0;
+    const auto defaultFraction = 1.0;
     const auto elementColumn = 0;
     const auto fractionColumn = 1;
     const auto percentColumn = 2;

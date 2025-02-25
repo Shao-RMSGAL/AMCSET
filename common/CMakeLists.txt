@@ -1,11 +1,9 @@
 add_library(amcset-common STATIC
     ${PROJECT_SOURCE_DIR}/common/src/amcset_common.cpp
-    ${PROJECT_SOURCE_DIR}/common/src/isotope_data.cpp
-    ${PROJECT_SOURCE_DIR}/common/generated/isotope_database.cpp
     ${PROJECT_SOURCE_DIR}/common/include/amcset_common.h
     ${PROJECT_SOURCE_DIR}/common/include/isotope_data.h
     ${PROJECT_SOURCE_DIR}/common/include/amcset_utilities.h
-    ${PROJECT_SOURCE_DIR}/common/include/amcset_utilities.h
+    ${PROJECT_SOURCE_DIR}/common/generated/isotope_database.h
     )
 
 # state that common need PIC when the default is shared libraries
@@ -20,17 +18,16 @@ target_link_libraries(amcset-common PUBLIC compiler_flags)
 # building on windows
 target_compile_definitions(amcset-common PRIVATE "EXPORTING_AMCSET")
 
-
+find_package (Python COMPONENTS Interpreter Development)
 
 # Add the custom command to generate the isotope database
 add_custom_command(
-    OUTPUT ${PROJECT_SOURCE_DIR}/common/generated/isotope_database.cpp
+    OUTPUT ${PROJECT_SOURCE_DIR}/common/generated/isotope_database.h
     COMMAND
-    # ${Python_EXECUTABLE}
-    python
+    ${Python_EXECUTABLE}
     ${PROJECT_SOURCE_DIR}/common/scripts/generate_isotope_data.py
             ${PROJECT_SOURCE_DIR}/common/assets/isotope_data.txt
-            ${PROJECT_SOURCE_DIR}/common/generated/isotope_database.cpp
+            ${PROJECT_SOURCE_DIR}/common/generated/isotope_database.h
     DEPENDS ${PROJECT_SOURCE_DIR}/common/assets/isotope_data.txt
             ${PROJECT_SOURCE_DIR}/common/scripts/generate_isotope_data.py
     COMMENT "Generating isotope database"
@@ -39,4 +36,5 @@ add_custom_command(
 
 target_include_directories(amcset-common PUBLIC
     ${PROJECT_SOURCE_DIR}/common/include/
+    ${PROJECT_SOURCE_DIR}/common/generated/
     )

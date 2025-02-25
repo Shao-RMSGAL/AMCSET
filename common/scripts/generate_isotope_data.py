@@ -43,14 +43,8 @@ def generate_cpp_code(input_file):
 
     # Generate C++ code
     cpp_code = """// Auto-generated code - DO NOT EDIT
-#include <array>
-#include <string>
-#include "isotope_data.h"
-
-namespace amcset {
-namespace common {
-    constexpr const IsotopeData::Isotope* IsotopeData::find_isotope(std::string_view atomic_symbol , int atomic_number) {
-    constexpr std::array database = {
+#pragma once
+#define GENERATE_ISOTOPE_DATA \\
 """
 
     for isotope in isotopes:
@@ -62,30 +56,19 @@ namespace common {
         symbol = isotope["Atomic Symbol"]
         mass_number = int(isotope["Mass Number"])
 
-        cpp_code += f"""
-        Isotope{{
-        .atomic_number = {isotope['Atomic Number']},
-        .atomic_symbol = "{symbol}",
-        .mass_number = {mass_number},
-        .relative_atomic_mass = {parse_value(isotope.get('Relative Atomic Mass', '0'))},
-        .isotopic_composition = {parse_value(isotope.get('Isotopic Composition', '0'))},
-        .standard_atomic_weight = {parse_value(isotope.get('Standard Atomic Weight', '0'))}
-        }},
+        cpp_code += f"""Isotope{{ \\
+        .atomic_number = {isotope['Atomic Number']}, \\
+        .atomic_symbol = "{symbol}", \\
+        .mass_number = {mass_number}, \\
+        .relative_atomic_mass = {parse_value(isotope.get('Relative Atomic Mass', '0'))}, \\
+        .isotopic_composition = {parse_value(isotope.get('Isotopic Composition', '0'))}, \\
+        .standard_atomic_weight = {parse_value(isotope.get('Standard Atomic Weight', '0'))} \\
+        }}, \\
         """
 
     cpp_code += """
-    }; 
-    for (const auto& entry : database) {
-        if (entry.atomic_symbol == atomic_symbol && entry.atomic_number == atomic_number) {
-            return &entry;
-        }
-    }
-    return nullptr;
-}
-
-} // namespace common
-} // namespace amcset
 """
+
     return cpp_code
 
 

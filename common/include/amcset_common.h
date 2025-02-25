@@ -398,7 +398,7 @@ public:
    * A particle has two pieces of information of interest, a charge (Z number)
    * and a mass. Both of these pieces of information are stored as
    */
-  struct Properties {
+  struct Properties { // TODO: Store mass number as well.
     const dimensionless_quantity
         charge_; //!< The atomic number of the particle (dimensionless)
     const mass_quantity mass_; //!< The exact mass of the particle (amu)
