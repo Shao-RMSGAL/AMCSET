@@ -22,7 +22,6 @@
 enum LayerWidgetType {
   // DepthSpinBox,
   LayerLineEdit,
-  DensitySpinBox,
   ElementLineEdit,
   FractionSpinBox,
   PercentLabel,

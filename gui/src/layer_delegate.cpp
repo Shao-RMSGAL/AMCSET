@@ -56,14 +56,14 @@ QWidget *LayerWidgetDelegate::createEditor(QWidget *parent,
     layerLineEdit->setText(index.data(Qt::DisplayRole).toString());
     return layerLineEdit;
   }
-  case DensitySpinBox: {
-    auto *densityField = new QDoubleSpinBox(parent);
-    const auto minDensity = index.data(Qt::DisplayRole).toDouble();
-    const auto maxDensity = 1e10;
-    densityField->setRange(minDensity, maxDensity);
-    densityField->setSingleStep(0.01);
-    return densityField;
-  }
+  // case DensitySpinBox: {
+  //   auto *densityField = new QDoubleSpinBox(parent);
+  //   const auto minDensity = index.data(Qt::DisplayRole).toDouble();
+  //   const auto maxDensity = 1e10;
+  //   densityField->setRange(minDensity, maxDensity);
+  //   densityField->setSingleStep(0.01);
+  //   return densityField;
+  // }
   case ElementLineEdit: {
     auto *elementLineEntry = new QLineEdit(parent);
     elementLineEntry->setText(index.data(Qt::DisplayRole).toString());

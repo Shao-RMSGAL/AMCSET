@@ -115,8 +115,32 @@ void MainWindow::runSimulation() {
     throw std::logic_error("Layer count cannot be zero.");
   }
 
+  std::vector<common::Layer> layers;
   for (size_t layerRow = 0; layerRow < layerCount; layerRow++) {
+    const auto depthColumn = 1;
+    const auto densityColumn = 3;
     const auto compositionColumn = 4;
+
+    auto depthIndex = layerModel->index(layerRow, depthColumn);
+    auto depth =
+        qobject_cast<QDoubleSpinBox *>(layerTable->indexWidget(depthIndex))
+            ->value() *
+        common::angstrom;
+
+    std::cout << "Depth: " << depth << std::endl;
+
+    // auto density = layerModel->item(layerRow, densityColumn)
+    //                    ->data(Qt::DisplayRole)
+    //                    .toDouble() *
+    //                common::kg_per_cubic_meter;
+
+    auto densityIndex = layerModel->index(layerRow, densityColumn);
+    auto density =
+        qobject_cast<QDoubleSpinBox *>(layerTable->indexWidget(densityIndex))
+            ->value() *
+        common::kg_per_cubic_meter;
+    std::cout << "Density: " << density << std::endl;
+
     auto materialIndex = layerModel->index(layerRow, compositionColumn);
     auto *materialWidget =
         qobject_cast<QWidget *>(layerTable->indexWidget(materialIndex));
@@ -124,10 +148,10 @@ void MainWindow::runSimulation() {
     auto *materialTable =
         qobject_cast<QTableView *>(materialLayout->itemAt(0)->widget());
     auto *materialModel = materialTable->model();
-    std::cout << "Test: " << materialModel << std::endl;
     // TODO: Check for duplicate elements
     size_t elementCount = materialModel->rowCount();
     common::Layer::material_vector material;
+    auto proportionSum = 0.0;
     for (size_t elementRow = 0; elementRow < elementCount; elementRow++) {
       const auto atomicSymbolColumn = 0;
       const auto proportionColumn = 1;
@@ -143,63 +167,40 @@ void MainWindow::runSimulation() {
           materialModel->index(elementRow, displacementEnergyColumn)
               .data(Qt::DisplayRole)
               .toDouble();
-
-      std::cout << "Element: " << atomicSymbol.toStdString()
-                << ". Proportion: " << atomicProportion
-                << " Displacement Energy: " << displacementEnergy << std::endl;
       // Handle elements
       auto atomicNumber = common::IsotopeData::element_to_atomic_number(
           atomicSymbol.toStdString());
-
       std::vector<std::pair<size_t, double>> isotopicCompositions;
-      auto proportion_sum = 0.0;
       if (atomicNumber != 0) {
         isotopicCompositions =
             common::IsotopeData::get_relative_abundance(atomicNumber);
         for (auto abundance : isotopicCompositions) {
-
           const auto proportion = abundance.second * atomicProportion;
-          proportion_sum += proportion;
+          proportionSum += proportion;
           material.emplace_back(std::pair(
               proportion,
               common::Particle::Properties(atomicNumber, abundance.first)));
         }
       } else {
-        // TODO: Handle specific isotopes
-      }
-
-      for (auto &entry : material) {
-        entry.first /= proportion_sum;
-        std::cout << "wow " << entry.first << " " << entry.second.charge_ << " "
-                  << entry.second.mass_ / common::atomic_mass_unit << std::endl;
+        // TODO: Handle specific isotopes (When user enters something like
+        // 'H-2')
       }
     }
+
+    // Normalize compositions
+    for (auto &entry : material) {
+      entry.first /= proportionSum;
+      std::cout << "Proportion: " << entry.first
+                << " Charge: " << entry.second.charge_ << " ~Mass Number: "
+                << entry.second.mass_ / common::atomic_mass_unit << std::endl;
+    }
+    layers.push_back(common::Layer(std::move(material), depth, density));
   }
 
-  // TODO: Read from the 'Layers' section
-  constexpr double natural_abundance_54 = 0.05845;
-  constexpr double natural_abundance_56 = 0.91754;
-  constexpr double natural_abundance_57 = 0.02119;
-  constexpr double natural_abundance_58 = 0.00282;
-  common::Layer::material_vector material{
-      {natural_abundance_54, common::Particle::Properties(26, 54)},
-      {natural_abundance_56, common::Particle::Properties(26, 56)},
-      {natural_abundance_57, common::Particle::Properties(26, 57)},
-      {natural_abundance_58, common::Particle::Properties(26, 58)},
-  };
+  std::cout << "Layer count: " << layers.size() << std::endl;
 
-  auto result = common::IsotopeData::get_relative_abundance(26);
-  for (auto entry : result) {
-    std::cout << "Entry: (" << entry.first << ", " << entry.second << ")"
-              << std::endl;
-  }
-
-  auto depth = 10000.0 * common::angstrom;
-  constexpr auto density = 7874.0 * common::kg_per_cubic_meter;
-
-  std::vector<common::Layer> single_layer;
-  single_layer.push_back(common::Layer(std::move(material), depth, density));
-  auto volume = common::Volume(std::move(single_layer));
+  // TODO: Fix segfault
+  auto volume = common::Volume(std::move(layers));
 
   // Create the AMCSET simulation object
   auto simulation = common::Simulation(settings, std::move(volume));
@@ -339,7 +340,8 @@ QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
       1,
       std::numeric_limits<int>::max()); // TODO: add a cancel button to cancel
                                         // exceedingly long simulations
-  const auto defaultBombardments = 10000;
+  const auto defaultBombardments =
+      1; // TODO: Set to something more realistic for release
   bombardmentCountSpinBox->setValue(defaultBombardments);
   incidentFormLayout->addRow("Number of Bombardments", bombardmentCountSpinBox);
 
@@ -427,7 +429,7 @@ void MainWindow::createLayerRow() {
       layerModel->index(row, startingDepthColumn);
   const auto depthSpinBoxIndex = layerModel->index(row, depthSpinBoxColumn);
   // const auto layerLineEditIndex = layerModel->index(row, layerColumn);
-  // const auto densityFieldIndex = layerModel->index(row, densityColumn);
+  const auto densitySpinBoxIndex = layerModel->index(row, densitySpinBoxColumn);
   const auto compositionViewIndex =
       layerModel->index(row, compositionViewColumn);
   const auto phaseDropDownIndex = layerModel->index(row, phaseDropDownColumn);
@@ -450,11 +452,13 @@ void MainWindow::createLayerRow() {
   // startingDepthLabel->setData(QString::number(0), Qt::DisplayRole);
 
   const auto minDepth = 0.01; // TODO: More elegant solution (optional)
-  const auto maxDepth = 1e10;
+  const auto maxDepth = std::numeric_limits<typeof(minDepth)>::max();
+  const auto defaultDepth = 1000;
   auto *depthSpinBox = new QDoubleSpinBox();
   depthSpinBox->setValue(minDepth);
   depthSpinBox->setSingleStep(minDepth);
   depthSpinBox->setRange(minDepth, maxDepth);
+  depthSpinBox->setValue(defaultDepth);
   connect(depthSpinBox, &QDoubleSpinBox::valueChanged, this,
           &MainWindow::updateLayerDepths);
 
@@ -462,9 +466,12 @@ void MainWindow::createLayerRow() {
   layerLineEdit->setData(LayerLineEdit, Qt::UserRole);
 
   const auto minDensity = 0.01;
-  auto *densitySpinBox = new QStandardItem();
-  densitySpinBox->setData(DensitySpinBox, Qt::UserRole);
-  densitySpinBox->setData(minDensity, Qt::DisplayRole);
+  const auto maxDensity = std::numeric_limits<typeof(minDensity)>::max();
+  const auto defaultDensity =
+      1.0; // TODO: Pick some proper density for a default material
+  auto *densitySpinBox = new QDoubleSpinBox();
+  densitySpinBox->setRange(minDensity, maxDensity);
+  densitySpinBox->setValue(defaultDensity);
 
   // auto *phaseDropDown = new QStandardItem();
   // phaseDropDown->setData(PhaseDropDown, Qt::UserRole);
@@ -539,10 +546,12 @@ void MainWindow::createLayerRow() {
     percentLabel->setData(PercentLabel, Qt::UserRole);
     percentLabel->setData(defaultFraction, Qt::DisplayRole);
 
-    const auto minValue = 0.01;
-    auto *displacementEnergySpinBox = new QStandardItem(minValue);
-    displacementEnergySpinBox->setData(QString::number(minValue),
-                                       Qt::DisplayRole);
+    const auto displacementEnergyMinValue = 0.01;
+    const auto displacementEnergyDefaultValue = 40.0;
+    auto *displacementEnergySpinBox =
+        new QStandardItem(displacementEnergyMinValue);
+    displacementEnergySpinBox->setData(
+        QString::number(displacementEnergyDefaultValue), Qt::DisplayRole);
     displacementEnergySpinBox->setData(DisplacementEnergySpinBox, Qt::UserRole);
     percentLabel->setData(defaultFraction, Qt::DisplayRole);
 
@@ -612,7 +621,7 @@ void MainWindow::createLayerRow() {
   // layerModel->setItem(row, startingDepthColumn, startingDepthLabel);
   // layerModel->setItem(row, depthSpinBoxColumn, depthSpinBox);
   layerModel->setItem(row, layerLineEditColumn, layerLineEdit);
-  layerModel->setItem(row, densitySpinBoxColumn, densitySpinBox);
+  // layerModel->setItem(row, densitySpinBoxColumn, densitySpinBox);
   // layerModel->setItem(row, phaseDropDownColumn, phaseDropDown);
   // layerModel->setItem(row, removeButtonColumn, removeButton);
   // layerModel->setItem(row, editButtonColumn, editButton);
@@ -620,7 +629,7 @@ void MainWindow::createLayerRow() {
   layerTable->setIndexWidget(startingDepthLabelIndex, startingDepthLabel);
   layerTable->setIndexWidget(depthSpinBoxIndex, depthSpinBox);
   // layerTable->setIndexWidget(layerLineEditIndex, layerLineEdit);
-  // layerTable->setIndexWidget(densityFieldIndex, densityField);
+  layerTable->setIndexWidget(densitySpinBoxIndex, densitySpinBox);
   // layerTable->setIndexWidget(compositionViewIndex, compositionTable);
   layerTable->setIndexWidget(compositionViewIndex, compositionLayoutWidget);
   layerTable->setIndexWidget(phaseDropDownIndex, phaseDropDown);
@@ -646,7 +655,7 @@ QGroupBox *MainWindow::createLayerForms(QWidget *parent) {
   layerHeaders = QStringList{"Starting Depth\n(Angstrom)",
                              "Depth\n(Angstrom)",
                              "Layer",
-                             QString("Density\n(g/cm%1)").arg(QChar(0x00B3)),
+                             QString("Density\n(kg/m%1)").arg(QChar(0x00B3)),
                              "Composition",
                              "Phase",
                              "Edit\n(WIP)",
@@ -679,7 +688,6 @@ void MainWindow::openLayerWindow(size_t row) {
   const auto compositionIndex = layerModel->index(row, compositionColumn);
   const size_t layerNameColumn = 2;
   // const auto layerNameIndex = layerModel->index(row, layerNameColumn);
-  std::cout << "Test" << std::endl;
 
   // The QTableView containing the element data is inside of the
   // Layer QTableView, in a QWidget with a QVboxLayout at index 0.
@@ -687,15 +695,12 @@ void MainWindow::openLayerWindow(size_t row) {
   // finally getting the model we need to open the data in a separate window.
   auto *compositionViewWidget =
       qobject_cast<QWidget *>(layerTable->indexWidget(compositionIndex));
-  std::cout << "View: " << compositionViewWidget << std::endl;
   auto *compositionViewLayout =
       compositionViewWidget->findChild<QVBoxLayout *>();
   auto *compositionView =
       qobject_cast<QTableView *>(compositionViewLayout->itemAt(0)->widget());
   auto *compositionModel =
       qobject_cast<QStandardItemModel *>(compositionView->model()); // Get model
-                                                                    //
-  std::cout << "Model: " << compositionModel << std::endl;
 
   compositionView =
       new QTableView(this); // Reuse this pointer for a new TableView
