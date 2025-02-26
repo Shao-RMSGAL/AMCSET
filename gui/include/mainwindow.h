@@ -33,6 +33,7 @@
 #include <QVBoxLayout>
 
 // Local includes
+#include "amcset_common.h"
 #include "application.h"
 #include "layerwindow.h"
 

@@ -73,7 +73,10 @@ Layer::Layer(material_vector &&material, length_quantity depth,
           }
           VLOG(2) << "Initial composition is " << pair.first;
           pair.first /= sum;
-          VLOG(2) << "Final composition is " << pair.first;
+          VLOG(2) << "Final composition is "
+                  << pair.first; // NOTE: Normalization is done in the GUI-level
+                                 // code. Consider removing and stipulating that
+                                 // provided values must be normalized.
         }
 
         return std::move(material);
@@ -423,16 +426,18 @@ void Bombardment::run_bombardment() try {
   auto range = simulation_.get_settings(&Simulation::Settings::range_);
   auto bin_count = 100; // TODO: Consolidate this value
   auto interval = range / (double)bin_count;
-  for (auto coordinate : incident_particle_->get_coordinates()) {
-    auto depth_index = (int)(coordinate.z_ / interval);
-    if (depth_index < bin_count) {
-      collision_vector[depth_index] += 1;
-    }
-  }
+  // for (auto coordinate : incident_particle_->get_coordinates()) { // TODO:
+  // Fix occasional segfaults
+  //   auto depth_index = (int)(coordinate.z_ / interval);
+  //   if (depth_index < bin_count) {
+  //     collision_vector[depth_index] += 1;
+  //   }
+  // }
 
-  for (auto particle_data : // TODO: Complete data parsing for children
-       incident_particle_->get_data_leaf().get_children()) {
-  }
+  // for (auto particle_data : // TODO: Complete data parsing for children,
+  // currently this causes segfaults?
+  //      incident_particle_->get_data_leaf().get_children()) {
+  // }
 
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
@@ -486,14 +491,23 @@ Particle &Particle::rotate_inplace(angle_quantity scattering_angle) {
   VLOG(2) << "Beginning rotation with scattering_angle " << scattering_angle
           << " velocity (" << velocity_.quaternion_.r_ << ", "
           << velocity_.quaternion_.x_ << ", " << velocity_.quaternion_.y_
-          << ", " << velocity_.quaternion_.z_ << "). ";
+          << ", " << velocity_.quaternion_.z_ << ")";
 
   auto x = velocity_.quaternion_.x_;
   auto y = velocity_.quaternion_.y_;
   auto z = velocity_.quaternion_.z_;
 
   if (std::isnan(x) || std::isnan(y) || std::isnan(z)) {
-    throw std::invalid_argument("Input vector contains NaNs");
+    // throw std::invalid_argument("Input vector contains NaNs");
+    // HACK: Sometimes nans are in the array. Redirect in the z direction
+    // if so.
+    LOG(ERROR) << "Nans detected in bombardment. Position (" << x << ", " << y
+               << ", " << z
+               << "). Energy: " << velocity_.energy_ / electron_volt << " eV"
+               << ". Bombardment ID: " << bombardment_.get_id();
+    x = 0.0;
+    y = 0.0;
+    z = 1.0;
   }
 
   auto length = std::sqrt(x * x + y * y + z * z);

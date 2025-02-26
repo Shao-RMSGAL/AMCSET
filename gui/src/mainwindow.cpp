@@ -212,8 +212,8 @@ void MainWindow::runSimulation() {
                                      // separate thread to prevent blocking.
 
     std::cout << "Exit status: " << exitCode << std::endl;
-  } catch (std::exception &e) {
-    std::cout << e.what() << std::endl;
+  } catch (const std::exception &e) {
+    common::print_exception(e);
   }
 }
 
@@ -468,7 +468,7 @@ void MainWindow::createLayerRow() {
   const auto minDensity = 0.01;
   const auto maxDensity = std::numeric_limits<typeof(minDensity)>::max();
   const auto defaultDensity =
-      1.0; // TODO: Pick some proper density for a default material
+      1000.0; // TODO: Pick some proper density for a default material
   auto *densitySpinBox = new QDoubleSpinBox();
   densitySpinBox->setRange(minDensity, maxDensity);
   densitySpinBox->setValue(defaultDensity);

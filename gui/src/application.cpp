@@ -14,6 +14,9 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
+// TODO: Modify to do proper window management (need to figure out what to do
+// with this)
+
 // Qt includes
 #include <QPalette>
 

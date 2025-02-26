@@ -35,7 +35,7 @@ class Application : public QObject {
   Q_OBJECT
 
 public:
-  explicit Application(amcset::common::Simulation *simulation);
+  explicit Application(amcset::common::Simulation *simulation = nullptr);
   ~Application();
 
   void toggleDarkMode();
