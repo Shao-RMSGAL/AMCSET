@@ -136,9 +136,12 @@ public:
   /*!
    * \brief Return a material_vector of a natural sample of an element.
    */
-  static inline constexpr std::vector<std::pair<size_t, double>>
-  get_relative_abundance(size_t atomic_number) {
-
+  static inline
+#if __cplusplus >= 202302L
+      constexpr
+#endif
+      std::vector<std::pair<size_t, double>>
+      get_relative_abundance(size_t atomic_number) {
     size_t lowest_isotope = 0;
     auto composition_sum = 0.0;
     bool found_element = false; // Speed up evaluation.
@@ -155,8 +158,8 @@ public:
         }
         if (entry.isotopic_composition != 0.0) {
           composition_sum += entry.isotopic_composition;
-          material_vector.push_back(
-              std::pair(entry.mass_number, entry.isotopic_composition));
+          material_vector.emplace_back(
+              std::make_pair(entry.mass_number, entry.isotopic_composition));
         }
       }
     }
@@ -164,7 +167,7 @@ public:
     // If there is no isotopic compositions, just return the lowest-mass
     // isotope.
     if (material_vector.empty()) {
-      material_vector.emplace_back(std::pair(lowest_isotope, 1.0));
+      material_vector.emplace_back(std::make_pair(lowest_isotope, 1.0));
       composition_sum = 1.0;
     }
 
