@@ -1,4 +1,14 @@
 cmake_minimum_required(VERSION 3.23)
+
+option(ENABLE_ASAN "Enable Address Sanitizer" OFF)
+
+if(ENABLE_ASAN)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
+endif()
+
 project(amcset VERSION 0.0.1)
 
 # Use the conanfile.py version number
@@ -8,15 +18,18 @@ endif()
 # For clangd lsp
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Require C++26
+# Require C++23
 add_library(compiler_flags INTERFACE)
-target_compile_features(compiler_flags INTERFACE cxx_std_23)
+target_compile_features(compiler_flags INTERFACE cxx_std_20)
 
 # Set compiler flags
 set(gcc_like_cxx "$<COMPILE_LANG_AND_ID:CXX,ARMClang,AppleClang,Clang,GNU,LCC>")
 set(msvc_cxx "$<COMPILE_LANG_AND_ID:CXX,MSVC>")
+set(only_clang "$<COMPILE_LANG_AND_ID:CXX,ARMClang,AppleClang,Clang>")
+
 target_compile_options(compiler_flags INTERFACE
-  "$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused>>"
+  "$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;>>"
+   "$<${only_clang}:$<BUILD_INTERFACE:-fbracket-depth=3500>>"
   "$<${msvc_cxx}:$<BUILD_INTERFACE:-W3>>"
 )
 

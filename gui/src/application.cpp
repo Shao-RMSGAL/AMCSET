@@ -101,7 +101,7 @@ void Application::toggleDarkMode() {
 
 bool Application::getDarkMode() const noexcept { return darkMode_; };
 
-void Application::runSimulation() { simulation_->run_simulation(); }
+// void Application::runSimulation() { simulation_->run_simulation(); }
 
 void Application::saveWindowSize(const QSize &size) {
   settings_.setValue("size", size);

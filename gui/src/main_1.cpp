@@ -80,7 +80,6 @@ void output_thread_func() {
       std::cout << "Popped item from queue, pending_items=" << pending_items
                 << std::endl;
       std::unique_ptr<DataVariant> data(raw_data);
-
       std::cout << "Processing data item" << std::endl;
       std::visit(visitor, *data);
       pending_items--;

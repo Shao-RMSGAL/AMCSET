@@ -29,6 +29,7 @@
 
 #include <boost/units/systems/si/length.hpp>
 #include <memory>
+
 #if defined(_WIN32)
 #if defined(EXPORTING_AMCSET)
 #define DECLSPEC __declspec(dllexport)
@@ -59,6 +60,9 @@
 
 // Boost asio
 #include <boost/asio.hpp>
+
+// Boost asio
+#include <boost/lockfree/spsc_queue.hpp>
 
 // Local includes
 #include "amcset_utilities.h"
@@ -279,7 +283,7 @@ public:
   }
 
   //!< Add a column.
-  template <typename T> constexpr void add_column(const std::string &name) {
+  template <typename T> void add_column(const std::string &name) {
     std::unique_lock lock(frame_mutex);
     columns[name] = std::vector<T>(num_rows);
   }
@@ -355,10 +359,14 @@ public:
   //!< Set the particle to be sputtered
   void sputter() { sputtered = true; }
 
+  //!< Set the particle to escape the volume
+  void escape() { escaped = true; }
+
 private:
   std::vector<ParticleDataLeaf> children;
   std::vector<Coordinate> data;
   bool sputtered = false;
+  bool escaped = false;
 };
 
 /*!
@@ -402,6 +410,8 @@ public:
     const dimensionless_quantity
         charge_; //!< The atomic number of the particle (dimensionless)
     const mass_quantity mass_; //!< The exact mass of the particle (amu)
+    const dimensionless_quantity
+        mass_number_; //!< The mass number of the particle (dimensionless)
 
     Properties() = delete;
 
@@ -421,7 +431,8 @@ public:
     constexpr Properties(size_t z_number, size_t mass_number) try
         : charge_(z_number > 0 ? dimensionless_quantity(z_number)
                                : dimensionless_quantity(-1)),
-          mass_(IsotopeData::get_isotope_mass(z_number, mass_number)) {
+          mass_(IsotopeData::get_isotope_mass(z_number, mass_number)),
+          mass_number_(dimensionless_quantity(mass_number)) {
     } catch (...) {
       rethrow(EXCEPTION_MESSAGE(""));
     };
@@ -503,6 +514,18 @@ protected:
    */
   virtual Particle &rotate_inplace(angle_quantity scattering_angle);
 
+  /*!
+   * \brief Set the velocity of a particle
+   */
+  virtual void set_velocity(Velocity velocity) { velocity_ = velocity; };
+
+  /*!
+   * \brief Set the coordinate of a particle
+   */
+  virtual void set_coordinate(Coordinate coordinate) {
+    coordinate_ = coordinate;
+  };
+
   Properties properties_; //!< Properties of the particle
   // std::vector<std::unique_ptr<Particle>>
   //     particles_; //!< List of cascade particles // TODO: Remove permanently
@@ -518,6 +541,7 @@ protected:
       &random_number_generator_; //!< Reference to random number generator
   ParticleDataLeaf &data_leaf_;  //!< Reference to a ParticleDataLeaf
   Bombardment &bombardment_;     //!< Particle bombardment_
+
 }; // }}}
 
 // Electron class declarations{{{
@@ -926,6 +950,11 @@ public:
    */
   const Layer &get_layer(size_t index) const;
 
+  /*!
+   * \brief Get the total depth of a volume
+   */
+  length_quantity get_depth() const;
+
 private:
   const std::vector<Layer> layers_;
 }; // }}}
@@ -977,6 +1006,11 @@ public:
    */
   ParticleDataLeaf &get_data_leaf() { return data_leaf_; };
 
+  /*!
+   * \brief Returns a reference to the simulation
+   */
+  Simulation &get_simulation() { return simulation_; };
+
 private:
   Simulation &simulation_;
   std::unique_ptr<Particle> incident_particle_;
@@ -985,6 +1019,7 @@ private:
   size_t id_;
   ParticleDataLeaf data_leaf_; //!< A structure for holding data generated
                                //!< during a particle history.
+
 }; // }}}
 
 // Simulation class declarations{{{
@@ -1050,6 +1085,9 @@ public:
     const size_t
         thread_count_; //!< The number of threads to use in the simulation
 
+    const angle_quantity
+        incident_angle_; //!< The incident anlge of the particle
+
     Settings() = delete; //!< Default constructor ensures initialization
 
     /*!
@@ -1068,10 +1106,14 @@ public:
              bool log_single_displacement, size_t divisor_angle_number,
              size_t flying_distance_number, length_quantity range,
              size_t bombardment_count, bool is_electron,
-             energy_quantity incident_energy, size_t thread_count);
+             energy_quantity incident_energy, size_t thread_count,
+             angle_quantity incident_angle = 0.0 * radian);
   };
 
   Simulation() = delete;
+
+  using DrawFunction = std::function<void(const std::vector<Coordinate> &,
+                                          size_t bombardment_id)>;
 
   /*!
    * \brief The constructor for the Simulation class. Accepts a Settings
@@ -1084,7 +1126,11 @@ public:
    * the Simulation. \param volume The volume that the Simulation will use to
    * simulate collisions
    */
-  Simulation(Settings settings, Volume &&volume);
+  Simulation(
+      Settings settings, Volume &&volume,
+      DrawFunction draw_function =
+          [](const std::vector<Coordinate> & /*coords*/,
+             size_t /*bombardment_id*/) {});
 
   /*!
    * \brief A function to access settings.
@@ -1142,6 +1188,25 @@ public:
    */
   DataFrame<double, int> &get_dataframe() { return dataframe_; };
 
+  using DataVariant =
+      std::variant<std::vector<double>>; //!< A type for storing data that
+                                         //!< will be communicated to the
+                                         //!< frontend asynchronously
+  /*!
+   * \brief Return a mutable reference to the Simulation dataframe.
+   *
+   * This allows bombardment threads to access the simulation tallies and
+   * modify them. It can store either integer types or data types.
+   */
+  boost::lockfree::spsc_queue<DataVariant *> &get_spsc_queue() {
+    return queue_;
+  };
+
+  /*!
+   * \brief Return the function used for point drawing
+   */
+  DrawFunction &get_draw_function() { return draw_function_; };
+
 private:
   const Settings settings_;
   Volume volume_;
@@ -1149,6 +1214,9 @@ private:
   boost::asio::thread_pool thread_pool_;
   DataFrame<double, int> dataframe_; //!< Stores simulation tallies contributed
                                      //!< by multiple bombardments.
+  boost::lockfree::spsc_queue<DataVariant *>
+      queue_;                  //!< A queue for sending data to the frontend
+  DrawFunction draw_function_; //!< Function used for drawing to the canvas
 }; // }}}
 
 /*!

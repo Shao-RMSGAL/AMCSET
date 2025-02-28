@@ -56,6 +56,8 @@ namespace amcset {
 namespace gui {
 
 void MainWindow::runSimulation() {
+
+  canvas->clear();
   // Create AMCSET settings (TODO: Read this from a file and allow a user to
   // configure)
 
@@ -81,8 +83,8 @@ void MainWindow::runSimulation() {
       damageCascade->checkState(); // TEST: Update to test cascades
   size_t mass_number = incidentMass->value();
   size_t z_number = incidentCharge->value();
-  // double incident_angle =
-  //     incidentAngle->value(); // TODO: Add settings for this.
+  common::angle_quantity incident_angle =
+      common::degree * incidentAngle->value(); // TODO: Add settings for this.
   common::length_quantity range =
       rangeSpinBox->value() *
       common::angstrom; // Target range. Should be unused. HACK: Remove
@@ -104,7 +106,7 @@ void MainWindow::runSimulation() {
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
       ion_stopping_energy, ion_displacement_energy, log_single_displacement,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
-      is_electron, incident_energy, thread_count);
+      is_electron, incident_energy, thread_count, incident_angle);
 
   // Create AMCSET volume (TODO: Read this from a file and allow a user to
   // configure)
@@ -117,15 +119,21 @@ void MainWindow::runSimulation() {
 
   std::vector<common::Layer> layers;
   for (size_t layerRow = 0; layerRow < layerCount; layerRow++) {
+    const auto startingDepthColumn = 0;
     const auto depthColumn = 1;
     const auto densityColumn = 3;
     const auto compositionColumn = 4;
 
+    auto startingDepthIndex = layerModel->index(layerRow, startingDepthColumn);
     auto depthIndex = layerModel->index(layerRow, depthColumn);
-    auto depth =
-        qobject_cast<QDoubleSpinBox *>(layerTable->indexWidget(depthIndex))
-            ->value() *
-        common::angstrom;
+    auto startingDepth =
+        qobject_cast<QLabel *>(layerTable->indexWidget(startingDepthIndex))
+            ->text()
+            .toDouble();
+    auto depth = (startingDepth + qobject_cast<QDoubleSpinBox *>(
+                                      layerTable->indexWidget(depthIndex))
+                                      ->value()) *
+                 common::angstrom;
 
     std::cout << "Depth: " << depth << std::endl;
 
@@ -155,7 +163,7 @@ void MainWindow::runSimulation() {
     for (size_t elementRow = 0; elementRow < elementCount; elementRow++) {
       const auto atomicSymbolColumn = 0;
       const auto proportionColumn = 1;
-      const auto displacementEnergyColumn = 3;
+      // const auto displacementEnergyColumn = 3;
 
       auto atomicSymbol = materialModel->index(elementRow, atomicSymbolColumn)
                               .data(Qt::DisplayRole)
@@ -163,10 +171,11 @@ void MainWindow::runSimulation() {
       auto atomicProportion = materialModel->index(elementRow, proportionColumn)
                                   .data(Qt::DisplayRole)
                                   .toDouble();
-      auto displacementEnergy =
-          materialModel->index(elementRow, displacementEnergyColumn)
-              .data(Qt::DisplayRole)
-              .toDouble();
+      // TODO: Use displacement energy
+      // auto displacementEnergy =
+      //     materialModel->index(elementRow, displacementEnergyColumn)
+      //         .data(Qt::DisplayRole)
+      //         .toDouble();
       // Handle elements
       auto atomicNumber = common::IsotopeData::element_to_atomic_number(
           atomicSymbol.toStdString());
@@ -203,7 +212,56 @@ void MainWindow::runSimulation() {
   auto volume = common::Volume(std::move(layers));
 
   // Create the AMCSET simulation object
-  auto simulation = common::Simulation(settings, std::move(volume));
+  auto simulation = common::Simulation(
+      settings, std::move(volume),
+      [this, &settings](const std::vector<common::Coordinate> &points,
+                        size_t bombardment_id) {
+        const auto scaling_ratio = settings.range_;
+        QVector<QLineF> lines;
+        auto width = canvas->width();
+        auto half_height = canvas->height() / 2;
+        auto keep_start = false;
+
+        double start_x = 0.0;
+        double start_z = 0.0;
+
+        // if (points.size() == // TODO: Figure out an elegant way to show
+        // particles going off screen, but properly represent single-interaction
+        // knockons. This code draws the line for knockons that only undergo
+        // one interaction before stopping.
+        //     1) { // Emit a notice to the user that the ion went off-screen
+        //   canvas->addLine({0, half_height, width, half_height});
+        //   return;
+        // }
+
+        for (size_t i = 0; i < points.size() - 1; i += 1) {
+          if (!keep_start) {
+            start_x =
+                (points[i].x_ / scaling_ratio).value() * width + half_height;
+            start_z = (points[i].z_ / scaling_ratio).value() * width;
+            keep_start = true;
+          }
+          auto finish_x =
+              (points[i + 1].x_ / scaling_ratio).value() * width + half_height;
+          auto finish_z = (points[i + 1].z_ / scaling_ratio).value() * width;
+
+          if ((int)(finish_z - start_z) > 10) {
+            keep_start = false;
+            canvas->addLine(
+                {(int)start_z, (int)start_x, (int)finish_z, (int)finish_x});
+          }
+
+          // lines.emplace_back(start_x, start_z, finish_x, finish_z);
+          // std::cout << "Ratio: " << scaling_ratio << " Width: " << width
+          //           << " Start: (" << start_x << ", " << start_z
+          //           << "). Finish: (" << finish_x << ", " << finish_z <<
+          //           ").";
+          // std::cout << " OG Start: (" << points[i].x_ / scaling_ratio << ", "
+          //           << points[i].z_ / scaling_ratio << "). OG Finish: ("
+          //           << points[i + 1].x_ / scaling_ratio << ", "
+          //           << points[i + 1].z_ / scaling_ratio << ")." << std::endl;
+        }
+      });
 
   // sleep(3);
   try {
@@ -211,7 +269,8 @@ void MainWindow::runSimulation() {
         simulation.run_simulation(); // TODO: Check return value. Run in a
                                      // separate thread to prevent blocking.
 
-    std::cout << "Exit status: " << exitCode << std::endl;
+    // std::cout << "Exit status: " << exitCode << std::endl;
+
   } catch (const std::exception &e) {
     common::print_exception(e);
   }
@@ -234,63 +293,68 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   //   showNormal();
   // }
 
-  resize(1920, 1080);
+  // TODO: Uncomment all
+  // // resize(1920, 1080);
 
-  // Create a central widget
-  auto *topWidget = new QWidget(this); // TODO: Check if this is OK
-  setCentralWidget(topWidget);
+  // // Create a central widget
+  // auto *topWidget = new QWidget(this); // TODO: Check if this is OK
+  // setCentralWidget(topWidget);
 
-  // Create form widgets
-  infoLabel = new QLabel(tr("<i>Choose a menu option, or right-click to "
-                            "invoke a context menu</i>"));
-  infoLabel->setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
-  infoLabel->setAlignment(Qt::AlignCenter);
+  // // Create form widgets
+  // infoLabel = new QLabel(tr("<i>Choose a menu option, or right-click to "
+  //                           "invoke a context menu</i>"));
+  // infoLabel->setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
+  // infoLabel->setAlignment(Qt::AlignCenter);
 
-  auto *runCancelButtonLayoutWidget = new QWidget(this);
-  auto *runCancelButtonLayout = new QHBoxLayout(runCancelButtonLayoutWidget);
-  auto *runButton = new QPushButton("Run Simulation");
-  runButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  connect(runButton, &QPushButton::clicked, this, &MainWindow::runSimulation);
-  auto *cancelButton = new QPushButton("Cancel Run");
-  cancelButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  // TODO: Figure out how to implement cancellation.
+  // auto *runCancelButtonLayoutWidget = new QWidget(this);
+  // auto *runCancelButtonLayout = new QHBoxLayout(runCancelButtonLayoutWidget);
+  // auto *runButton = new QPushButton("Run Simulation");
+  // runButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  // connect(runButton, &QPushButton::clicked, this,
+  // &MainWindow::runSimulation); auto *cancelButton = new QPushButton("Cancel
+  // Run "); cancelButton->setSizePolicy(QSizePolicy::Expanding,
+  // QSizePolicy::Expanding);
+  // // TODO: Figure out how to implement cancellation.
 
-  runCancelButtonLayout->addWidget(runButton);
-  runCancelButtonLayout->addWidget(cancelButton);
+  // runCancelButtonLayout->addWidget(runButton);
+  // runCancelButtonLayout->addWidget(cancelButton);
 
-  auto *canvas = new Canvas;
-  canvas->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+  // canvas = new Canvas;
+  // canvas->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
 
-  // Layouts
-  auto *topLayout = new QVBoxLayout(); // The outermost layout.
-  topLayout->setContentsMargins(5, 5, 5, 5);
+  // // Layouts
+  // auto *topLayout = new QVBoxLayout(); // The outermost layout.
+  // topLayout->setContentsMargins(5, 5, 5, 5);
 
-  auto *formBox = new QGroupBox(this); // Contains forms for user input.
-  auto *formLayout = new QVBoxLayout(formBox);
+  // auto *formBox = new QGroupBox(this); // Contains forms for user input.
+  // auto *formLayout = new QVBoxLayout(formBox);
 
-  formLayout->addWidget(infoLabel);
-  auto layerSplitter = new QSplitter(Qt::Vertical);
-  formLayout->addWidget(
-      createIncidentParticleForms(formBox)); // Layout within the widget. //
-  layerSplitter->addWidget(createLayerForms());
-  layerSplitter->addWidget(runCancelButtonLayoutWidget);
-  formLayout->addWidget(layerSplitter);
+  // formLayout->addWidget(infoLabel);
+  // auto layerSplitter = new QSplitter(Qt::Vertical);
+  // formLayout->addWidget(
+  //     createIncidentParticleForms(formBox)); // Layout within the widget. //
+  // layerSplitter->addWidget(createLayerForms());
+  // layerSplitter->addWidget(runCancelButtonLayoutWidget);
+  // formLayout->addWidget(layerSplitter);
 
-  auto *hPane = new QSplitter(Qt::Horizontal); // Split the forms and canvas
-  hPane->addWidget(formBox);
-  hPane->addWidget(canvas);
-  auto formRatio = 0.6;
-  const auto formWidth = (int)(this->width() * formRatio);
-  const auto canvasWidth = (int)(this->width() * (1 - formRatio));
-  hPane->setSizes(QList<int>{formWidth, canvasWidth});
-  topLayout->addWidget(hPane);
-  topWidget->setLayout(topLayout);
-  createActions();
-  createMenus();
-  auto message = tr("A context menu is available by right-clicking");
-  statusBar()->showMessage(message);
-  setWindowTitle(tr("AMCSET"));
-  setMinimumSize(480, 480);
+  // auto *hPane = new QSplitter(Qt::Horizontal); // Split the forms and canvas
+  // hPane->addWidget(formBox);
+  // hPane->addWidget(canvas);
+  // auto formRatio = 0.6;
+  // const auto formWidth = (int)(this->width() * formRatio);
+  // const auto canvasWidth = (int)(this->width() * (1 - formRatio));
+  // hPane->setSizes(QList<int>{formWidth, canvasWidth});
+  // topLayout->addWidget(hPane);
+  // topWidget->setLayout(topLayout);
+  // createActions();
+  // createMenus();
+  // auto message = tr("A context menu is available by right-clicking");
+  // statusBar()->showMessage(message);
+  // setWindowTitle(tr("AMCSET"));
+  // setMinimumSize(480, 480);
+
+  // createLayerRow();
+  show();
 }
 
 QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {

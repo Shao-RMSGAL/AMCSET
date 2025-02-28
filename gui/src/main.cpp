@@ -94,7 +94,6 @@ int main(int argc, char *argv[]) {
       amcset::gui::Application application;
       VLOG(1) << "Initializing window";
       amcset::gui::MainWindow mainWindow(&application);
-      mainWindow.show();
       VLOG(1) << "Executing application";
       auto exit_code = app.exec();
       LOG(INFO) << "...Quitting AMCSET GUI. Exit code: " << exit_code;

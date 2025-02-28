@@ -50,7 +50,7 @@ cmake_cmd="cmake"
 build_dir="$project_dir/build/$mode"
 
 conan_flags="--build=missing --settings=build_type=$mode"
-cmake_flags="--preset conan-$mode_lower"
+cmake_flags="--preset conan-$mode_lower -DENABLE_ASAN=ON"
 run_flags="-v=0 --gui=true"
 
 test_dir="$project_dir/build/$mode/test"

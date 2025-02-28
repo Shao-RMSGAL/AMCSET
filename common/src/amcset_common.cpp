@@ -165,6 +165,8 @@ const Layer &Volume::get_layer(size_t index) const try {
   rethrow();
 }
 
+length_quantity Volume::get_depth() const { return layers_.back().get_depth(); }
+
 const std::pair<const Layer *, size_t>
 Volume::get_layer(length_quantity depth) const try {
   VLOG(1) << "Getting layer at depth " << depth;
@@ -206,7 +208,8 @@ Simulation::Settings::Settings(
     energy_quantity ion_displacement_energy, bool log_single_displacement,
     size_t divisor_angle_number, size_t flying_distance_number,
     length_quantity range, size_t bombardment_count, bool is_electron,
-    energy_quantity incident_energy, size_t thread_count) try
+    energy_quantity incident_energy, size_t thread_count,
+    angle_quantity incident_angle) try
     : electron_stopping_energy_(electron_stopping_energy), z_number_(z_number),
       mass_number_(mass_number),
       incident_particle_properties_(
@@ -218,7 +221,8 @@ Simulation::Settings::Settings(
       divisor_angle_number_(divisor_angle_number),
       flying_distance_number_(flying_distance_number), range_(range),
       bombardment_count_(bombardment_count), is_electron_(is_electron),
-      incident_energy_(incident_energy), thread_count_(thread_count) {
+      incident_energy_(incident_energy), thread_count_(thread_count),
+      incident_angle_(incident_angle) {
   if (incident_energy <= energy_quantity(0.0 * kilo_electron_volt)) {
     throw std::invalid_argument(
         EXCEPTION_MESSAGE("Incident energy should be greater than 0. Value: " +
@@ -258,9 +262,12 @@ Simulation::Settings::Settings(
   rethrow();
 }
 
-Simulation::Simulation(const Settings settings, Volume &&volume) try
+Simulation::Simulation(const Settings settings, Volume &&volume,
+                       DrawFunction draw_function) try
     : settings_(settings), volume_(std::move(volume)),
-      thread_pool_(settings.thread_count_), dataframe_() {
+      thread_pool_(settings.thread_count_), dataframe_(),
+      queue_(sizeof(DataVariant *) * settings.bombardment_count_),
+      draw_function_(draw_function) {
   LOG(INFO) << "Creating simulation with settings:\n"
             << Simulation::print_settings(); // TODO: Print volume
                                              // information as well.
@@ -314,9 +321,9 @@ int Simulation::run_simulation() try {
   for (auto &bombardment : bombardments_) {
     // TODO: Enable multithreading
     boost::asio::post(thread_pool_, [&bombardment]() {
-      LOG(INFO) << "Starting Bombardment...";
+      VLOG(1) << "Starting Bombardment...";
       bombardment.run_bombardment();
-      LOG(INFO) << "...Bombardment Complete!";
+      VLOG(1) << "...Bombardment Complete!";
     });
   }
   thread_pool_.join();
@@ -396,7 +403,6 @@ void Bombardment::run_bombardment() try {
         simulation_.get_settings(&Simulation::Settings::mass_number_),
         simulation_, uniform_distribution_, random_number_generator_,
         get_data_leaf(), *(this));
-    VLOG(1) << "...Electron bombardment complete.";
   } else {
     VLOG(1) << "Simulating ion bombardment";
     incident_particle_ = std::make_unique<Ion>(
@@ -404,10 +410,10 @@ void Bombardment::run_bombardment() try {
         simulation_.get_settings(&Simulation::Settings::mass_number_),
         simulation_, uniform_distribution_, random_number_generator_,
         get_data_leaf(), *(this));
-    VLOG(1) << "...Ion bombardment complete.";
   }
 
   incident_particle_->fire();
+  VLOG(1) << "...Bombardment complete.";
 
   // Post-bombardment processing.
   // This goes through the incident_particle_ data_leaf_ and
@@ -420,12 +426,14 @@ void Bombardment::run_bombardment() try {
   // TODO: Replace this with a recursive algorithm that processes the whole tree
   auto &dataframe = simulation_.get_dataframe();
   auto write_lock = DataFrame<double, int>::WriteLock(dataframe);
-  auto &collision_vector =
-      dataframe.get_column<double>("Collision Count", write_lock);
+  // auto &collision_vector =
+  //     dataframe.get_column<double>("Collision Count", write_lock);
   // Start with the incident particle's data.
-  auto range = simulation_.get_settings(&Simulation::Settings::range_);
-  auto bin_count = 100; // TODO: Consolidate this value
-  auto interval = range / (double)bin_count;
+  // auto range = simulation_.get_settings(&Simulation::Settings::range_); //
+  // TODO: Uncomment and use range
+
+  // auto bin_count = 100; // TODO: Consolidate this value
+  // auto interval = range / (double)bin_count;
   // for (auto coordinate : incident_particle_->get_coordinates()) { // TODO:
   // Fix occasional segfaults
   //   auto depth_index = (int)(coordinate.z_ / interval);
@@ -449,16 +457,20 @@ Particle::Particle(size_t z_number, size_t mass_number,
                    boost::random::mt19937 &random_number_generator,
                    ParticleDataLeaf &data_leaf, Bombardment &bombardment) try
     : properties_(Particle::Properties(z_number, mass_number)),
-      // particles_(std::vector<std::unique_ptr<Particle>>()), // TODO: Remove
-      // the
-      //                                                       // unique_ptr
-      //                                                       vector
-      //                                                       // of Particles
       coordinates_(std::vector<Coordinate>()), simulation_(simulation),
       velocity_(Velocity(
-          Quaternion(1.0, 1.0, 1.0, 1.0), // Point straight towards z-axis
+          Quaternion(
+              0.0,
+              1.0 * sin(simulation_.get_settings(
+                        &Simulation::Settings::incident_angle_)),
+              0.0,
+              1.0 * cos(simulation_.get_settings(
+                        &Simulation::Settings::
+                            incident_angle_))), // Point straight towards
+                                                // z-axis. TODO: Allow user to
+                                                // specify an incident angle
           simulation.get_settings(&Simulation::Settings::incident_energy_))),
-      coordinate_(Coordinate(0, 0, 0)),
+      coordinate_(Coordinate(angstrom * 0.0, angstrom * 0.0, angstrom * 0.0)),
       uniform_distribution_(uniform_distribution),
       random_number_generator_(random_number_generator), data_leaf_(data_leaf),
       bombardment_(bombardment) {
@@ -541,8 +553,6 @@ Particle &Particle::rotate_inplace(angle_quantity scattering_angle) {
 
   // TODO: Try pythagorean identity to make more efficient.
   auto beta_angle = scattering_angle;
-
-  // beta_angle = radian * 0.001; // TODO: Temp, remove
 
   auto beta_scalar = cos(beta_angle / 2.0);
   auto beta_pos = sin(beta_angle / 2.0);
@@ -642,27 +652,29 @@ Ion::free_flying_path_length(mass_quantity m_1, mass_quantity m_2,
                              length_quantity screening_length,
                              number_density_quantity number_density) const {
   length_quantity L;
-  if (reduced_energy > 100) {
-    L = (0.02 * pow(1.0 + (m_1 + m_2) / atomic_mass_unit, 2) * reduced_energy *
-             reduced_energy +
-         0.1 * pow(reduced_energy, 1.38)) /
-        (4.0 * pi * screening_length * screening_length * number_density *
-         log(1.0 + reduced_energy)) /
-        si::constants::codata::N_A;
-    VLOG(3) << "High energy free flying path length with m_1 " << m_1 << ", m_2"
-            << m_2 << ", reduced_energy " << reduced_energy
-            << ", screening_length " << screening_length
-            << ", and number_density " << number_density << " with result "
-            << L;
-  } else {
-    L = pow<static_rational<1, 3>>(1.0 / number_density /
-                                   si::constants::codata::N_A);
-    VLOG(3) << "Low energy free flying path length with m_1 " << m_1 << ", m_2 "
-            << m_2 << ", reduced_energy " << reduced_energy
-            << ", screening_length " << screening_length
-            << ", and number_density " << number_density << " with result "
-            << L;
-  }
+  // if (reduced_energy > 100) { // TODO: Figure out this (odd behavior at high
+  // E)
+  //   L = (0.02 * pow(1.0 + (m_1 + m_2) / atomic_mass_unit, 2) *
+  //   reduced_energy *
+  //            reduced_energy +
+  //        0.1 * pow(reduced_energy, 1.38)) /
+  //       (4.0 * pi * screening_length * screening_length * number_density *
+  //        log(1.0 + reduced_energy)) /
+  //       si::constants::codata::N_A;
+  //   VLOG(3) << "High energy free flying path length with m_1 " << m_1 << ",
+  //   m_2"
+  //           << m_2 << ", reduced_energy " << reduced_energy
+  //           << ", screening_length " << screening_length
+  //           << ", and number_density " << number_density << " with result "
+  //           << L;
+  // } else {
+  L = pow<static_rational<1, 3>>(1.0 / number_density /
+                                 si::constants::codata::N_A);
+  VLOG(3) << "Low energy free flying path length with m_1 " << m_1 << ", m_2 "
+          << m_2 << ", reduced_energy " << reduced_energy
+          << ", screening_length " << screening_length
+          << ", and number_density " << number_density << " with result " << L;
+  // }
   return L;
 }
 
@@ -837,13 +849,13 @@ Ion::nuclear_energy_loss(mass_quantity atom_mass, mass_quantity target_mass,
                          energy_quantity incident_energy,
                          angle_quantity scattering_angle) const {
   auto result = 4.0 * atom_mass * target_mass /
-                pow<2>(atom_mass * target_mass) * incident_energy *
+                pow<2>(atom_mass + target_mass) * incident_energy *
                 pow<2>(sin(scattering_angle));
   VLOG(2) << "Nuclear scattering energy loss atom mass " << atom_mass
           << " target_mass " << target_mass << " incident_energy "
           << incident_energy << " scattering_angle " << scattering_angle
           << " has result " << result;
-  return electron_volt;
+  return result;
 }
 
 angle_quantity
@@ -969,36 +981,46 @@ void Ion::fire() try {
           ion_stopping_energy_); // TODO: Make this a user-configurable
                                  // element property. Each element may have a
                                  // different value for this in each material.
-  const auto current_layer_pair =
-      simulation_.get_volume().get_layer(coordinate_.z_);
-  const Layer &current_layer =
-      *(current_layer_pair.first); // TODO: Check for next layer during history
 
-#ifdef NDEBUG /*{{{*/
-#else
-  // Grab an iterator to a view of the first (Debug code)
-  auto comp_view = current_layer.get_relative_compositions().begin();
-  for (size_t i = 0; i < current_layer.get_number_of_components(); i++) {
-    auto direct_composition = current_layer.get_relative_composition(i);
-    auto viewed_composition = *(comp_view++);
-    VLOG(2) << "Index: " << i << " has directly measured composition of "
-            << direct_composition << " view-based composition of "
-            << "Relative (view): " << viewed_composition;
-    assert(direct_composition == viewed_composition);
-  }
-#endif /*}}}*/
+  // #ifdef NDEBUG [>{{{<]
+  // #else
+  //   // Grab an iterator to a view of the first (Debug code)
+  //   auto comp_view = current_layer.get_relative_compositions().begin();
+  //   for (size_t i = 0; i < current_layer.get_number_of_components(); i++) {
+  //     auto direct_composition = current_layer.get_relative_composition(i);
+  //     auto viewed_composition = *(comp_view++);
+  //     VLOG(2) << "Index: " << i << " has directly measured composition of "
+  //             << direct_composition << " view-based composition of "
+  //             << "Relative (view): " << viewed_composition;
+  //     assert(direct_composition == viewed_composition);
+  //   }
+  // #endif [>}}}<]
+  // velocity_.energy_ =
+  //     simulation_.get_settings(&Simulation::Settings::incident_energy_);
+  // velocity_.quaternion_ = Quaternion(0.0, 0.0, 0.0, 1.0);
 
-  coordinate_ = Coordinate(angstrom * 0.0, angstrom * 0.0, angstrom * 0.0);
-  velocity_.energy_ =
-      simulation_.get_settings(&Simulation::Settings::incident_energy_);
-  velocity_.quaternion_ = Quaternion(0.0, 0.0, 0.0, 1.0);
+  std::cout << "Incident velocity: (" << velocity_.quaternion_.r_ << ", "
+            << velocity_.quaternion_.x_ << ", " << velocity_.quaternion_.y_
+            << ", " << velocity_.quaternion_.z_ << ")" << std::endl;
 
   auto &energy = velocity_.energy_; // A reference is required so that energy
                                     // can changed in-place through the alias.
-  auto knock_on_threshold =
-      simulation_.get_settings(&Simulation::Settings::ion_displacement_energy_);
+  auto max_depth = simulation_.get_volume().get_depth();
+  auto knock_on_threshold = simulation_.get_settings(
+      &Simulation::Settings::
+          ion_displacement_energy_); // TODO: Replace this with
+                                     // element-specific displacement energy
+                                     // (extracted from user-provided layer
+                                     // information)
+  auto enable_knock_on =
+      simulation_.get_settings(&Simulation::Settings::enable_damage_cascade_);
 
   while (velocity_.energy_ > ion_stopping_energy) {
+
+    const auto current_layer_pair =
+        simulation_.get_volume().get_layer(coordinate_.z_);
+    const Layer &current_layer = *(
+        current_layer_pair.first); // TODO: Check for next layer during history
     // Select atom type from current layer
     const size_t atom_index =
         current_layer.get_discrete_distribution()(random_number_generator_);
@@ -1032,19 +1054,24 @@ void Ion::fire() try {
     auto nuclear_e_loss =
         nuclear_energy_loss(m_1, m_2, energy, cm_scatter_angle);
 
-    if (nuclear_e_loss > knock_on_threshold) {
+    energy -= nuclear_e_loss; // TODO: Check for knock-ons
+
+    auto laboratory_scatter_angle =
+        laboratory_scattering_angle(cm_scatter_angle, m_1, m_2);
+    if (nuclear_e_loss > knock_on_threshold && enable_knock_on) {
       data_leaf_.add_child(ParticleDataLeaf());
       auto knock_on_particle =
           Ion(z_2, static_cast<size_t>((m_2 / atomic_mass_unit).value()),
               simulation_, uniform_distribution_, random_number_generator_,
               data_leaf_.get_children().back(), bombardment_);
+      auto scattering_angle_2 = asin(sin(laboratory_scatter_angle) *
+                                     sqrt(energy * m_1 / nuclear_e_loss / m_2));
+      auto velocity = Velocity(velocity_.quaternion_, nuclear_e_loss);
+      knock_on_particle.set_velocity(velocity);
+      knock_on_particle.set_coordinate(coordinate_);
+      knock_on_particle.rotate_inplace(scattering_angle_2);
       knock_on_particle.fire();
     }
-
-    energy -= nuclear_e_loss; // TODO: Check for knock-ons
-
-    auto laboratory_scatter_angle =
-        laboratory_scattering_angle(cm_scatter_angle, m_1, m_2);
     rotate_inplace(laboratory_scatter_angle); // Changes velocity in-place
     auto &velocity = velocity_.quaternion_;
 
@@ -1064,6 +1091,11 @@ void Ion::fire() try {
       break;
     }
 
+    if (coordinate_.z_.value() > max_depth.value()) {
+      data_leaf_.escape();
+      break;
+    }
+
     VLOG(2) << "Final coordinate moved " << path_length << " away: ("
             << coordinate_.x_ << ", " << coordinate_.y_ << ", "
             << coordinate_.z_ << ")";
@@ -1076,6 +1108,9 @@ void Ion::fire() try {
     //    vector
     // }
   }
+
+  auto draw_function = bombardment_.get_simulation().get_draw_function();
+  draw_function(coordinates_, bombardment_.get_id());
 
   // // TODO: Remove
   // std::ofstream file_stream("output.csv");
@@ -1272,7 +1307,8 @@ boost::mt19937::result_type EntropySeeder::generate() {
     // Hardware RNG might not be available, fall through to backup method
   }
 
-  // Fallback to combining system clock with process/thread specific information
+  // Fallback to combining system clock with process/thread specific
+  // information
   auto time_seed =
       std::chrono::high_resolution_clock::now().time_since_epoch().count();
   auto pid_seed = static_cast<boost::mt19937::result_type>(

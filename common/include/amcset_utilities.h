@@ -30,6 +30,7 @@
 
 // Boost units
 #include <boost/mpl/list.hpp>
+#include <boost/units/base_units/angle/degree.hpp>
 #include <boost/units/base_units/cgs/gram.hpp>
 #include <boost/units/base_units/metric/angstrom.hpp>
 #include <boost/units/cmath.hpp>
@@ -115,6 +116,7 @@ constexpr auto kilo_electron_volt =
 
 constexpr auto angstrom = 1e-10 * si::meter; //!< Quantity for angstrom
 constexpr auto radian = 1.0 * si::radian;    //!< Quantity for radian
+constexpr auto degree = radian * pi / 180.0; //!< Quantity for degree
 constexpr auto atomic_mass_unit =
     constants::m_u; //!< Quantity for atomic mass unit
 constexpr auto elementary_charge =

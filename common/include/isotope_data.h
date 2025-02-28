@@ -137,6 +137,7 @@ public:
    * \brief Return a material_vector of a natural sample of an element.
    */
   static inline
+
 #if __cplusplus >= 202302L
       constexpr
 #endif
@@ -742,10 +743,20 @@ public:
     }
   } // }}}
 
+#ifdef __clang__ // Temporarily disable clang to suppress annoying error
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Weverything"
+#warning                                                                       \
+    "Temporarily disable clang compilation to suppress annoying errors. Code will not behave properly."; // HACK: Fix this
+#pragma clang diagnostic pop
   /*!
    * An array that stores isotope data.
    */
-  inline static constexpr std::array database = {GENERATE_ISOTOPE_DATA};
+  inline static constexpr std::array<Isotope, 0> database = {}; // NOLINT
+#else
+  inline static constexpr std::array database = {
+      GENERATE_ISOTOPE_DATA}; // NOLINT
+#endif
 };
 } // namespace common
 } // namespace amcset

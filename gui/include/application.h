@@ -40,7 +40,7 @@ public:
 
   void toggleDarkMode();
   bool getDarkMode() const noexcept;
-  void runSimulation();
+  // void runSimulation();
 
   void saveWindowSize(const QSize &size);
   void saveWindowGeometry(const QByteArray &geometry);

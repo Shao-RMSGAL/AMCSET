@@ -94,6 +94,7 @@ protected:
     bool is_electron = false;
     auto incident_energy = energy_quantity(50.0 * kilo_electron_volt);
     size_t thread_count = 8;
+    angle_quantity incident_angle = 0;
 
     auto volume =
         Volume({create_water_layer(length_quantity(2.0 * angstrom)),
@@ -103,7 +104,7 @@ protected:
         electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
         ion_stopping_energy, ion_displacement_energy, log_single_displacement,
         divisor_angle_number, flying_distance_number, range, bombardment_count,
-        is_electron, incident_energy, thread_count);
+        is_electron, incident_energy, thread_count, incident_angle);
 
     std::cout << "Returning simulation" << std::endl; // TODO: REmove
     return Simulation(settings, std::move(volume));

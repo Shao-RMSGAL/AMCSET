@@ -31,10 +31,12 @@
 #include <QTableView>
 #include <QUndoStack>
 #include <QVBoxLayout>
+#include <qpainter.h>
 
 // Local includes
 #include "amcset_common.h"
 #include "application.h"
+#include "canvas.h"
 #include "layerwindow.h"
 
 namespace amcset {
@@ -130,6 +132,10 @@ private:
   QStandardItemModel *layerModel;
   QTableView *layerTable;
   QStringList layerHeaders;
+
+  // For particle track painting
+  Canvas *canvas;
+  QPainter *painter;
 
   // For Undo/Redo
   // QUndoStack *undoStack; // TODO: Implement undo/redo
