@@ -999,9 +999,9 @@ void Ion::fire() try {
   //     simulation_.get_settings(&Simulation::Settings::incident_energy_);
   // velocity_.quaternion_ = Quaternion(0.0, 0.0, 0.0, 1.0);
 
-  std::cout << "Incident velocity: (" << velocity_.quaternion_.r_ << ", "
-            << velocity_.quaternion_.x_ << ", " << velocity_.quaternion_.y_
-            << ", " << velocity_.quaternion_.z_ << ")" << std::endl;
+  // std::cout << "Incident velocity: (" << velocity_.quaternion_.r_ << ", "
+  //           << velocity_.quaternion_.x_ << ", " << velocity_.quaternion_.y_
+  //           << ", " << velocity_.quaternion_.z_ << ")" << std::endl;
 
   auto &energy = velocity_.energy_; // A reference is required so that energy
                                     // can changed in-place through the alias.

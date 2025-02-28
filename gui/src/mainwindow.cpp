@@ -294,66 +294,65 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   // }
 
   // TODO: Uncomment all
-  // // resize(1920, 1080);
+  resize(1920, 1080);
 
-  // // Create a central widget
-  // auto *topWidget = new QWidget(this); // TODO: Check if this is OK
-  // setCentralWidget(topWidget);
+  // Create a central widget
+  auto *topWidget = new QWidget(this); // TODO: Check if this is OK
+  setCentralWidget(topWidget);
 
-  // // Create form widgets
-  // infoLabel = new QLabel(tr("<i>Choose a menu option, or right-click to "
-  //                           "invoke a context menu</i>"));
-  // infoLabel->setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
-  // infoLabel->setAlignment(Qt::AlignCenter);
+  // Create form widgets
+  infoLabel = new QLabel(tr("<i>Choose a menu option, or right-click to "
+                            "invoke a context menu</i>"));
+  infoLabel->setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
+  infoLabel->setAlignment(Qt::AlignCenter);
 
-  // auto *runCancelButtonLayoutWidget = new QWidget(this);
-  // auto *runCancelButtonLayout = new QHBoxLayout(runCancelButtonLayoutWidget);
-  // auto *runButton = new QPushButton("Run Simulation");
-  // runButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  // connect(runButton, &QPushButton::clicked, this,
-  // &MainWindow::runSimulation); auto *cancelButton = new QPushButton("Cancel
-  // Run "); cancelButton->setSizePolicy(QSizePolicy::Expanding,
-  // QSizePolicy::Expanding);
-  // // TODO: Figure out how to implement cancellation.
+  auto *runCancelButtonLayoutWidget = new QWidget(this);
+  auto *runCancelButtonLayout = new QHBoxLayout(runCancelButtonLayoutWidget);
+  auto *runButton = new QPushButton("Run Simulation");
+  runButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  connect(runButton, &QPushButton::clicked, this, &MainWindow::runSimulation);
+  auto *cancelButton = new QPushButton("Cancel Run ");
+  cancelButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  // TODO: Figure out how to implement cancellation.
 
-  // runCancelButtonLayout->addWidget(runButton);
-  // runCancelButtonLayout->addWidget(cancelButton);
+  runCancelButtonLayout->addWidget(runButton);
+  runCancelButtonLayout->addWidget(cancelButton);
 
-  // canvas = new Canvas;
-  // canvas->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+  canvas = new Canvas;
+  canvas->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
 
-  // // Layouts
-  // auto *topLayout = new QVBoxLayout(); // The outermost layout.
-  // topLayout->setContentsMargins(5, 5, 5, 5);
+  // Layouts
+  auto *topLayout = new QVBoxLayout(); // The outermost layout.
+  topLayout->setContentsMargins(5, 5, 5, 5);
 
-  // auto *formBox = new QGroupBox(this); // Contains forms for user input.
-  // auto *formLayout = new QVBoxLayout(formBox);
+  auto *formBox = new QGroupBox(this); // Contains forms for user input.
+  auto *formLayout = new QVBoxLayout(formBox);
 
-  // formLayout->addWidget(infoLabel);
-  // auto layerSplitter = new QSplitter(Qt::Vertical);
-  // formLayout->addWidget(
-  //     createIncidentParticleForms(formBox)); // Layout within the widget. //
-  // layerSplitter->addWidget(createLayerForms());
-  // layerSplitter->addWidget(runCancelButtonLayoutWidget);
-  // formLayout->addWidget(layerSplitter);
+  formLayout->addWidget(infoLabel);
+  auto layerSplitter = new QSplitter(Qt::Vertical);
+  formLayout->addWidget(
+      createIncidentParticleForms(formBox)); // Layout within the widget. //
+  layerSplitter->addWidget(createLayerForms());
+  layerSplitter->addWidget(runCancelButtonLayoutWidget);
+  formLayout->addWidget(layerSplitter);
 
-  // auto *hPane = new QSplitter(Qt::Horizontal); // Split the forms and canvas
-  // hPane->addWidget(formBox);
-  // hPane->addWidget(canvas);
-  // auto formRatio = 0.6;
-  // const auto formWidth = (int)(this->width() * formRatio);
-  // const auto canvasWidth = (int)(this->width() * (1 - formRatio));
-  // hPane->setSizes(QList<int>{formWidth, canvasWidth});
-  // topLayout->addWidget(hPane);
-  // topWidget->setLayout(topLayout);
-  // createActions();
-  // createMenus();
-  // auto message = tr("A context menu is available by right-clicking");
-  // statusBar()->showMessage(message);
-  // setWindowTitle(tr("AMCSET"));
-  // setMinimumSize(480, 480);
+  auto *hPane = new QSplitter(Qt::Horizontal); // Split the forms and canvas
+  hPane->addWidget(formBox);
+  hPane->addWidget(canvas);
+  auto formRatio = 0.6;
+  const auto formWidth = (int)(this->width() * formRatio);
+  const auto canvasWidth = (int)(this->width() * (1 - formRatio));
+  hPane->setSizes(QList<int>{formWidth, canvasWidth});
+  topLayout->addWidget(hPane);
+  topWidget->setLayout(topLayout);
+  createActions();
+  createMenus();
+  auto message = tr("A context menu is available by right-clicking");
+  statusBar()->showMessage(message);
+  setWindowTitle(tr("AMCSET"));
+  setMinimumSize(480, 480);
 
-  // createLayerRow();
+  createLayerRow();
   show();
 }
 

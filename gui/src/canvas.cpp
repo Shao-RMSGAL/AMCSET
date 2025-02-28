@@ -37,10 +37,10 @@ Canvas::Canvas(QWidget *parent) : QWidget(parent) {
 void Canvas::updateCanvas() { update(); } // Probably don't need
 
 void Canvas::addLine(const QLine &line) {
-  // mutex.lock();
+  mutex.lock();
   lines.emplace_back(line);
   update();
-  // mutex.unlock();
+  mutex.unlock();
 }
 
 void Canvas::clear() {
