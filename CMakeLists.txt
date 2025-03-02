@@ -58,11 +58,11 @@ add_subdirectory(test)
 target_include_directories(amcset-common SYSTEM PUBLIC
     ${Boost_INCLUDE_DIRS}
     )
-
-target_include_directories(amcset-gui PRIVATE ${Boost_INCLUDE_DIRS})
 target_link_libraries(amcset-common PUBLIC ${Boost_LIBRARY_DIRS} glog::glog)
 
+
 # Allow link access for common library to gui
+target_include_directories(amcset-gui PRIVATE)
 target_link_libraries(amcset-gui PRIVATE 
     amcset-common
     Qt6::Core

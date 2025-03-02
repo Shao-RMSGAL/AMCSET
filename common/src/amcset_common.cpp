@@ -413,6 +413,7 @@ void Bombardment::run_bombardment() try {
   }
 
   incident_particle_->fire();
+  std::this_thread::yield(); // TODO: Remove
   VLOG(1) << "...Bombardment complete.";
 
   // Post-bombardment processing.
@@ -982,6 +983,13 @@ void Ion::fire() try {
                                  // element property. Each element may have a
                                  // different value for this in each material.
 
+  // HACK: Temp check for bombardment counting
+  size_t incident =
+      (velocity_.energy_ ==
+       simulation_.get_settings(&Simulation::Settings::incident_energy_))
+          ? 0
+          : 1;
+
   // #ifdef NDEBUG [>{{{<]
   // #else
   //   // Grab an iterator to a view of the first (Debug code)
@@ -1110,7 +1118,8 @@ void Ion::fire() try {
   }
 
   auto draw_function = bombardment_.get_simulation().get_draw_function();
-  draw_function(coordinates_, bombardment_.get_id());
+  draw_function(coordinates_,
+                incident); // HACK: Temp check for bombardment counting
 
   // // TODO: Remove
   // std::ofstream file_stream("output.csv");

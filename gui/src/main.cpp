@@ -15,6 +15,8 @@
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
 #include <iostream>
+#include <qboxlayout.h>
+#include <qlabel.h>
 #include <thread>
 
 #include <boost/interprocess/ipc/message_queue.hpp>
@@ -96,7 +98,7 @@ int main(int argc, char *argv[]) {
       amcset::gui::MainWindow mainWindow(&application);
       VLOG(1) << "Executing application";
       auto exit_code = app.exec();
-      LOG(INFO) << "...Quitting AMCSET GUI. Exit code: " << exit_code;
+      // LOG(INFO) << "...Quitting AMCSET GUI. Exit code: " << exit_code;
       return exit_code;
       return 0;
     } else {

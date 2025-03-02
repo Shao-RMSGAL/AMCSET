@@ -27,6 +27,11 @@
 #include <QVector>
 #include <QWidget>
 
+// Boost includes
+#include <boost/thread/thread.hpp>
+
+// TODO: Implement a functionality that saves the lines as a pixel map that is
+// drawn in addition to new lines to save on computation time.
 class Canvas : public QWidget {
   Q_OBJECT
 
@@ -38,10 +43,9 @@ public:
   void clear();
 
 protected:
-  void updateCanvas();
-
   void paintEvent(QPaintEvent *event) override;
   QVector<QLine> lines;
 
-  QMutex mutex;
+  boost::mutex mutex;
+  QMutex q_mutex;
 };

@@ -14,6 +14,9 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
+// Boost includes
+#include <boost/thread/thread.hpp>
+
 // Standard library includes
 #include <exception>
 #include <limits>
@@ -44,20 +47,51 @@
 #include <unistd.h>
 
 // Local includes
+#include "3dview.h"
 #include "amcset_common.h"
 #include "amcset_utilities.h"
 #include "application.h"
 #include "canvas.h"
+#include "counter.h"
 #include "layer_delegate.h"
 #include "layerwindow.h"
 #include "mainwindow.h"
+#include "simulation.h"
 
 namespace amcset {
 namespace gui {
 
+// TODO: Implement proper error handling
+void MainWindow::handleSimulationResult(int result) {
+  if (result != 0) {
+    std::cerr << "Something went wrong" << std::endl;
+    std::terminate();
+  } else {
+    std::cerr << "Success" << std::endl;
+  }
+};
+
+void MainWindow::launchSimulationThread(
+    std::unique_ptr<common::Simulation> simulation) {
+
+  simulationThread = new SimulationThread(std::move(simulation));
+  connect(simulationThread, &SimulationThread::resultReady, this,
+          &MainWindow::handleSimulationResult);
+  simulationThread->start();
+}
+
 void MainWindow::runSimulation() {
 
-  canvas->clear();
+  counter->reset();
+
+  // Avoid edge case where clearing the screen takes a long time.
+  if (use2DView->isChecked()) {
+    canvas->clear();
+  }
+  if (use3DView->isChecked()) {
+    view3D->clearScene();
+  }
+
   // Create AMCSET settings (TODO: Read this from a file and allow a user to
   // configure)
 
@@ -77,26 +111,18 @@ void MainWindow::runSimulation() {
             // different numbers
 
   bool is_electron =
-      incidentElectron
-          ->checkState(); // Start with ions. TEST: Test with electrons later.
-  bool enable_damage_cascade =
-      damageCascade->checkState(); // TEST: Update to test cascades
+      (incidentElectron->checkState() ==
+       Qt::Checked); // Start with ions. TEST: Test with electrons later.
+  bool enable_damage_cascade = (damageCascade->checkState() == Qt::Checked);
   size_t mass_number = incidentMass->value();
   size_t z_number = incidentCharge->value();
   common::angle_quantity incident_angle =
-      common::degree * incidentAngle->value(); // TODO: Add settings for this.
-  common::length_quantity range =
-      rangeSpinBox->value() *
-      common::angstrom; // Target range. Should be unused. HACK: Remove
-                        // once confirmed to be unused.
-  size_t bombardment_count =
-      bombardmentCountSpinBox->value(); // TEST: Test with more later.
+      common::degree * incidentAngle->value();
+  common::length_quantity range = rangeSpinBox->value() * common::angstrom;
+  size_t bombardment_count = bombardmentCountSpinBox->value();
   common::energy_quantity incident_energy =
-      incidentEnergy->value() *
-      common::kilo_electron_volt; // TEST: Test with other energies
-  size_t thread_count =
-      threadCountSpinBox->value(); // Try with single threading, PERF:
-                                   // Try with multithreading
+      incidentEnergy->value() * common::kilo_electron_volt;
+  size_t thread_count = threadCountSpinBox->value();
 
   // PERF: Add an option to use GPU (Use Kokkos for cross-platform
   // compatability. Note that it is not available in conan. Either make a
@@ -135,19 +161,11 @@ void MainWindow::runSimulation() {
                                       ->value()) *
                  common::angstrom;
 
-    std::cout << "Depth: " << depth << std::endl;
-
-    // auto density = layerModel->item(layerRow, densityColumn)
-    //                    ->data(Qt::DisplayRole)
-    //                    .toDouble() *
-    //                common::kg_per_cubic_meter;
-
     auto densityIndex = layerModel->index(layerRow, densityColumn);
     auto density =
         qobject_cast<QDoubleSpinBox *>(layerTable->indexWidget(densityIndex))
             ->value() *
         common::kg_per_cubic_meter;
-    std::cout << "Density: " << density << std::endl;
 
     auto materialIndex = layerModel->index(layerRow, compositionColumn);
     auto *materialWidget =
@@ -163,7 +181,6 @@ void MainWindow::runSimulation() {
     for (size_t elementRow = 0; elementRow < elementCount; elementRow++) {
       const auto atomicSymbolColumn = 0;
       const auto proportionColumn = 1;
-      // const auto displacementEnergyColumn = 3;
 
       auto atomicSymbol = materialModel->index(elementRow, atomicSymbolColumn)
                               .data(Qt::DisplayRole)
@@ -199,24 +216,20 @@ void MainWindow::runSimulation() {
     // Normalize compositions
     for (auto &entry : material) {
       entry.first /= proportionSum;
-      std::cout << "Proportion: " << entry.first
-                << " Charge: " << entry.second.charge_ << " ~Mass Number: "
-                << entry.second.mass_ / common::atomic_mass_unit << std::endl;
     }
     layers.push_back(common::Layer(std::move(material), depth, density));
   }
 
-  std::cout << "Layer count: " << layers.size() << std::endl;
-
-  // TODO: Fix segfault
   auto volume = common::Volume(std::move(layers));
 
-  // Create the AMCSET simulation object
-  auto simulation = common::Simulation(
+  // Create the AMCSET simulation object. PERF: Replace the hacky lambda drawing
+  // function with proper queue feed to the frontend so drawing doesn't slow
+  // down the simulation.
+  auto simulation = std::make_unique<common::Simulation>(
       settings, std::move(volume),
       [this, &settings](const std::vector<common::Coordinate> &points,
                         size_t bombardment_id) {
-        const auto scaling_ratio = settings.range_;
+        const auto range_ = settings.range_;
         QVector<QLineF> lines;
         auto width = canvas->width();
         auto half_height = canvas->height() / 2;
@@ -225,54 +238,85 @@ void MainWindow::runSimulation() {
         double start_x = 0.0;
         double start_z = 0.0;
 
-        // if (points.size() == // TODO: Figure out an elegant way to show
-        // particles going off screen, but properly represent single-interaction
-        // knockons. This code draws the line for knockons that only undergo
-        // one interaction before stopping.
-        //     1) { // Emit a notice to the user that the ion went off-screen
-        //   canvas->addLine({0, half_height, width, half_height});
-        //   return;
-        // }
+        if (use2DView->checkState() == Qt::Checked) {
+          // FIX: Figure out an elegant way to show
+          // particles going off screen, but properly represent
+          // single-interaction knockons. This code draws the line for
+          // knockons that only undergo one interaction before stopping.
+          // Emit a notice to the user that the ion went off-screen
+          // if (points.size() == 1) {
+          //   canvas->addLine({0, half_height, width, half_height});
+          //   return;
+          // }
 
-        for (size_t i = 0; i < points.size() - 1; i += 1) {
-          if (!keep_start) {
-            start_x =
-                (points[i].x_ / scaling_ratio).value() * width + half_height;
-            start_z = (points[i].z_ / scaling_ratio).value() * width;
-            keep_start = true;
+          for (size_t i = 0; i < points.size() - 1; i += 1) {
+            if (!keep_start) {
+              start_x = (points[i].x_ / range_).value() * width + half_height;
+              start_z = (points[i].z_ / range_).value() * width;
+              keep_start = true;
+            }
+            auto finish_x =
+                (points[i + 1].x_ / range_).value() * width + half_height;
+            auto finish_z = (points[i + 1].z_ / range_).value() * width;
+
+            if ((int)(finish_z - start_z) > 10) {
+              keep_start = false;
+              canvas->addLine(
+                  {(int)start_z, (int)start_x, (int)finish_z, (int)finish_x});
+            }
           }
-          auto finish_x =
-              (points[i + 1].x_ / scaling_ratio).value() * width + half_height;
-          auto finish_z = (points[i + 1].z_ / scaling_ratio).value() * width;
+        }
+        if (use3DView->checkState() == Qt::Checked) {
+          double start_y = 0.0;
+          for (size_t i = 0; i < points.size() - 1; i += 1) {
+            if (!keep_start) {
+              start_x = points[i].x_ / common::angstrom;
+              start_y = points[i].y_ / common::angstrom;
+              start_z = points[i].z_ / common::angstrom;
+              keep_start = true;
+            }
 
-          if ((int)(finish_z - start_z) > 10) {
-            keep_start = false;
-            canvas->addLine(
-                {(int)start_z, (int)start_x, (int)finish_z, (int)finish_x});
+            auto finish_x = points[i + 1].x_ / common::angstrom;
+            auto finish_y = points[i + 1].y_ / common::angstrom;
+            auto finish_z = points[i + 1].z_ / common::angstrom;
+
+            if ((int)(finish_z - start_z) > 1.0) {
+              keep_start = false;
+              QVector3D point1(start_x, start_y, start_z);
+              QVector3D point2(finish_x, finish_y, finish_z);
+              view3D->requestDrawLine(point1, point2, Qt::green);
+            }
           }
+        }
 
-          // lines.emplace_back(start_x, start_z, finish_x, finish_z);
-          // std::cout << "Ratio: " << scaling_ratio << " Width: " << width
-          //           << " Start: (" << start_x << ", " << start_z
-          //           << "). Finish: (" << finish_x << ", " << finish_z <<
-          //           ").";
-          // std::cout << " OG Start: (" << points[i].x_ / scaling_ratio << ", "
-          //           << points[i].z_ / scaling_ratio << "). OG Finish: ("
-          //           << points[i + 1].x_ / scaling_ratio << ", "
-          //           << points[i + 1].z_ / scaling_ratio << ")." << std::endl;
+        if (bombardment_id == 0) { // HACK: Just testing stuff
+          counter->increment();
         }
       });
 
   // sleep(3);
   try {
-    auto exitCode =
-        simulation.run_simulation(); // TODO: Check return value. Run in a
-                                     // separate thread to prevent blocking.
 
-    // std::cout << "Exit status: " << exitCode << std::endl;
-
+    simulation->run_simulation();
+    // launchSimulationThread(std::move(simulation));
   } catch (const std::exception &e) {
     common::print_exception(e);
+  }
+}
+
+void MainWindow::update2DViewMode(Qt::CheckState state) {
+  if (state == Qt::Checked) {
+    canvasBox->setVisible(true);
+  } else {
+    canvasBox->setVisible(false);
+  }
+}
+
+void MainWindow::update3DViewMode(Qt::CheckState state) {
+  if (state == Qt::Checked) {
+    view3DBox->setVisible(true);
+  } else {
+    view3DBox->setVisible(false);
   }
 }
 
@@ -320,6 +364,17 @@ MainWindow::MainWindow(Application *app) : app_(app) {
 
   canvas = new Canvas;
   canvas->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+  canvasBox = new QGroupBox("2D View");
+  auto *canvasVBox = new QVBoxLayout();
+  canvasVBox->addWidget(canvas);
+  canvasBox->setLayout(canvasVBox);
+
+  view3D = new Widget3DView(this);
+  view3DBox = new QGroupBox("3D View");
+  view3DBox->setVisible(false);
+  auto *view3DVBox = new QVBoxLayout();
+  view3DVBox->addWidget(view3D);
+  view3DBox->setLayout(view3DVBox);
 
   // Layouts
   auto *topLayout = new QVBoxLayout(); // The outermost layout.
@@ -338,11 +393,12 @@ MainWindow::MainWindow(Application *app) : app_(app) {
 
   auto *hPane = new QSplitter(Qt::Horizontal); // Split the forms and canvas
   hPane->addWidget(formBox);
-  hPane->addWidget(canvas);
+  hPane->addWidget(canvasBox);
+  hPane->addWidget(view3DBox);
   auto formRatio = 0.6;
   const auto formWidth = (int)(this->width() * formRatio);
   const auto canvasWidth = (int)(this->width() * (1 - formRatio));
-  hPane->setSizes(QList<int>{formWidth, canvasWidth});
+  hPane->setSizes(QList<int>{formWidth, canvasWidth, canvasWidth});
   topLayout->addWidget(hPane);
   topWidget->setLayout(topLayout);
   createActions();
@@ -420,7 +476,43 @@ QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
   const auto defaultDepth = 1000;
   rangeSpinBox->setRange(minRange, maxRange);
   rangeSpinBox->setValue(defaultDepth);
+  connect(rangeSpinBox, &QDoubleSpinBox::valueChanged, view3D,
+          &Widget3DView::setRange);
+  // view3D->setRange(range / common::angstrom);
+
+  rangeSpinBox->setRange(minRange, maxRange);
+  rangeSpinBox->setValue(defaultDepth);
   incidentFormLayout->addRow("Range (Angstrom)", rangeSpinBox);
+
+  use3DView = new QCheckBox(this);
+  use3DView->setChecked(false);
+  connect(use3DView, &QCheckBox::checkStateChanged, this,
+          &MainWindow::update3DViewMode);
+  incidentFormLayout->addRow("Use 3D View", use3DView);
+
+  use2DView = new QCheckBox(this);
+  use2DView->setChecked(true);
+  connect(use2DView, &QCheckBox::checkStateChanged, this,
+          &MainWindow::update2DViewMode);
+  incidentFormLayout->addRow("Use 2D View", use2DView);
+
+  // TODO: Put this somewhere else, around the view window maybe.
+  counterLabel = new QLabel(this);
+  counterLabel->setText(
+      QString("Bombardment %1 out of %2").arg(0).arg(defaultBombardments));
+  counter = new Counter(this);
+  QTimer *timer = new QTimer(this);
+  connect(timer, &QTimer::timeout, this, [this]() {
+    if (counter->hasChanged()) {
+      int value = counter->getValue();
+      auto totalBombardments = bombardmentCountSpinBox->value();
+      counterLabel->setText(QString("Bombardment %1 out of %2")
+                                .arg(value)
+                                .arg(totalBombardments));
+    }
+  });
+  timer->start(10); // check every 100ms
+  incidentFormLayout->addRow("Bombardment Counter", counterLabel);
 
   return formGroupBox;
 }
@@ -502,18 +594,6 @@ void MainWindow::createLayerRow() {
   // Depth field and label
   auto *startingDepthLabel = new QLabel(this);
   startingDepthLabel->setText(QString::number(row));
-  // auto *depthField = new QDoubleSpinBox(this);
-  // const auto minDepth = 0.01;
-  // const auto maxDepth = 1e10;
-  // depthField->setRange(minDepth, maxDepth);
-  // depthField->setSingleStep(0.01);
-  // connect(depthField, &QDoubleSpinBox::valueChanged, this,
-  //         &MainWindow::updateLayerDepths);
-
-  // auto *startingDepthLabel = new QStandardItem();
-  // startingDepthLabel->setData(StartingDepthLabel, Qt::UserRole);
-  // startingDepthLabel->setData(QString::number(0), Qt::DisplayRole);
-
   const auto minDepth = 0.01; // TODO: More elegant solution (optional)
   const auto maxDepth = std::numeric_limits<typeof(minDepth)>::max();
   const auto defaultDepth = 1000;
@@ -524,7 +604,6 @@ void MainWindow::createLayerRow() {
   depthSpinBox->setValue(defaultDepth);
   connect(depthSpinBox, &QDoubleSpinBox::valueChanged, this,
           &MainWindow::updateLayerDepths);
-
   auto *layerLineEdit = new QStandardItem(QString("Layer %1").arg(row + 1));
   layerLineEdit->setData(LayerLineEdit, Qt::UserRole);
 
@@ -535,29 +614,14 @@ void MainWindow::createLayerRow() {
   auto *densitySpinBox = new QDoubleSpinBox();
   densitySpinBox->setRange(minDensity, maxDensity);
   densitySpinBox->setValue(defaultDensity);
-
-  // auto *phaseDropDown = new QStandardItem();
-  // phaseDropDown->setData(PhaseDropDown, Qt::UserRole);
-
-  // // Layer  LineEdit
-  // auto *layerLineEdit = new QLineEdit(this);
-  // layerLineEdit->setText(QString("Layer ") + QString::number(row + 1));
-
-  // // Density QDoubleSpinBox
-  // auto *densityField = new QDoubleSpinBox(this);
-  // densityField->setRange(0.01, 1000.0);
-  // densityField->setSingleStep(0.01);
-
   // Composition
   const auto compositionColumns = 5;
   auto *compositionModel = new QStandardItemModel(0, compositionColumns, this);
   auto *compositionTable = new QTableView(this);
-
   // Fit inside the inner column
   // compositionTable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   compositionTable->horizontalHeader()->setSectionResizeMode(
       QHeaderView::ResizeToContents);
-
   auto *compositionDelegate = new LayerWidgetDelegate(compositionTable);
   compositionTable->setItemDelegate(compositionDelegate);
   connect(compositionDelegate, &LayerWidgetDelegate::deleteElement, this,
@@ -573,21 +637,9 @@ void MainWindow::createLayerRow() {
   }); // TODO: Support input of weight or atomic percent
 
   compositionTable->setModel(compositionModel);
-
-  // auto *compositionSpinBox = new QDoubleSpinBox(this);
-  // compositionSpinBox->setRange(0.0, 100.0);
-  // auto *compositionLabel = new QLabel("100");
-  // compositionTable->setIndexWidget(compositionModel->index(0, 0),
-  // new QLabel("H"));
-  // compositionTable->setIndexWidget(compositionModel->index(0, 1),
-  // compositionSpinBox);
-  // compositionTable->setIndexWidget(compositionModel->index(0, 2),
-  // compositionLabel);
-
   auto *compositionLayoutWidget = new QWidget(this);
   auto *compositionLayout = new QVBoxLayout();
   compositionLayoutWidget->setLayout(compositionLayout);
-
   auto compositionAddElementFunction = [compositionModel, compositionTable]() {
     const auto defaultElement = "H";
     const auto defaultFraction = 1.0;
@@ -681,19 +733,10 @@ void MainWindow::createLayerRow() {
           });
 
   // Insert widgets
-  // layerModel->setItem(row, startingDepthColumn, startingDepthLabel);
-  // layerModel->setItem(row, depthSpinBoxColumn, depthSpinBox);
   layerModel->setItem(row, layerLineEditColumn, layerLineEdit);
-  // layerModel->setItem(row, densitySpinBoxColumn, densitySpinBox);
-  // layerModel->setItem(row, phaseDropDownColumn, phaseDropDown);
-  // layerModel->setItem(row, removeButtonColumn, removeButton);
-  // layerModel->setItem(row, editButtonColumn, editButton);
-
   layerTable->setIndexWidget(startingDepthLabelIndex, startingDepthLabel);
   layerTable->setIndexWidget(depthSpinBoxIndex, depthSpinBox);
-  // layerTable->setIndexWidget(layerLineEditIndex, layerLineEdit);
   layerTable->setIndexWidget(densitySpinBoxIndex, densitySpinBox);
-  // layerTable->setIndexWidget(compositionViewIndex, compositionTable);
   layerTable->setIndexWidget(compositionViewIndex, compositionLayoutWidget);
   layerTable->setIndexWidget(phaseDropDownIndex, phaseDropDown);
   layerTable->setIndexWidget(editButtonPersistentIndex, editButton);

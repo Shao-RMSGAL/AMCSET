@@ -31,13 +31,19 @@
 #include <QTableView>
 #include <QUndoStack>
 #include <QVBoxLayout>
+#include <boost/lockfree/spsc_queue.hpp>
+#include <qnamespace.h>
 #include <qpainter.h>
+#include <qthread.h>
 
 // Local includes
+#include "3dview.h"
 #include "amcset_common.h"
 #include "application.h"
 #include "canvas.h"
+#include "counter.h"
 #include "layerwindow.h"
+#include "simulation.h"
 
 namespace amcset {
 namespace gui {
@@ -85,6 +91,10 @@ private:
   QGroupBox *createIncidentParticleForms(QWidget *parent = nullptr);
   QGroupBox *createLayerForms(QWidget *parent = nullptr);
   double calculateLayerDensity();
+  void update2DViewMode(Qt::CheckState state);
+  void update3DViewMode(Qt::CheckState state);
+  void launchSimulationThread(std::unique_ptr<common::Simulation> simulation);
+  void handleSimulationResult(int result);
 
   Application *app_;
   QMenu *fileMenu;
@@ -128,6 +138,14 @@ private:
   QSpinBox *threadCountSpinBox;
   QDoubleSpinBox *rangeSpinBox;
 
+  // View controls
+  QCheckBox *use3DView;
+  QCheckBox *use2DView;
+  QGroupBox *canvasBox;
+  QGroupBox *view3DBox;
+  Counter *counter;
+  QLabel *counterLabel;
+
   // Layer forms
   QStandardItemModel *layerModel;
   QTableView *layerTable;
@@ -135,8 +153,11 @@ private:
 
   // For particle track painting
   Canvas *canvas;
+  Widget3DView *view3D;
   QPainter *painter;
+  // boost::lockfree::spsc_queue<common::Simulation::DataVariant *> &queue;
 
+  SimulationThread *simulationThread;
   // For Undo/Redo
   // QUndoStack *undoStack; // TODO: Implement undo/redo
 

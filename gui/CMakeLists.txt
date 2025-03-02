@@ -8,12 +8,18 @@ add_executable(amcset-gui
     ${PROJECT_SOURCE_DIR}/gui/src/layerwindow.cpp
     ${PROJECT_SOURCE_DIR}/gui/src/layer_delegate.cpp
     ${PROJECT_SOURCE_DIR}/gui/src/canvas.cpp
+    ${PROJECT_SOURCE_DIR}/gui/src/3dview.cpp
+    ${PROJECT_SOURCE_DIR}/gui/src/counter.cpp
+    ${PROJECT_SOURCE_DIR}/gui/src/simulation.cpp
     ${PROJECT_SOURCE_DIR}/gui/include/amcset_gui.h
     ${PROJECT_SOURCE_DIR}/gui/include/application.h
     ${PROJECT_SOURCE_DIR}/gui/include/mainwindow.h
     ${PROJECT_SOURCE_DIR}/gui/include/layerwindow.h
     ${PROJECT_SOURCE_DIR}/gui/include/layer_delegate.h
     ${PROJECT_SOURCE_DIR}/gui/include/canvas.h
+    ${PROJECT_SOURCE_DIR}/gui/include/3dview.h
+    ${PROJECT_SOURCE_DIR}/gui/include/counter.h
+    ${PROJECT_SOURCE_DIR}/gui/include/simulation.h
     ${PROJECT_SOURCE_DIR}/gui/resources/resources.qrc
     )
 
