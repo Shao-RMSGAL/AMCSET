@@ -77,17 +77,17 @@ class amcsetRecipe(ConanFile):
 
     def requirements(self):
         self.requires("boost/[=1.85.0]", transitive_headers=True)
-        self.requires("gtest/[>=1.16.0]")
+        self.requires("gtest/[=1.16.0]")
         self.requires("gflags/[=2.2.2]")
         self.requires("glog/[=0.7.1]")
         self.requires("qt/[=6.7.3]")
 
     def build_requirements(self):
         self.tool_requires("cmake/[=3.29]")
-        self.tool_requires("ninja/[1.12]")
+        self.tool_requires("ninja/[=1.12]")
         if self.settings.os == "Windows":
             # Required for Qt on Windows
-            self.tool_requires("strawberryperl/5.32.1.1")
+            self.tool_requires("strawberryperl/[=5.32.1.1]")
 
     def configure(self):
         #  self.options["boost"].shared = True  # or False, but be consistent

@@ -3,11 +3,8 @@
 # a Powershell terminal (not a command prompt). Refer to the README.md file
 # for instructions on configuring a build environment.
 #
-# Install dependencies (First run can take ~0.5 hr), if missing presets, run
-#  
-#   conan install . --build=missing -s build_type=Debug
-# 
-# as well
+# Install dependencies (First run can take ~0.5 hr)
+conan install . --build=missing -s build_type=Debug
 conan install . --build=missing
 
 # Configure build environment (Fast)
