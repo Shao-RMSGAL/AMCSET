@@ -77,7 +77,7 @@ class amcsetRecipe(ConanFile):
 
     def requirements(self):
         self.requires("boost/[=1.85.0]", transitive_headers=True)
-        self.requires("gtest/[=1.16.0]")
+        self.requires("gtest/[>=1.16.0]")
         self.requires("gflags/[=2.2.2]")
         self.requires("glog/[=0.7.1]")
         self.requires("qt/[=6.7.3]")
