@@ -1069,7 +1069,8 @@ void Ion::fire() try {
     if (nuclear_e_loss > knock_on_threshold && enable_knock_on) {
       data_leaf_.add_child(ParticleDataLeaf());
       auto knock_on_particle =
-          Ion(z_2, static_cast<size_t>((m_2 / atomic_mass_unit).value()),
+          Ion(z_2,
+              static_cast<size_t>(std::round((m_2 / atomic_mass_unit).value())),
               simulation_, uniform_distribution_, random_number_generator_,
               data_leaf_.get_children().back(), bombardment_);
       auto scattering_angle_2 = asin(sin(laboratory_scatter_angle) *

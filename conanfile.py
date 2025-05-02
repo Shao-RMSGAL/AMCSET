@@ -76,19 +76,27 @@ class amcsetRecipe(ConanFile):
         cmake.install()
 
     def requirements(self):
-        self.requires("boost/[=1.85.0]")
-        self.requires("gtest/[>=1.14.0]")
-        self.requires("gflags/[>=2.2.2]")
-        self.requires("glog/[>=0.7.1]")
-        self.requires("qt/[>=6.7.3]")
+        self.requires("boost/[=1.85.0]", transitive_headers=True)
+        self.requires("gtest/[=1.16.0]")
+        self.requires("gflags/[=2.2.2]")
+        self.requires("glog/[=0.7.1]")
+        self.requires("qt/[=6.7.3]")
 
     def build_requirements(self):
-        self.tool_requires("cmake/[>3.23]")
-        self.tool_requires("ninja/[>1.12]")
-        #  if self.settings.os == "Windows":
-        #      self.tool_requires("strawberryperl/5.32.1.1")  # Required for Qt on Windows
+        self.tool_requires("cmake/[=3.29]")
+        self.tool_requires("ninja/[1.12]")
+        if self.settings.os == "Windows":
+            # Required for Qt on Windows
+            self.tool_requires("strawberryperl/5.32.1.1")
 
     def configure(self):
+        #  self.options["boost"].shared = True  # or False, but be consistent
+        # Explicitly enable thread
+        self.options["boost"].without_thread = False
+        # Disable bzip
+        self.options["boost"].bzip2 = False
+        # Disable zlib
+        self.options["boost"].zlib = False
         # Qt must be built as shared libraries
         self.options["qt"].shared = True
         self.options["qt"].with_vulkan = True

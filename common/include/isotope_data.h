@@ -497,7 +497,7 @@ public:
    * \brief Converts atomic number to atomic symbol
    */
   inline static constexpr std::string_view
-  atomic_number_to_element(int atomic_number) {
+  atomic_number_to_element(size_t atomic_number) {
     switch (atomic_number) { // {{{
     case 1:
       return "H"; // Hydrogen

@@ -15,7 +15,7 @@
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
 // Boost includes
-#include <boost/thread/thread.hpp>
+// #include <boost/thread/thread.hpp>
 
 // Standard library includes
 #include <exception>
@@ -43,8 +43,8 @@
 #include <qnamespace.h>
 #include <qobject.h>
 #include <qstandarditemmodel.h>
-#include <sys/wait.h>
-#include <unistd.h>
+// #include <sys/wait.h>
+// #include <unistd.h>
 
 // Local includes
 #include "3dview.h"
@@ -144,7 +144,7 @@ void MainWindow::runSimulation() {
   }
 
   std::vector<common::Layer> layers;
-  for (size_t layerRow = 0; layerRow < layerCount; layerRow++) {
+  for (auto layerRow = 0; layerRow < layerCount; layerRow++) {
     const auto startingDepthColumn = 0;
     const auto depthColumn = 1;
     const auto densityColumn = 3;
@@ -178,7 +178,7 @@ void MainWindow::runSimulation() {
     size_t elementCount = materialModel->rowCount();
     common::Layer::material_vector material;
     auto proportionSum = 0.0;
-    for (size_t elementRow = 0; elementRow < elementCount; elementRow++) {
+    for (auto elementRow = 0; elementRow < elementCount; elementRow++) {
       const auto atomicSymbolColumn = 0;
       const auto proportionColumn = 1;
 
@@ -472,7 +472,7 @@ QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
 
   rangeSpinBox = new QDoubleSpinBox(this);
   const auto minRange = 0.1;
-  const auto maxRange = std::numeric_limits<typeof(minRange)>::max();
+  const auto maxRange = std::numeric_limits<decltype(minRange)>::max();
   const auto defaultDepth = 1000;
   rangeSpinBox->setRange(minRange, maxRange);
   rangeSpinBox->setValue(defaultDepth);
@@ -595,7 +595,7 @@ void MainWindow::createLayerRow() {
   auto *startingDepthLabel = new QLabel(this);
   startingDepthLabel->setText(QString::number(row));
   const auto minDepth = 0.01; // TODO: More elegant solution (optional)
-  const auto maxDepth = std::numeric_limits<typeof(minDepth)>::max();
+  const auto maxDepth = std::numeric_limits<decltype(minDepth)>::max();
   const auto defaultDepth = 1000;
   auto *depthSpinBox = new QDoubleSpinBox();
   depthSpinBox->setValue(minDepth);
@@ -608,7 +608,7 @@ void MainWindow::createLayerRow() {
   layerLineEdit->setData(LayerLineEdit, Qt::UserRole);
 
   const auto minDensity = 0.01;
-  const auto maxDensity = std::numeric_limits<typeof(minDensity)>::max();
+  const auto maxDensity = std::numeric_limits<decltype(minDensity)>::max();
   const auto defaultDensity =
       1000.0; // TODO: Pick some proper density for a default material
   auto *densitySpinBox = new QDoubleSpinBox();

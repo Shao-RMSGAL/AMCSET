@@ -69,32 +69,33 @@ void Widget3DView::setRange(double range) {
 void Widget3DView::requestDrawLine(const QVector3D &from, const QVector3D &to,
                                    const QColor &color) {
   // This method can be called from any thread
-  m_mutex.lock();
+  // m_mutex.lock();
   m_lineRequestQueue.enqueue({from, to, color});
-  m_mutex.unlock();
+  // m_mutex.unlock();
 }
 void Widget3DView::requestClearScene() {
   // This method can be called from any thread
-  m_mutex.lock();
+  // m_mutex.lock();
   m_clearSceneRequested = true;
-  m_mutex.unlock();
+  // m_mutex.unlock();
 }
 
 void Widget3DView::processPendingLineRequests() {
   // This method runs in the UI thread
-  m_mutex.lock();
+  // m_mutex.lock();
 
   while (!m_lineRequestQueue.isEmpty()) {
     LineRequest request = m_lineRequestQueue.dequeue();
-    m_mutex.unlock(); // Unlock while drawing to prevent blocking other threads
+    // m_mutex.unlock(); // Unlock while drawing to prevent blocking other
+    // threads
 
     // Draw the line (this must happen in the UI thread)
     drawLine(request.from, request.to, request.color);
 
-    m_mutex.lock();
+    // m_mutex.lock();
   }
 
-  m_mutex.unlock();
+  // m_mutex.unlock();
 }
 
 Widget3DView::~Widget3DView() {

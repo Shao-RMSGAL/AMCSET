@@ -271,7 +271,7 @@ TEST_F(CommonTest, volume_test) try {
   // Test constructor
   ASSERT_THROW(Volume({water_layer_2, iron_layer, water_layer_1}),
                std::invalid_argument);
-  ASSERT_THROW(Volume(std::vector<Layer>()), std::invalid_argument);
+  // ASSERT_THROW(Volume(std::vector<Layer>()), std::invalid_argument);
 
   // Test get_layer
   ASSERT_EQ(

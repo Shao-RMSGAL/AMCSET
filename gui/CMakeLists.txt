@@ -28,3 +28,20 @@ target_include_directories(amcset-gui PRIVATE
     )
 
 target_link_libraries(amcset-gui PRIVATE compiler_flags)
+
+# In your CMakeLists.txt, after your target is defined:
+if(WIN32)
+  # Find the windeployqt executable
+  get_target_property(QT_QMAKE_EXECUTABLE Qt6::qmake IMPORTED_LOCATION)
+  get_filename_component(QT_BIN_DIR "${QT_QMAKE_EXECUTABLE}" DIRECTORY)
+  find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${QT_BIN_DIR}")
+
+  # Run windeployqt after build
+  add_custom_command(TARGET amcset-gui POST_BUILD
+    COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+            --debug
+            --no-translations
+            "$<TARGET_FILE:amcset-gui>"
+    COMMENT "Running windeployqt..."
+  )
+endif()

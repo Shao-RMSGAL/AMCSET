@@ -40,10 +40,10 @@ configure_file(${PROJECT_SOURCE_DIR}/common/include/config.h.in ${PROJECT_SOURCE
 
 # Packages
 find_package(Boost 1.85.0 REQUIRED)
-find_package(GTest 1.14.0 REQUIRED)
+find_package(GTest 1.16.0 REQUIRED)
 find_package(glog 0.7.1 REQUIRED)
 find_package(gflags 2.2.2 REQUIRED)
-find_package(OpenSSL REQUIRED)
+# find_package(OpenSSL REQUIRED CONFIG COMPONENTS filesystem)
 find_package(Qt6 COMPONENTS Core Gui Widgets 3DCore 3DExtras 3DRender 3DInput REQUIRED)
 if (Qt6_FOUND)
     qt_standard_project_setup()
@@ -54,11 +54,31 @@ add_subdirectory(common)
 add_subdirectory(gui)
 add_subdirectory(test)
 
+if(WIN32)
+    # set(Boost_DIR "${CMAKE_BINARY_DIR}/build/generators")
+    # Target Windows 11 (_WIN32_WINNT = 0x0A00 for Windows 10 and later)
+    add_definitions(-D_WIN32_WINNT=0x0A00)
+
+    # Optionally define _CRT_SECURE_NO_WARNINGS to suppress MSVC warnings
+    # add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+
+    # If you're using C++17 or newer, set the standard explicitly
+    set(CMAKE_CXX_STANDARD 23)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    set(CMAKE_CXX_EXTENSIONS OFF)
+
+    # Optionally set compile options for MSVC
+    if(MSVC)
+        add_compile_options(/W4)  # High warning level
+    endif()
+
+endif()
+
 # Add package includes and link common
-target_include_directories(amcset-common SYSTEM PUBLIC
-    ${Boost_INCLUDE_DIRS}
-    )
-target_link_libraries(amcset-common PUBLIC ${Boost_LIBRARY_DIRS} glog::glog)
+# target_include_directories(amcset-common SYSTEM PUBLIC
+#     ${Boost_INCLUDE_DIRS}
+#     )
+target_link_libraries(amcset-common PUBLIC ${Boost_LIBRARIES} glog::glog)
 
 
 # Allow link access for common library to gui

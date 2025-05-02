@@ -429,10 +429,12 @@ public:
      * the particle. If mass_number is 0, an electron is specified.
      */
     constexpr Properties(size_t z_number, size_t mass_number) try
-        : charge_(z_number > 0 ? dimensionless_quantity(z_number)
-                               : dimensionless_quantity(-1)),
+        : charge_(z_number > 0
+                      ? dimensionless_quantity(static_cast<double>(z_number))
+                      : dimensionless_quantity(-1)),
           mass_(IsotopeData::get_isotope_mass(z_number, mass_number)),
-          mass_number_(dimensionless_quantity(mass_number)) {
+          mass_number_(
+              dimensionless_quantity(static_cast<double>(mass_number))) {
     } catch (...) {
       rethrow(EXCEPTION_MESSAGE(""));
     };

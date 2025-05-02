@@ -59,9 +59,10 @@ private:
     QVector3D to;
     QColor color;
   };
+
   bool m_clearSceneRequested;
   QQueue<LineRequest> m_lineRequestQueue;
-  std::mutex m_mutex;
+  // std::mutex m_mutex;
   QTimer *m_updateTimer;
   QList<Qt3DCore::QEntity *> m_sceneEntities;
 };

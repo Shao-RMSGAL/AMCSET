@@ -180,11 +180,11 @@ template <class... Args> [[noreturn]] void rethrow(Args &&...args) {
   void(expand{0, ((ss << sep << args), sep = ", ", 0)...});
   try {
     std::rethrow_exception(std::current_exception());
-  } catch (const std::invalid_argument &e) {
+  } catch (const std::invalid_argument &) {
     std::throw_with_nested(std::invalid_argument(ss.str()));
-  } catch (const std::out_of_range &e) {
+  } catch (const std::out_of_range &) {
     std::throw_with_nested(std::out_of_range(ss.str()));
-  } catch (const std::logic_error &e) {
+  } catch (const std::logic_error &) {
     std::throw_with_nested(std::logic_error(ss.str()));
   } catch (...) {
     std::throw_with_nested(std::runtime_error(ss.str()));
