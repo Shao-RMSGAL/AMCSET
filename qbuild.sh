@@ -50,7 +50,7 @@ cmake_cmd="cmake"
 build_dir="$project_dir/build/$mode"
 
 conan_flags="--build=missing --settings=build_type=$mode"
-cmake_flags="--preset conan-$mode_lower -DENABLE_ASAN=ON"
+cmake_flags="--preset conan-$mode_lower"
 run_flags="-v=0 --gui=true"
 
 test_dir="$project_dir/build/$mode/test"
@@ -84,9 +84,9 @@ run() {
 }
 
 conan_run() {
-    conan install . --settings=build_type=Debug --build=missing
+    conan install . $conan_flags
     check_status
-    conan install . --settings=build_type=Release --build=missing
+    conan install . $conan_flags
     check_status
 }
 
@@ -98,15 +98,12 @@ else
         if [ "$arg" == "--test" ] ||  [ "$arg" == "-t" ]; then 
             test
         fi 
-
         if [ "$arg" == "--run" ] || [ "$arg" == "-r" ]; then
             run
         fi
-
         if [ "$arg" == "--conan" ] || [ "$arg" == "-c" ]; then
             conan_run
         fi
-
         if [ "$arg" == "--build" ] || [ "$arg" == "-b" ]; then
             build
         fi

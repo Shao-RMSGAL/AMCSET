@@ -22,6 +22,9 @@
 #include <limits>
 
 // Qt includes
+#include <Q3DScatter>
+#include <QAbstractItemModel>
+#include <QBoxLayout>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDebug>
@@ -30,19 +33,26 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QObject>
+#include <QScatter3DSeries>
+#include <QScatterDataArray>
 #include <QSizePolicy>
 #include <QSplitter>
+#include <QStandardItemModel>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QTableView>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QtContainerFwd>
 #include <QtWidgets>
-#include <qabstractitemmodel.h>
-#include <qboxlayout.h>
+#include <qbarcategoryaxis.h>
+#include <qbarseries.h>
+#include <qbarset.h>
+#include <qchart.h>
+#include <qchartview.h>
 #include <qnamespace.h>
-#include <qobject.h>
-#include <qstandarditemmodel.h>
+#include <qscatterdataproxy.h>
+#include <qvalueaxis.h>
 // #include <sys/wait.h>
 // #include <unistd.h>
 
@@ -377,10 +387,51 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   view3DBox->setLayout(view3DVBox);
 
   // Layouts
+
   auto *topLayout = new QVBoxLayout(); // The outermost layout.
   topLayout->setContentsMargins(5, 5, 5, 5);
 
-  auto *formBox = new QGroupBox(this); // Contains forms for user input.
+  auto *formBox = new QGroupBox(); // Contains forms for user input.
+  // ==============================================================
+
+  auto *formPlotTabs = new QTabWidget(this);
+
+  // Create a bar set and populate it with values
+  QBarSet *set0 = new QBarSet("Data");
+  *set0 << 1 << 2 << 3 << 4 << 5;
+
+  // Create a bar series and append the bar set
+  QBarSeries *series = new QBarSeries();
+  series->append(set0);
+
+  // Create the chart and add the series
+  QChart *chart = new QChart();
+  chart->addSeries(series);
+  chart->setTitle("Simple Bar Chart Example");
+  chart->setAnimationOptions(QChart::SeriesAnimations);
+
+  // Define categories for the X axis
+  QStringList categories;
+  categories << "A" << "B" << "C" << "D" << "E";
+  QBarCategoryAxis *axisX = new QBarCategoryAxis();
+  axisX->append(categories);
+  chart->addAxis(axisX, Qt::AlignBottom);
+  series->attachAxis(axisX);
+
+  // Create Y axis
+  QValueAxis *axisY = new QValueAxis();
+  axisY->setRange(0, 6);
+  chart->addAxis(axisY, Qt::AlignLeft);
+  series->attachAxis(axisY);
+
+  // Create a chart view
+  QChartView *chartView = new QChartView(chart);
+  chartView->setRenderHint(QPainter::Antialiasing);
+
+  formPlotTabs->addTab(formBox, QString("Input forms"));
+  formPlotTabs->addTab(chartView, QString("Plotting"));
+
+  // ===========================================================
   auto *formLayout = new QVBoxLayout(formBox);
 
   formLayout->addWidget(infoLabel);
@@ -392,7 +443,7 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   formLayout->addWidget(layerSplitter);
 
   auto *hPane = new QSplitter(Qt::Horizontal); // Split the forms and canvas
-  hPane->addWidget(formBox);
+  hPane->addWidget(formPlotTabs);
   hPane->addWidget(canvasBox);
   hPane->addWidget(view3DBox);
   auto formRatio = 0.6;
