@@ -39,6 +39,7 @@
 #include <chrono>
 #include <cmath>
 #include <fstream>
+#include <filesystem>
 // #include <limits>
 #include <numeric>
 #include <random>
@@ -328,19 +329,30 @@ int Simulation::run_simulation() try {
   }
   thread_pool_.join();
   LOG(INFO) << "...Simulation complete";
-
   // TODO: Come up with a more elegant solution to this.
   LOG(INFO) << "Saving simulation data...";
-  std::ofstream file_stream("output/collisions.csv");
-  file_stream << "Depth,Collisions\n";
+  try {
+    std::filesystem::create_directories("output");
 
-  auto read_lock = DataFrame<double, int>::ReadLock(dataframe_);
-  auto depth_vector = dataframe_.get_column<double>("Depth", read_lock);
-  auto collision_vector =
-      dataframe_.get_column<double>("Collision Count", read_lock);
+    std::ofstream file_stream("output/collisions.csv");
+    file_stream << "Depth,Collisions\n";
 
-  for (size_t i = 0; i < depth_vector.size(); i++) {
-    file_stream << depth_vector[i] << "," << collision_vector[i] << "\n";
+    auto read_lock = DataFrame<double, int>::ReadLock(dataframe_);
+    auto depth_vector = dataframe_.get_column<double>("Depth", read_lock);
+    auto collision_vector =
+        dataframe_.get_column<double>("Collision Count", read_lock);
+
+    for (size_t i = 0; i < depth_vector.size(); i++) {
+      file_stream << depth_vector[i] << "," << collision_vector[i] << "\n";
+    }
+
+    // Also save tallies summary as JSON
+    std::ofstream tally_stream("output/tallies.json");
+    tally_stream << get_tallies().to_json();
+  } catch (const std::exception &e) {
+    VLOG(1) << "Failed to write simulation output: " << e.what();
+  } catch (...) {
+    VLOG(1) << "Failed to write simulation output";
   }
 
   return 0;
@@ -381,12 +393,37 @@ std::string Simulation::print_settings() const try {
   rethrow(EXCEPTION_MESSAGE(""));
 } // }}}
 
+void Simulation::merge_tallies(const Tallies &tallies) {
+  std::lock_guard<std::mutex> lk(tallies_mutex_);
+  tallies_.merge(tallies);
+}
+
+const Tallies &Simulation::get_tallies() const noexcept { return tallies_; }
+
+// Bombardment tally helpers
+void Bombardment::record_incident(double range_meters) {
+  local_tallies_.incidents += 1;
+  local_tallies_.range_stats.add((long double)range_meters);
+  local_tallies_.depth_histogram.add(range_meters);
+}
+
+void Bombardment::record_displacement(double depth_meters) {
+  local_tallies_.total_displacements += 1;
+  local_tallies_.depth_histogram.add(depth_meters);
+}
+
+void Bombardment::record_sputtered() { local_tallies_.sputtered += 1; }
+
+void Bombardment::record_energy_loss(long double energy_joules) {
+  local_tallies_.energy_loss_stats.add(energy_joules);
+}
+
 // Bombardment function implementations{{{
 Bombardment::Bombardment(Simulation &simulation, size_t id) try
     : simulation_(simulation),
       random_number_generator_(EntropySeeder::generate()),
       uniform_distribution_(), id_(id),
-      data_leaf_() { // TODO: Provide the option to set a
+  data_leaf_(), local_tallies_(100, simulation.get_settings(&Simulation::Settings::range_).value()) { // TODO: Provide the option to set a
                      // seed instead of random generation.
   VLOG(1) << "Attempting random number: "
           << uniform_distribution_(random_number_generator_);
@@ -415,6 +452,23 @@ void Bombardment::run_bombardment() try {
   incident_particle_->fire();
   std::this_thread::yield(); // TODO: Remove
   VLOG(1) << "...Bombardment complete.";
+
+  // Simple local tally collection: record final range and counts
+  try {
+    auto &coords = incident_particle_->get_coordinates();
+    if (!coords.empty()) {
+      auto last_z = coords.back().z_.value();
+      // record via Bombardment helper
+      record_incident(last_z);
+    }
+    // Note: individual displacements and sputters are recorded during
+    // the particle history via Bombardment::record_displacement/_sputtered
+  } catch (...) {
+    VLOG(1) << "Failed to collect local tallies";
+  }
+
+  // Merge local tallies into simulation-level accumulator
+  simulation_.merge_tallies(local_tallies_);
 
   // Post-bombardment processing.
   // This goes through the incident_particle_ data_leaf_ and
@@ -1043,6 +1097,8 @@ void Ion::fire() try {
     auto e_energy_loss = electronic_stopping_energy(
         z_1, m_1, energy, number_density, layer_properties);
     energy -= e_energy_loss;
+    // Record energy loss (electronic)
+    bombardment_.record_energy_loss((long double)e_energy_loss.value());
 
     // Calculate nuclear scattering energy loss (energy, m_1, m_2, z_1, z_2,
     // number_density)
@@ -1063,11 +1119,15 @@ void Ion::fire() try {
         nuclear_energy_loss(m_1, m_2, energy, cm_scatter_angle);
 
     energy -= nuclear_e_loss; // TODO: Check for knock-ons
+    // Record nuclear energy loss
+    bombardment_.record_energy_loss((long double)nuclear_e_loss.value());
 
     auto laboratory_scatter_angle =
         laboratory_scattering_angle(cm_scatter_angle, m_1, m_2);
     if (nuclear_e_loss > knock_on_threshold && enable_knock_on) {
       data_leaf_.add_child(ParticleDataLeaf());
+      // Record displacement due to knock-on (top-level recoil)
+      bombardment_.record_displacement(coordinate_.z_.value());
       auto knock_on_particle =
           Ion(z_2,
               static_cast<size_t>(std::round((m_2 / atomic_mass_unit).value())),
@@ -1097,6 +1157,7 @@ void Ion::fire() try {
 
     if (coordinate_.z_ < 0.0 * angstrom) {
       data_leaf_.sputter();
+      bombardment_.record_sputtered();
       break;
     }
 

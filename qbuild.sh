@@ -41,17 +41,19 @@
 
 # Building
 
+set -e
+
 # Control whether to run in debug or release mode. Debug seems to be broken.
-mode="Debug"
-mode_lower="debug"
-project_dir="$HOME/Code/C++/AMCSET"
+mode="Release"
+mode_lower="release"
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 src_dir="$project_dir"
 cmake_cmd="cmake"
 build_dir="$project_dir/build/$mode"
 
-conan_flags="--build=missing --settings=build_type=$mode"
-cmake_flags="--preset conan-$mode_lower -DENABLE_ASAN=ON"
-run_flags="-v=0 --gui=true"
+conan_flags=(--build=missing --settings=build_type="$mode")
+cmake_flags=(--preset "conan-$mode_lower" -DENABLE_ASAN=ON)
+run_flags=(-v=0 --gui=true)
 
 test_dir="$project_dir/build/$mode/test"
 export TESTDIR="$build_dir/log"
@@ -64,12 +66,10 @@ check_status() {
 }
 
 build() {
-    source ./build/$mode/generators/conanbuild.sh
-    $cmake_cmd $cmake_flags
+    "$cmake_cmd" -S "$project_dir" -B "$build_dir" -DCMAKE_BUILD_TYPE="$mode" -DENABLE_ASAN=ON
     check_status
-    $cmake_cmd --build $cmake_flags
+    "$cmake_cmd" --build "$build_dir" --config "$mode"
     check_status
-    # cd -
 }
 
 test() {
@@ -79,7 +79,7 @@ test() {
 }
 
 run() {
-    $build_dir/amcset-gui $run_flags
+    "$build_dir/amcset-gui" "${run_flags[@]}"
     check_status
 }
 

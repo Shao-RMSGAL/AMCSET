@@ -7,6 +7,12 @@ cmake_minimum_required(VERSION 3.23)
 
 project(amcset VERSION 0.0.1)
 
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+if(ENABLE_ASAN)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+endif()
+
 # Use the conanfile.py version number
 if(NOT DEFINED PROJECT_VERSION)
     message(FATAL_ERROR "Version components not defined! Are you running through Conan?")
@@ -39,8 +45,8 @@ option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
 configure_file(${PROJECT_SOURCE_DIR}/common/include/config.h.in ${PROJECT_SOURCE_DIR}/common/include/config.h)
 
 # Packages
-find_package(Boost 1.85.0 REQUIRED)
-find_package(GTest 1.16.0 REQUIRED)
+find_package(Boost 1.86.0 REQUIRED)
+find_package(GTest 1.15.0 REQUIRED)
 find_package(glog 0.7.1 REQUIRED)
 find_package(gflags 2.2.2 REQUIRED)
 # find_package(OpenSSL REQUIRED CONFIG COMPONENTS filesystem)

@@ -67,6 +67,8 @@
 // Local includes
 #include "amcset_utilities.h"
 #include "isotope_data.h" // }}}
+// Tallies for statistics
+#include "tallies.h"
 
 /*!
  * \brief The namespace used for all library code related to AMCSET.
@@ -256,6 +258,13 @@ public:
     std::shared_lock<std::shared_mutex> lock;
 
   public:
+    /**
+     * @brief Construct a read guard for a DataFrame.
+     *
+     * Locks the underlying mutex for shared (read) access for the lifetime
+     * of this object.
+     * @param df The DataFrame being read.
+     */
     explicit ReadLock(const DataFrame &df) : lock(df.frame_mutex) {}
   };
 
@@ -265,30 +274,69 @@ public:
     std::unique_lock<std::shared_mutex> lock;
 
   public:
+    /**
+     * @brief Construct a write guard for a DataFrame.
+     *
+     * Locks the underlying mutex for exclusive (write) access for the
+     * lifetime of this object.
+     * @param df The DataFrame being written to.
+     */
     explicit WriteLock(const DataFrame &df) : lock(df.frame_mutex) {}
   };
 
-  //!< Read-only column-wise access
+  /**
+   * @brief Read-only access to a named column.
+   *
+   * The caller must hold a `ReadLock` while accessing the returned
+   * reference.
+   * @tparam T Column element type.
+   * @param column_name Name of the column to access.
+   * @param _lock A `ReadLock` instance that keeps the frame locked.
+   * @return Const reference to the column vector.
+   */
   template <typename T>
   const std::vector<T> &get_column(const std::string &column_name,
                                    const ReadLock &) const {
     return std::get<std::vector<T>>(columns.at(column_name));
   }
 
-  //!< Read/Write column-wise access
+  /**
+   * @brief Read-write access to a named column.
+   *
+   * The caller must hold a `WriteLock` while accessing the returned
+   * reference.
+   * @tparam T Column element type.
+   * @param column_name Name of the column to access.
+   * @param _lock A `WriteLock` instance that keeps the frame locked.
+   * @return Reference to the column vector.
+   */
   template <typename T>
   std::vector<T> &get_column(const std::string &column_name,
                              const WriteLock &) {
     return std::get<std::vector<T>>(columns.at(column_name));
   }
 
-  //!< Add a column.
+  /**
+   * @brief Add a new column to the DataFrame.
+   *
+   * The new column will be default-initialized for existing rows.
+   * @tparam T Column element type.
+   * @param name Column name.
+   */
   template <typename T> void add_column(const std::string &name) {
     std::unique_lock lock(frame_mutex);
     columns[name] = std::vector<T>(num_rows);
   }
 
-  //!< Read a single cell
+  /**
+   * @brief Read a single cell value.
+   *
+   * Acquires a shared lock for the duration of the operation.
+   * @tparam T Cell type.
+   * @param column_name Column name.
+   * @param row Row index.
+   * @return Copy of the requested cell value.
+   */
   template <typename T>
   T read_cell(const std::string &column_name, size_t row) {
     std::shared_lock lock(frame_mutex);
@@ -296,7 +344,15 @@ public:
     return column[row];
   }
 
-  //!< Write to a single cell
+  /**
+   * @brief Write a value to a single cell.
+   *
+   * Acquires an exclusive lock for the duration of the operation.
+   * @tparam T Cell type.
+   * @param column_name Column name.
+   * @param row Row index.
+   * @param value Value to store.
+   */
   template <typename T>
   void write_cell(const std::string &column_name, size_t row, T value) {
     std::unique_lock lock(frame_mutex);
@@ -304,7 +360,9 @@ public:
     column[row] = value;
   }
 
-  //!< Add a new row
+  /**
+   * @brief Append a new (default-initialized) row to the DataFrame.
+   */
   void add_row() {
     std::unique_lock lock(frame_mutex);
     for (auto &[_, column] : columns) {
@@ -313,13 +371,19 @@ public:
     num_rows++;
   }
 
-  //!< Get number of rows
+  /**
+   * @brief Return the number of rows in the DataFrame.
+   * @return Row count.
+   */
   size_t size() const {
     std::shared_lock lock(frame_mutex);
     return num_rows;
   }
 
-  //!< Increment the sputtered atom count
+  /**
+   * @brief Increment the per-frame sputtered atom counter.
+   * @param count Number of sputtered atoms to add.
+   */
   void add_sputtered(size_t count) {
     std::unique_lock lock(frame_mutex);
     sputtered_count += count;
@@ -338,28 +402,46 @@ public:
   //!< Construct a ParticleDataLeaf using a move constructor
   ParticleDataLeaf() = default;
 
-  //!< Add a coordinate to the data vector.
+  /**
+   * @brief Append a coordinate to this leaf.
+   * @param coordinate Coordinate to append (typically a position visited by a
+   * particle).
+   */
   void add_coordinate(const Coordinate &coordinate) {
     data.push_back(coordinate);
   };
 
-  //!< Add a child to a ParticleDataLeaf
+  /**
+   * @brief Add a child data leaf (used for storing cascade knock-on data).
+   * @param child A child ParticleDataLeaf to be moved into this node.
+   */
   void add_child(ParticleDataLeaf &&child) {
     children.emplace_back(
         std::move(child)); // Efficient construction of ParticleDataLeaf right
                            // in the vector.
   };
 
-  //!< Access the data of a CoordinateChildLeaf
+  /**
+   * @brief Return stored coordinates for this leaf.
+   * @return Vector of coordinates recorded for the particle.
+   */
   const std::vector<Coordinate> &get_data() const { return data; }
 
-  //!< Access the children of a CoordinateChildLeaf
+  /**
+   * @brief Return the child leaves of this node (mutable).
+   * @return Vector of child ParticleDataLeaf instances.
+   */
   std::vector<ParticleDataLeaf> &get_children() { return children; }
 
-  //!< Set the particle to be sputtered
+  /**
+   * @brief Mark this leaf as representing a sputtered particle.
+   */
   void sputter() { sputtered = true; }
 
-  //!< Set the particle to escape the volume
+  /**
+   * @brief Mark this leaf as representing a particle that escaped the
+   * volume.
+   */
   void escape() { escaped = true; }
 
 private:
@@ -494,15 +576,35 @@ protected:
   /*!
    * \brief Calculate velocity from energy.
    */
+  /**
+   * @brief Convert kinetic energy to a velocity quantity for a particle of
+   * the given mass.
+   * @param energy Particle kinetic energy.
+   * @param mass Particle mass.
+   * @return Velocity quantity corresponding to the supplied energy.
+   */
   virtual velocity_quantity speed_from_energy(energy_quantity energy,
                                               mass_quantity mass) const;
   /*!
    * \brief Calculate reduced mass.
    */
+  /**
+   * @brief Compute the reduced mass of two masses.
+   * @param mass_1 First mass.
+   * @param mass_2 Second mass.
+   * @return Reduced mass = m1*m2/(m1+m2).
+   */
   virtual mass_quantity reduced_mass(mass_quantity mass_1,
                                      mass_quantity mass_2) const;
   /*!
    * \brief Calculate kinetic energy for center of mass coordinates.
+   */
+  /**
+   * @brief Compute center-of-mass kinetic energy from reduced mass and
+   * velocity.
+   * @param reduced_mass Reduced mass of the interacting pair.
+   * @param velocity Relative velocity.
+   * @return Center-of-mass kinetic energy.
    */
   virtual energy_quantity cm_energy(mass_quantity reduced_mass,
                                     velocity_quantity velocity) const;
@@ -513,6 +615,11 @@ protected:
    * Rotates a particle around an axis perpendicular to its velocity
    * vector to apply a scattering angle, as well as a randomized azimuthal
    * rotation between 0 and 2pi.
+   */
+  /**
+   * @brief Apply a scattering rotation to the particle in-place.
+   * @param scattering_angle The scattering angle to apply.
+   * @return Reference to this Particle after rotation.
    */
   virtual Particle &rotate_inplace(angle_quantity scattering_angle);
 
@@ -993,6 +1100,12 @@ public:
    */
   void run_bombardment();
 
+  // Tally recording helpers (used by Particle implementations)
+  void record_incident(double range_meters);
+  void record_displacement(double depth_meters);
+  void record_sputtered();
+  void record_energy_loss(long double energy_joules);
+
   /*!
    * \brief Return the ID of the bombardment
    *
@@ -1015,6 +1128,7 @@ public:
 
 private:
   Simulation &simulation_;
+  amcset::common::Tallies local_tallies_;
   std::unique_ptr<Particle> incident_particle_;
   boost::random::mt19937 random_number_generator_;
   boost::random::uniform_01<double> uniform_distribution_;
@@ -1209,9 +1323,15 @@ public:
    */
   DrawFunction &get_draw_function() { return draw_function_; };
 
+  // Tallies merge API
+  void merge_tallies(const Tallies &tallies);
+  const Tallies &get_tallies() const noexcept;
+
 private:
   const Settings settings_;
   Volume volume_;
+  Tallies tallies_;
+  mutable std::mutex tallies_mutex_;
   std::vector<Bombardment> bombardments_;
   boost::asio::thread_pool thread_pool_;
   DataFrame<double, int> dataframe_; //!< Stores simulation tallies contributed
@@ -1230,6 +1350,14 @@ private:
  */
 class EntropySeeder {
 public:
+  /**
+   * @brief Generate a reasonably unpredictable seed suitable for
+   *        initializing RNGs.
+   *
+   * The implementation prefers hardware entropy sources when available and
+   * falls back to a time/thread-based seed when necessary.
+   * @return A 32-bit seed value.
+   */
   static boost::mt19937::result_type generate();
 };
 

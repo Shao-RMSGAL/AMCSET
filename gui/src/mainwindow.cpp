@@ -144,7 +144,7 @@ void MainWindow::runSimulation() {
   }
 
   std::vector<common::Layer> layers;
-  for (auto layerRow = 0; layerRow < layerCount; layerRow++) {
+  for (size_t layerRow = 0; layerRow < layerCount; layerRow++) {
     const auto startingDepthColumn = 0;
     const auto depthColumn = 1;
     const auto densityColumn = 3;

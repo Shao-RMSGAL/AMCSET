@@ -18,13 +18,13 @@ target_link_libraries(amcset-common PUBLIC compiler_flags)
 # building on windows
 target_compile_definitions(amcset-common PRIVATE "EXPORTING_AMCSET")
 
-find_package (Python COMPONENTS Interpreter Development)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 # Add the custom command to generate the isotope database
 add_custom_command(
     OUTPUT ${PROJECT_SOURCE_DIR}/common/generated/isotope_database.h
     COMMAND
-    ${Python_EXECUTABLE}
+    ${Python3_EXECUTABLE}
     ${PROJECT_SOURCE_DIR}/common/scripts/generate_isotope_data.py
             ${PROJECT_SOURCE_DIR}/common/assets/isotope_data.txt
             ${PROJECT_SOURCE_DIR}/common/generated/isotope_database.h

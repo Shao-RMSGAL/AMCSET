@@ -1,0 +1,46 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "AMCSET: Build",
+            "type": "shell",
+            "command": "${workspaceFolder}/qbuild.sh",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "AMCSET: Run",
+            "type": "shell",
+            "command": "${workspaceFolder}/qbuild.sh",
+            "args": ["-r"],
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "AMCSET: Build and Run",
+            "type": "shell",
+            "command": "${workspaceFolder}/qbuild.sh",
+            "args": ["-r", "-b"],
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "AMCSET: Test",
+            "type": "shell",
+            "command": "${workspaceFolder}/qbuild.sh",
+            "args": ["-t"],
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "AMCSET: Conan Install",
+            "type": "shell",
+            "command": "${workspaceFolder}/qbuild.sh",
+            "args": ["-c"],
+            "problemMatcher": []
+        }
+    ]
+}

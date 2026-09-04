@@ -1,0 +1,53 @@
+{
+    "name": "AMCSET Development",
+    "build": {
+        "dockerfile": "../Dockerfile",
+        "context": ".."
+    },
+
+    "workspaceFolder": "/workspace",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+
+    "remoteUser": "root",
+
+    "mounts": [
+        "source=amcset-conan-cache,target=/opt/conan,type=volume"
+    ],
+
+    "runArgs": [
+        "--device=/dev/dri",
+        "--group-add=render",
+        "--group-add=video"
+    ],
+
+    "containerEnv": {
+        "DISPLAY": "${localEnv:DISPLAY}",
+        "WAYLAND_DISPLAY": "${localEnv:WAYLAND_DISPLAY}",
+        "XDG_RUNTIME_DIR": "/tmp"
+    },
+
+    "mounts": [
+        "source=amcset-conan-cache,target=/opt/conan,type=volume",
+        "source=${localEnv:XDG_RUNTIME_DIR}/${localEnv:WAYLAND_DISPLAY},target=/tmp/${localEnv:WAYLAND_DISPLAY},type=bind"
+    ],
+
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cmake-tools",
+                "twxs.cmake"
+            ],
+            "settings": {
+                "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+                "cmake.generator": "Ninja"
+            }
+        }
+    },
+
+    "postCreateCommand": "conan install . --build=missing -s build_type=Debug",
+
+    "remoteEnv": {
+        "PATH": "/opt/venv/bin:${containerEnv:PATH}"
+    }
+} 
