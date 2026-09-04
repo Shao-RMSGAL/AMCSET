@@ -66,9 +66,9 @@ check_status() {
 }
 
 build() {
-    "$cmake_cmd" -S "$project_dir" -B "$build_dir" -DCMAKE_BUILD_TYPE="$mode" -DENABLE_ASAN=ON
+    "$cmake_cmd" --preset "$mode_lower" -DENABLE_ASAN=ON
     check_status
-    "$cmake_cmd" --build "$build_dir" --config "$mode"
+    "$cmake_cmd" --build --preset "$mode_lower"
     check_status
 }
 
@@ -84,8 +84,8 @@ run() {
 }
 
 conan_run() {
-    conan install . --settings=build_type=Debug --build=missing
-    check_status
+    # conan install . --settings=build_type=Debug --build=missing
+    # check_status
     conan install . --settings=build_type=Release --build=missing
     check_status
 }
