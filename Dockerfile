@@ -36,6 +36,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-venv \
+    # SSH client needed for fetching packages from SSH-based remotes
+    openssh-client \
     \
     # GCC
     gcc-${GCC_VERSION} \
