@@ -30,6 +30,7 @@
 #include <boost/units/systems/si/length.hpp>
 #include <memory>
 
+// Detects the platform and sets the DECLSPEC macro for exporting symbols from a DLL on Windows.
 #if defined(_WIN32)
 #if defined(EXPORTING_AMCSET)
 #define DECLSPEC __declspec(dllexport)
@@ -60,15 +61,14 @@
 
 // Boost asio
 #include <boost/asio.hpp>
-
-// Boost asio
 #include <boost/lockfree/spsc_queue.hpp>
 
 // Local includes
 #include "amcset_utilities.h"
-#include "isotope_data.h" // }}}
-// Tallies for statistics
+#include "isotope_data.h" 
 #include "tallies.h"
+
+// }}}
 
 /*!
  * \brief The namespace used for all library code related to AMCSET.
