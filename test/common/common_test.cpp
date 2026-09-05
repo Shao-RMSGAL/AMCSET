@@ -25,8 +25,10 @@
 
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/units/systems/si/codata/physico-chemical_constants.hpp>
+#include <cstdio>
 #include <ctime>
 #include <iomanip>
+#include <glog/logging.h>
 
 #include "amcset_common.h"
 #include "amcset_utilities.h"
@@ -81,10 +83,11 @@ protected:
    */
   Simulation create_simulation() const try {
     auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
-    size_t z_number = 14;
+    size_t z_number = 14; // Silicon
     size_t mass_number = 28;
     bool enable_damage_cascade = true;
-    auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
+    auto ion_stopping_energy =
+        energy_quantity(0.04 * kilo_electron_volt); // Stop at 4 eV
     auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
     bool log_single_displacement = true;
     size_t divisor_angle_number = 1000;
@@ -106,7 +109,6 @@ protected:
         divisor_angle_number, flying_distance_number, range, bombardment_count,
         is_electron, incident_energy, thread_count, incident_angle);
 
-    std::cout << "Returning simulation" << std::endl; // TODO: REmove
     return Simulation(settings, std::move(volume));
   } catch (const std::exception &e) {
     print_exception(e);
@@ -118,7 +120,6 @@ protected:
 TEST_F(CommonTest, common_assertions) try {
   EXPECT_STRNE("hello", "world");
   EXPECT_EQ(7 * 6, 42);
-  std::cout << "Hi!" << std::endl;
 } catch (const std::exception &e) {
   print_exception(e);
   FAIL();
@@ -397,6 +398,10 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
 
 //! Bombardment test
 TEST_F(CommonTest, bombardment_test) try {
+  google::InitGoogleLogging("common-test");
+  FLAGS_logtostderr = 1;
+  ASSERT_NE(std::freopen("log.txt", "w", stderr), nullptr);
+
   // Construct a minimal simulation that uses an iron incident particle
   auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
   size_t z_number = 26; // Iron
@@ -414,9 +419,7 @@ TEST_F(CommonTest, bombardment_test) try {
   size_t thread_count = 1;
   angle_quantity incident_angle = 0;
 
-  auto volume = Volume({create_water_layer(length_quantity(2.0 * angstrom)),
-                        create_iron_layer(length_quantity(500.0 * angstrom)),
-                        create_water_layer(length_quantity(1000.0 * angstrom))});
+  auto volume = Volume({create_iron_layer(range),create_water_layer(range + length_quantity(1000.0 * angstrom))}); // Single iron layer
 
   Simulation::Settings settings(
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,

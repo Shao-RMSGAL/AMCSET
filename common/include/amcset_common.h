@@ -30,7 +30,8 @@
 #include <boost/units/systems/si/length.hpp>
 #include <memory>
 
-// Detects the platform and sets the DECLSPEC macro for exporting symbols from a DLL on Windows.
+// Detects the platform and sets the DECLSPEC macro for exporting symbols from a
+// DLL on Windows.
 #if defined(_WIN32)
 #if defined(EXPORTING_AMCSET)
 #define DECLSPEC __declspec(dllexport)
@@ -65,7 +66,7 @@
 
 // Local includes
 #include "amcset_utilities.h"
-#include "isotope_data.h" 
+#include "isotope_data.h"
 #include "tallies.h"
 
 // }}}
@@ -1134,8 +1135,7 @@ private:
   boost::random::uniform_01<double> uniform_distribution_;
   size_t id_;
   ParticleDataLeaf data_leaf_; //!< A structure for holding data generated
-                               //!< during a particle history.
-
+                               //!< during a particle history
 }; // }}}
 
 // Simulation class declarations{{{

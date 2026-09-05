@@ -38,8 +38,8 @@
 // #include <array>
 #include <chrono>
 #include <cmath>
-#include <fstream>
 #include <filesystem>
+#include <fstream>
 // #include <limits>
 #include <numeric>
 #include <random>
@@ -322,9 +322,9 @@ int Simulation::run_simulation() try {
   for (auto &bombardment : bombardments_) {
     // TODO: Enable multithreading
     boost::asio::post(thread_pool_, [&bombardment]() {
-      VLOG(1) << "Starting Bombardment...";
+      LOG(INFO) << "Starting Bombardment...";
       bombardment.run_bombardment();
-      VLOG(1) << "...Bombardment Complete!";
+      LOG(INFO) << "...Bombardment Complete!";
     });
   }
   thread_pool_.join();
@@ -421,10 +421,12 @@ void Bombardment::record_energy_loss(long double energy_joules) {
 // Bombardment function implementations{{{
 Bombardment::Bombardment(Simulation &simulation, size_t id) try
     : simulation_(simulation),
+      local_tallies_(
+          100, simulation.get_settings(&Simulation::Settings::range_).value()),
       random_number_generator_(EntropySeeder::generate()),
       uniform_distribution_(), id_(id),
-  data_leaf_(), local_tallies_(100, simulation.get_settings(&Simulation::Settings::range_).value()) { // TODO: Provide the option to set a
-                     // seed instead of random generation.
+      data_leaf_() { // TODO: Provide the option to set a
+  // seed instead of random generation.
   VLOG(1) << "Attempting random number: "
           << uniform_distribution_(random_number_generator_);
 

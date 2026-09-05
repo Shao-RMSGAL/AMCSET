@@ -2,32 +2,17 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "AMCSET: Run (Ctrl+F5)",
+            "name": "AMCSET: Bombardment Test (F5)",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Release/amcset-gui",
+            "program": "${workspaceFolder}/build/Release/common-test",
             "args": [
-                "--gui=true",
-                "-v=0"
+                "--gtest_filter=CommonTest.simulation_and_settings_test",
+                "--v=2",
+                "--logtostderr"
             ],
             "cwd": "${workspaceFolder}",
-            "preLaunchTask": "AMCSET: Build",
-            "MIMode": "gdb",
-            "miDebuggerPath": "/usr/bin/gdb",
-            "stopAtEntry": false,
-            "externalConsole": false
-        },
-        {
-            "name": "AMCSET: Debug",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/Release/amcset-gui",
-            "args": [
-                "--gui=true",
-                "-v=0"
-            ],
-            "cwd": "${workspaceFolder}",
-            "preLaunchTask": "AMCSET: Build",
+            "preLaunchTask": "AMCSET: Build common-test",
             "MIMode": "gdb",
             "miDebuggerPath": "/usr/bin/gdb",
             "stopAtEntry": false,
