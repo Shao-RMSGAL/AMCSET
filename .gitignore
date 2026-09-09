@@ -22,3 +22,4 @@ output.csv
 output
 common/generated/isotope_database.cpp
 test_output.txt
+log.txt

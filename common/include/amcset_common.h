@@ -573,7 +573,16 @@ public:
    */
   virtual ~Particle() = default;
 
-protected:
+  /*!
+   * \brief Get the coordinate of a particle
+   */
+  virtual Coordinate get_coordinate() const { return coordinate_; };
+  
+  /*!
+   * \brief Get the velocity of a particle
+   */
+  virtual Velocity get_velocity() const { return velocity_; };
+  
   /*!
    * \brief Calculate velocity from energy.
    */
@@ -586,6 +595,8 @@ protected:
    */
   virtual velocity_quantity speed_from_energy(energy_quantity energy,
                                               mass_quantity mass) const;
+
+protected:
   /*!
    * \brief Calculate reduced mass.
    */
@@ -628,6 +639,7 @@ protected:
    * \brief Set the velocity of a particle
    */
   virtual void set_velocity(Velocity velocity) { velocity_ = velocity; };
+  
 
   /*!
    * \brief Set the coordinate of a particle
@@ -635,6 +647,7 @@ protected:
   virtual void set_coordinate(Coordinate coordinate) {
     coordinate_ = coordinate;
   };
+
 
   Properties properties_; //!< Properties of the particle
   // std::vector<std::unique_ptr<Particle>>

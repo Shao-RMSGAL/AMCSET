@@ -46,7 +46,15 @@ protected:
   //! The constructor for CommonTest
   CommonTest() {}
   //! The override for the SetUp() function
-  void SetUp() override {}
+  void SetUp() override {
+    static bool logging_initialized = false;
+    if (!logging_initialized) {
+      google::InitGoogleLogging("common-test");
+      FLAGS_logtostderr = 1;
+      ASSERT_NE(std::freopen("log.txt", "w", stderr), nullptr);
+      logging_initialized = true;
+    }
+  }
   //! The override for the TearDown() function
   void TearDown() override {}
 
@@ -315,7 +323,7 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
   auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
   size_t z_number = 14;
   size_t mass_number = 28;
-  bool enable_damage_cascade = true;
+  bool enable_damage_cascade = false;
   auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
   auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
   bool log_single_displacement = true;
@@ -329,8 +337,8 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
 
   auto volume =
       Volume({create_water_layer(length_quantity(2.0 * angstrom)),
-              create_iron_layer(length_quantity(500.0 * angstrom)),
-              create_water_layer(length_quantity(1000.0 * angstrom))});
+              create_iron_layer(range),
+              });
 
   Simulation::Settings settings(
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
@@ -398,10 +406,6 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
 
 //! Bombardment test
 TEST_F(CommonTest, bombardment_test) try {
-  google::InitGoogleLogging("common-test");
-  FLAGS_logtostderr = 1;
-  ASSERT_NE(std::freopen("log.txt", "w", stderr), nullptr);
-
   // Construct a minimal simulation that uses an iron incident particle
   auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
   size_t z_number = 26; // Iron

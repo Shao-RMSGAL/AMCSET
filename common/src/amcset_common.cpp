@@ -56,7 +56,7 @@ namespace common {
 Layer::Layer(material_vector &&material, length_quantity depth,
              mass_density_quantity mass_density) try
     : material_([&material, depth, mass_density]() {
-        VLOG(1) << "Creating Layer material with vector of length "
+        LOG(INFO) << "Creating Layer material with vector of length "
                 << material.size() << ", depth " << depth << ", and density "
                 << mass_density;
         auto relative_compositions =
@@ -64,7 +64,7 @@ Layer::Layer(material_vector &&material, length_quantity depth,
                            &std::pair<double, Particle::Properties>::first);
         double sum = std::accumulate(relative_compositions.begin(),
                                      relative_compositions.end(), 0.0);
-        VLOG(1) << "Sum of compositions is " << sum;
+        LOG(INFO) << "Sum of compositions is " << sum;
 
         for (auto &pair : material) {
           if (pair.first < 0) {
@@ -72,23 +72,20 @@ Layer::Layer(material_vector &&material, length_quantity depth,
                 "Relative composition: " + std::to_string(pair.first) +
                 " is less than zero."));
           }
-          VLOG(2) << "Initial composition is " << pair.first;
+          LOG(INFO) << "Initial composition is " << pair.first;
           pair.first /= sum;
-          VLOG(2) << "Final composition is "
-                  << pair.first; // NOTE: Normalization is done in the GUI-level
-                                 // code. Consider removing and stipulating that
-                                 // provided values must be normalized.
-        }
+          LOG(INFO) << "Final composition is "
+                  << pair.first;        }
 
         return std::move(material);
       }()),
       depth_(depth), mass_density_(mass_density), number_density_([&]() {
-        VLOG(1) << "Calculating mass density using " << mass_density;
+        LOG(INFO) << "Calculating mass density using " << mass_density;
         return mass_density /
                (std::accumulate(material_.begin(), material_.end(),
                                 mass_quantity(0),
                                 [](const mass_quantity &sum, const auto &mat) {
-                                  VLOG(2)
+                                  LOG(INFO)
                                       << "Number density calculation. Sum of "
                                       << sum << ", fraction " << mat.first
                                       << ", and mass of " << mat.second.mass_;
@@ -96,7 +93,7 @@ Layer::Layer(material_vector &&material, length_quantity depth,
                                 }) *
                 constants::N_A);
       }()) {
-  VLOG(1) << "Created Layer with " << material_.size()
+  LOG(INFO) << "Created Layer with " << material_.size()
           << " components, depth of " << depth << ", density of "
           << mass_density << ", and number density of " << number_density_;
 
@@ -110,7 +107,7 @@ Layer::Layer(material_vector &&material, length_quantity depth,
         "Cannot pass a vector of size 0 to Layer constructor"));
   }
 
-  VLOG(1) << "Passing relative compositions to discrete distribution.";
+  LOG(INFO) << "Passing relative compositions to discrete distribution.";
   auto composition_view = get_relative_compositions();
   discrete_distribution_ = boost::random::discrete_distribution<size_t, double>(
       composition_view.begin(), composition_view.end());
@@ -122,7 +119,7 @@ Layer::Layer(material_vector &&material, length_quantity depth,
 auto Layer::get_relative_compositions() const
     -> decltype(std::declval<const material_vector &>() |
                 std::views::keys) try {
-  VLOG(1) << "Getting relative compositions for layer with " << material_.size()
+  LOG(INFO) << "Getting relative compositions for layer with " << material_.size()
           << " components";
   // return material_ |
   //        std::views::transform(&std::pair<double,
@@ -170,7 +167,7 @@ length_quantity Volume::get_depth() const { return layers_.back().get_depth(); }
 
 const std::pair<const Layer *, size_t>
 Volume::get_layer(length_quantity depth) const try {
-  VLOG(1) << "Getting layer at depth " << depth;
+  LOG(INFO) << "Getting layer at depth " << depth;
   if (depth < length_quantity(0.0 * angstrom)) {
     throw std::invalid_argument(EXCEPTION_MESSAGE(
         "Depth: " + to_string(depth) + " cannot be less than zero."));
@@ -183,10 +180,10 @@ Volume::get_layer(length_quantity depth) const try {
 
   // Rely on the ordering of the layers (depths are strictly increasing)
   for (size_t i = 0; i < layers_.size(); i++) {
-    VLOG(2) << "Checking layer " << i << " with depth "
+    LOG(INFO) << "Checking layer " << i << " with depth "
             << layers_[i].get_depth();
     if (depth <= layers_[i].get_depth()) {
-      VLOG(1) << "Found match at " << i << " with depth "
+      LOG(INFO) << "Found match at " << i << " with depth "
               << layers_[i].get_depth() << " greater than " << depth;
       return std::make_pair(&layers_[i], i);
     }
@@ -276,11 +273,11 @@ Simulation::Simulation(const Settings settings, Volume &&volume,
   bombardments.reserve(settings.bombardment_count_);
 
   for (size_t i = 0; i < settings.bombardment_count_; i++) {
-    VLOG(1) << "Creating bombardment " << i;
+    LOG(INFO) << "Creating bombardment " << i;
     bombardments.push_back(Bombardment(*this, i));
   }
   bombardments_ = std::move(bombardments);
-  LOG(INFO) << "Bombardments Created";
+  LOG(INFO) << settings.bombardment_count_ << " Bombardments Created";
 
   // TODO:  Make tallies user-configurable.
   dataframe_.add_column<double>("Depth");
@@ -436,14 +433,14 @@ Bombardment::Bombardment(Simulation &simulation, size_t id) try
 
 void Bombardment::run_bombardment() try {
   if (simulation_.get_settings(&Simulation::Settings::is_electron_)) {
-    VLOG(1) << "Simulating electron bombardment...";
+    LOG(INFO) << "Simulating electron bombardment...";
     incident_particle_ = std::make_unique<Electron>(
         simulation_.get_settings(&Simulation::Settings::z_number_),
         simulation_.get_settings(&Simulation::Settings::mass_number_),
         simulation_, uniform_distribution_, random_number_generator_,
         get_data_leaf(), *(this));
   } else {
-    VLOG(1) << "Simulating ion bombardment";
+    LOG(INFO) << "Simulating ion bombardment";
     incident_particle_ = std::make_unique<Ion>(
         simulation_.get_settings(&Simulation::Settings::z_number_),
         simulation_.get_settings(&Simulation::Settings::mass_number_),
@@ -451,9 +448,14 @@ void Bombardment::run_bombardment() try {
         get_data_leaf(), *(this));
   }
 
+  LOG(INFO) << "Firing incident particle with velocity quaternion (" << incident_particle_->get_velocity().quaternion_.r_ << ", "
+            << incident_particle_->get_velocity().quaternion_.x_ << ", "
+            << incident_particle_->get_velocity().quaternion_.y_ << ", "
+            << incident_particle_->get_velocity().quaternion_.z_ << ")."
+            << " and energy " << incident_particle_->get_velocity().energy_;
   incident_particle_->fire();
   std::this_thread::yield(); // TODO: Remove
-  VLOG(1) << "...Bombardment complete.";
+  LOG(INFO) << "...Bombardment complete.";
 
   // Simple local tally collection: record final range and counts
   try {
@@ -1032,12 +1034,13 @@ void Electron::fire() try {
 
 // Ion function implementations // {{{
 void Ion::fire() try {
-  VLOG(1) << "Firing ion with initial energy " << velocity_.energy_;
+  LOG(INFO) << "Firing ion with initial energy " << velocity_.energy_;
   auto ion_stopping_energy = simulation_.get_settings(
       &Simulation::Settings::
           ion_stopping_energy_); // TODO: Make this a user-configurable
                                  // element property. Each element may have a
                                  // different value for this in each material.
+  LOG(INFO) << "Ion stopping energy: " << ion_stopping_energy;
 
   // HACK: Temp check for bombardment counting
   size_t incident =
@@ -1045,6 +1048,12 @@ void Ion::fire() try {
        simulation_.get_settings(&Simulation::Settings::incident_energy_))
           ? 0
           : 1;
+ 
+          if(incident == 1) {
+            LOG(INFO) << "Incident particle is a knock-on particle.";
+          } else {
+            LOG(INFO) << "Incident particle is the primary particle.";
+          }
 
   // #ifdef NDEBUG [>{{{<]
   // #else
@@ -1069,64 +1078,91 @@ void Ion::fire() try {
 
   auto &energy = velocity_.energy_; // A reference is required so that energy
                                     // can changed in-place through the alias.
+  LOG(INFO) << "Initial energy: " << energy;
   auto max_depth = simulation_.get_volume().get_depth();
+  LOG(INFO) << "Max depth: " << max_depth;
   auto knock_on_threshold = simulation_.get_settings(
       &Simulation::Settings::
           ion_displacement_energy_); // TODO: Replace this with
                                      // element-specific displacement energy
                                      // (extracted from user-provided layer
                                      // information)
+  LOG(INFO) << "Knock-on threshold: " << knock_on_threshold;
   auto enable_knock_on =
       simulation_.get_settings(&Simulation::Settings::enable_damage_cascade_);
+    LOG(INFO) << "Knock-on enabled: " << enable_knock_on;
 
   while (velocity_.energy_ > ion_stopping_energy) {
-
     const auto current_layer_pair =
         simulation_.get_volume().get_layer(coordinate_.z_);
+        LOG(INFO) << "Current layer: " << current_layer_pair.second;
     const Layer &current_layer = *(
         current_layer_pair.first); // TODO: Check for next layer during history
     // Select atom type from current layer
     const size_t atom_index =
-        current_layer.get_discrete_distribution()(random_number_generator_);
+        current_layer.get_random_index(random_number_generator_);
+    LOG(INFO) << "Selected atom index: " << atom_index;
     const auto layer_properties = current_layer.get_property(atom_index);
     auto z_1 = properties_.charge_;
+    LOG(INFO) << "Ion charge: " << z_1;
     auto z_2 = layer_properties.charge_;
+    LOG(INFO) << "Target atom charge: " << z_2;
     auto m_1 = properties_.mass_;
+    LOG(INFO) << "Ion mass: " << m_1;
     auto m_2 = layer_properties.mass_;
+    LOG(INFO) << "Target atom mass: " << m_2;
     auto number_density = current_layer.get_number_density();
+    LOG(INFO) << "Layer number density: " << number_density;
 
     // Calculate electronic stopping energy
     auto e_energy_loss = electronic_stopping_energy(
         z_1, m_1, energy, number_density, layer_properties);
+    LOG(INFO) << "Electronic stopping energy loss: " << e_energy_loss;
     energy -= e_energy_loss;
+    LOG(INFO) << "Energy after electronic stopping: " << energy;
     // Record energy loss (electronic)
     bombardment_.record_energy_loss((long double)e_energy_loss.value());
+    // TODO: Record electronic energy loss as a function of depth
 
     // Calculate nuclear scattering energy loss (energy, m_1, m_2, z_1, z_2,
     // number_density)
     auto speed = speed_from_energy(energy, m_1);
+    LOG(INFO) << "Speed from energy: " << speed;
     auto c_mass_energy = cm_energy(m_1, speed);
+    LOG(INFO) << "Center of mass energy: " << c_mass_energy;
     auto screen_length = screening_length(z_1, z_2);
+    LOG(INFO) << "Screening length: " << screen_length;
     auto rd_energy = reduced_energy(screen_length, c_mass_energy, z_1, z_2);
+    LOG(INFO) << "Reduced energy: " << rd_energy;
     auto path_length = free_flying_path_length(m_1, m_2, rd_energy,
                                                screen_length, number_density);
+    LOG(INFO) << "Free flying path length: " << path_length;
     auto i_param = impact_parameter(number_density, path_length, rd_energy);
+    LOG(INFO) << "Impact parameter: " << i_param;
     auto closest_appr = closest_approach(z_1, z_2, c_mass_energy, i_param);
+    LOG(INFO) << "Closest approach: " << closest_appr;
     auto rad_curv = radius_of_curvature(closest_appr, c_mass_energy, z_1, z_2);
+    LOG(INFO) << "Radius of curvature: " << rad_curv;
     auto magic_correction = magic_formula_correction_parameter(
         rd_energy, i_param, screen_length, closest_appr);
+    LOG(INFO) << "Magic formula correction parameter: " << magic_correction;
     auto cm_scatter_angle = magic_formula_scattering_angle(
         i_param, closest_appr, rad_curv, magic_correction, screen_length);
+    LOG(INFO) << "Center of mass scattering angle: " << cm_scatter_angle;
     auto nuclear_e_loss =
         nuclear_energy_loss(m_1, m_2, energy, cm_scatter_angle);
+    LOG(INFO) << "Nuclear energy loss: " << nuclear_e_loss;
 
-    energy -= nuclear_e_loss; // TODO: Check for knock-ons
+    energy -= nuclear_e_loss;
     // Record nuclear energy loss
     bombardment_.record_energy_loss((long double)nuclear_e_loss.value());
+    // TODO: Record nuclear energy loss as a function of depth
+
 
     auto laboratory_scatter_angle =
         laboratory_scattering_angle(cm_scatter_angle, m_1, m_2);
     if (nuclear_e_loss > knock_on_threshold && enable_knock_on) {
+      LOG(INFO) << "Knock-on particle created with energy " << nuclear_e_loss;
       data_leaf_.add_child(ParticleDataLeaf());
       // Record displacement due to knock-on (top-level recoil)
       bombardment_.record_displacement(coordinate_.z_.value());
@@ -1369,13 +1405,13 @@ boost::mt19937::result_type EntropySeeder::generate() {
         seed ^= value;
       }
 
-      VLOG(1) << "Hardware entropy-generated seed value is " << seed;
+      LOG(INFO) << "Hardware entropy-generated seed value is " << seed;
       return static_cast<boost::mt19937::result_type>(seed);
     } else {
-      VLOG(1) << "Hardware entropy generator not found";
+      LOG(INFO) << "Hardware entropy generator not found";
     }
   } catch (const std::exception &e) {
-    VLOG(1) << "Exception caught after attempting hardware entropy generation: "
+    LOG(WARNING) << "Exception caught after attempting hardware entropy generation: "
             << e.what();
     // Hardware RNG might not be available, fall through to backup method
   }
@@ -1386,9 +1422,9 @@ boost::mt19937::result_type EntropySeeder::generate() {
       std::chrono::high_resolution_clock::now().time_since_epoch().count();
   auto pid_seed = static_cast<boost::mt19937::result_type>(
       std::hash<std::thread::id>{}(std::this_thread::get_id()));
-  VLOG(1) << "Falling back on time " << time_seed << " and pid " << pid_seed;
+  LOG(WARNING) << "Falling back on time " << time_seed << " and pid " << pid_seed;
   auto seed = time_seed ^ pid_seed;
-  VLOG(1) << "Calculated fallback seed as " << seed;
+  LOG(INFO) << "Calculated fallback seed as " << seed;
 
   return static_cast<boost::mt19937::result_type>(seed);
 }
