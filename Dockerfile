@@ -155,6 +155,8 @@ RUN mkdir -p "${CONAN_HOME}" \
     && printf '\n[conf]\n' >> "${CONAN_PROFILE}" \
     && printf 'tools.cmake.cmaketoolchain:generator=Ninja\n' >> "${CONAN_PROFILE}" \
     && printf 'tools.system.package_manager:mode=check\n' >> "${CONAN_PROFILE}" \
+    && conan remote update conancenter --url https://center2.conan.io \
+    && conan remote list \
     && cat "${CONAN_PROFILE}"
 
 WORKDIR /workspace

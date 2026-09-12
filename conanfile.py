@@ -77,6 +77,7 @@ class amcsetRecipe(ConanFile):
         # Enable Qt 3D and Graphs for 2D/3D plotting.
         self.options["qt"].qt3d = True
         self.options["qt"].qtgraphs = True
+        self.options["qt"].qtshadertools = True
 
         # Enable Wayland support.
         #
@@ -84,6 +85,7 @@ class amcsetRecipe(ConanFile):
         # depend on whether DISPLAY/WAYLAND_DISPLAY happens to exist
         # when Conan is executed.
         self.options["qt"].qtwayland = True
+        self.options["qt"].with_egl = True
 
     def build(self):
         cmake = CMake(self)
