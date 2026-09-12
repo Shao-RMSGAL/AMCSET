@@ -99,7 +99,28 @@ void Widget3DView::processPendingLineRequests() {
 }
 
 Widget3DView::~Widget3DView() {
-  // Qt3D objects are automatically deleted by their parent
+  if (m_updateTimer) {
+    m_updateTimer->stop();
+    m_updateTimer->deleteLater();
+    m_updateTimer = nullptr;
+  }
+
+  clearScene();
+
+  if (m_rootEntity) {
+    m_rootEntity->deleteLater();
+    m_rootEntity = nullptr;
+  }
+
+  if (m_view) {
+    m_view->deleteLater();
+    m_view = nullptr;
+  }
+
+  if (m_container) {
+    m_container->deleteLater();
+    m_container = nullptr;
+  }
 }
 
 void Widget3DView::drawLine(const QVector3D &from, const QVector3D &to,

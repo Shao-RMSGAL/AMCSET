@@ -42,6 +42,7 @@ public:
   void clearScene();
   void requestClearScene();
   void setRange(double range);
+
 private slots:
   // Process pending line drawing requests
   void processPendingLineRequests();

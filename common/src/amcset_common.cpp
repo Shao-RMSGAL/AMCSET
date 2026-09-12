@@ -56,7 +56,7 @@ namespace common {
 Layer::Layer(material_vector &&material, length_quantity depth,
              mass_density_quantity mass_density) try
     : material_([&material, depth, mass_density]() {
-        LOG(INFO) << "Creating Layer material with vector of length "
+        VLOG(1) << "Creating Layer material with vector of length "
                 << material.size() << ", depth " << depth << ", and density "
                 << mass_density;
         auto relative_compositions =
@@ -64,7 +64,7 @@ Layer::Layer(material_vector &&material, length_quantity depth,
                            &std::pair<double, Particle::Properties>::first);
         double sum = std::accumulate(relative_compositions.begin(),
                                      relative_compositions.end(), 0.0);
-        LOG(INFO) << "Sum of compositions is " << sum;
+        VLOG(2) << "Sum of compositions is " << sum;
 
         for (auto &pair : material) {
           if (pair.first < 0) {
@@ -72,20 +72,20 @@ Layer::Layer(material_vector &&material, length_quantity depth,
                 "Relative composition: " + std::to_string(pair.first) +
                 " is less than zero."));
           }
-          LOG(INFO) << "Initial composition is " << pair.first;
+          VLOG(3) << "Initial composition is " << pair.first;
           pair.first /= sum;
-          LOG(INFO) << "Final composition is "
+          VLOG(3) << "Final composition is "
                   << pair.first;        }
 
         return std::move(material);
       }()),
       depth_(depth), mass_density_(mass_density), number_density_([&]() {
-        LOG(INFO) << "Calculating mass density using " << mass_density;
+        VLOG(2) << "Calculating mass density using " << mass_density;
         return mass_density /
                (std::accumulate(material_.begin(), material_.end(),
                                 mass_quantity(0),
                                 [](const mass_quantity &sum, const auto &mat) {
-                                  LOG(INFO)
+                                  VLOG(3)
                                       << "Number density calculation. Sum of "
                                       << sum << ", fraction " << mat.first
                                       << ", and mass of " << mat.second.mass_;
@@ -93,7 +93,7 @@ Layer::Layer(material_vector &&material, length_quantity depth,
                                 }) *
                 constants::N_A);
       }()) {
-  LOG(INFO) << "Created Layer with " << material_.size()
+  VLOG(1) << "Created Layer with " << material_.size()
           << " components, depth of " << depth << ", density of "
           << mass_density << ", and number density of " << number_density_;
 
@@ -107,7 +107,7 @@ Layer::Layer(material_vector &&material, length_quantity depth,
         "Cannot pass a vector of size 0 to Layer constructor"));
   }
 
-  LOG(INFO) << "Passing relative compositions to discrete distribution.";
+  VLOG(2) << "Passing relative compositions to discrete distribution.";
   auto composition_view = get_relative_compositions();
   discrete_distribution_ = boost::random::discrete_distribution<size_t, double>(
       composition_view.begin(), composition_view.end());
@@ -119,7 +119,7 @@ Layer::Layer(material_vector &&material, length_quantity depth,
 auto Layer::get_relative_compositions() const
     -> decltype(std::declval<const material_vector &>() |
                 std::views::keys) try {
-  LOG(INFO) << "Getting relative compositions for layer with " << material_.size()
+  VLOG(2) << "Getting relative compositions for layer with " << material_.size()
           << " components";
   // return material_ |
   //        std::views::transform(&std::pair<double,
@@ -167,7 +167,7 @@ length_quantity Volume::get_depth() const { return layers_.back().get_depth(); }
 
 const std::pair<const Layer *, size_t>
 Volume::get_layer(length_quantity depth) const try {
-  LOG(INFO) << "Getting layer at depth " << depth;
+  VLOG(2) << "Getting layer at depth " << depth;
   if (depth < length_quantity(0.0 * angstrom)) {
     throw std::invalid_argument(EXCEPTION_MESSAGE(
         "Depth: " + to_string(depth) + " cannot be less than zero."));
@@ -180,10 +180,10 @@ Volume::get_layer(length_quantity depth) const try {
 
   // Rely on the ordering of the layers (depths are strictly increasing)
   for (size_t i = 0; i < layers_.size(); i++) {
-    LOG(INFO) << "Checking layer " << i << " with depth "
+    VLOG(3) << "Checking layer " << i << " with depth "
             << layers_[i].get_depth();
     if (depth <= layers_[i].get_depth()) {
-      LOG(INFO) << "Found match at " << i << " with depth "
+      VLOG(2) << "Found match at " << i << " with depth "
               << layers_[i].get_depth() << " greater than " << depth;
       return std::make_pair(&layers_[i], i);
     }
@@ -207,7 +207,15 @@ Simulation::Settings::Settings(
     size_t divisor_angle_number, size_t flying_distance_number,
     length_quantity range, size_t bombardment_count, bool is_electron,
     energy_quantity incident_energy, size_t thread_count,
-    angle_quantity incident_angle) try
+    angle_quantity incident_angle, size_t displacement_bin_count,
+    size_t electronic_energy_loss_bin_count,
+    size_t nuclear_energy_loss_bin_count,
+    size_t total_energy_loss_bin_count,
+    std::string displacement_histogram_output_file,
+    std::string electronic_energy_loss_histogram_output_file,
+    std::string nuclear_energy_loss_histogram_output_file,
+    std::string total_energy_loss_histogram_output_file,
+    bool log_particle_tree, std::string particle_tree_output_file) try
     : electron_stopping_energy_(electron_stopping_energy), z_number_(z_number),
       mass_number_(mass_number),
       incident_particle_properties_(
@@ -220,7 +228,20 @@ Simulation::Settings::Settings(
       flying_distance_number_(flying_distance_number), range_(range),
       bombardment_count_(bombardment_count), is_electron_(is_electron),
       incident_energy_(incident_energy), thread_count_(thread_count),
-      incident_angle_(incident_angle) {
+      incident_angle_(incident_angle),
+      displacement_bin_count_(displacement_bin_count),
+      electronic_energy_loss_bin_count_(electronic_energy_loss_bin_count),
+      nuclear_energy_loss_bin_count_(nuclear_energy_loss_bin_count),
+      total_energy_loss_bin_count_(total_energy_loss_bin_count),
+      displacement_histogram_output_file_(std::move(displacement_histogram_output_file)),
+      electronic_energy_loss_histogram_output_file_(
+          std::move(electronic_energy_loss_histogram_output_file)),
+      nuclear_energy_loss_histogram_output_file_(
+          std::move(nuclear_energy_loss_histogram_output_file)),
+      total_energy_loss_histogram_output_file_(
+          std::move(total_energy_loss_histogram_output_file)),
+      log_particle_tree_(log_particle_tree),
+      particle_tree_output_file_(std::move(particle_tree_output_file)) {
   if (incident_energy <= energy_quantity(0.0 * kilo_electron_volt)) {
     throw std::invalid_argument(
         EXCEPTION_MESSAGE("Incident energy should be greater than 0. Value: " +
@@ -256,6 +277,11 @@ Simulation::Settings::Settings(
     throw std::invalid_argument(
         EXCEPTION_MESSAGE("Thread count must be greater than 0"));
   }
+  if (displacement_bin_count == 0 || electronic_energy_loss_bin_count == 0 ||
+      nuclear_energy_loss_bin_count == 0 || total_energy_loss_bin_count == 0) {
+    throw std::invalid_argument(
+        EXCEPTION_MESSAGE("Histogram bin counts must be greater than 0"));
+  }
 } catch (...) {
   rethrow();
 }
@@ -263,9 +289,11 @@ Simulation::Settings::Settings(
 Simulation::Simulation(const Settings settings, Volume &&volume,
                        DrawFunction draw_function) try
     : settings_(settings), volume_(std::move(volume)),
-      thread_pool_(settings.thread_count_), dataframe_(),
-      queue_(sizeof(DataVariant *) * settings.bombardment_count_),
-      draw_function_(draw_function) {
+      tallies_(100, settings.range_.value(), settings.displacement_bin_count_,
+               settings.electronic_energy_loss_bin_count_,
+               settings.nuclear_energy_loss_bin_count_,
+               settings.total_energy_loss_bin_count_),
+      thread_pool_(settings.thread_count_), draw_function_(draw_function) {
   LOG(INFO) << "Creating simulation with settings:\n"
             << Simulation::print_settings(); // TODO: Print volume
                                              // information as well.
@@ -273,40 +301,11 @@ Simulation::Simulation(const Settings settings, Volume &&volume,
   bombardments.reserve(settings.bombardment_count_);
 
   for (size_t i = 0; i < settings.bombardment_count_; i++) {
-    LOG(INFO) << "Creating bombardment " << i;
+    VLOG(1) << "Creating bombardment " << i;
     bombardments.push_back(Bombardment(*this, i));
   }
   bombardments_ = std::move(bombardments);
   LOG(INFO) << settings.bombardment_count_ << " Bombardments Created";
-
-  // TODO:  Make tallies user-configurable.
-  dataframe_.add_column<double>("Depth");
-  dataframe_.add_column<double>("Interstitial Count");
-  dataframe_.add_column<double>("Vacancy Count");
-  dataframe_.add_column<double>("Collision Count");
-
-  // TODO: Allow user-configurable bin numbers.
-  auto bin_count = 100;
-  auto write_lock = DataFrame<double, int>::WriteLock(dataframe_);
-
-  auto &range_vector = dataframe_.get_column<double>("Depth", write_lock);
-  range_vector.reserve(bin_count);
-  auto &interstitial_vector =
-      dataframe_.get_column<double>("Interstitial Count", write_lock);
-  interstitial_vector.reserve(bin_count);
-  auto &vacancy_vector =
-      dataframe_.get_column<double>("Vacancy Count", write_lock);
-  vacancy_vector.reserve(bin_count);
-  auto &collision_vector =
-      dataframe_.get_column<double>("Collision Count", write_lock);
-  collision_vector.reserve(bin_count);
-  auto interval = settings.range_.value() / ((double)bin_count);
-  for (int i = 0; i < bin_count; i++) { // Initialize tallies
-    range_vector.push_back(i * interval);
-    interstitial_vector.push_back(0.0);
-    vacancy_vector.push_back(0.0);
-    collision_vector.push_back(0.0);
-  }
 
   LOG(INFO) << "Tallies created";
 
@@ -318,10 +317,13 @@ int Simulation::run_simulation() try {
   LOG(INFO) << "Starting Simulation...";
   for (auto &bombardment : bombardments_) {
     // TODO: Enable multithreading
-    boost::asio::post(thread_pool_, [&bombardment]() {
-      LOG(INFO) << "Starting Bombardment...";
+    boost::asio::post(thread_pool_, [this, &bombardment]() {
+      VLOG(1) << "Starting Bombardment...";
       bombardment.run_bombardment();
-      LOG(INFO) << "...Bombardment Complete!";
+      increment_completed_bombardment_count();
+      VLOG(1) << "...Bombardment Complete! Completed: "
+              << get_completed_bombardment_count() << "/"
+              << settings_.bombardment_count_;
     });
   }
   thread_pool_.join();
@@ -329,22 +331,49 @@ int Simulation::run_simulation() try {
   // TODO: Come up with a more elegant solution to this.
   LOG(INFO) << "Saving simulation data...";
   try {
-    std::filesystem::create_directories("output");
+    const std::filesystem::path output_root = "output";
+    std::filesystem::create_directories(output_root);
+    std::filesystem::remove(output_root / "collisions.csv");
 
-    std::ofstream file_stream("output/collisions.csv");
-    file_stream << "Depth,Collisions\n";
+    auto write_histogram_with_log = [this](const std::string &label,
+                                          const std::string &path,
+                                          const Histogram &histogram,
+                                          const std::string &value_label) {
+      const std::filesystem::path output_path(path);
+      if (!output_path.parent_path().empty()) {
+        std::filesystem::create_directories(output_path.parent_path());
+      }
+      LOG(INFO) << "Writing " << label << " histogram to: "
+                << output_path.string();
+      write_histogram_csv(path, histogram, value_label);
+    };
 
-    auto read_lock = DataFrame<double, int>::ReadLock(dataframe_);
-    auto depth_vector = dataframe_.get_column<double>("Depth", read_lock);
-    auto collision_vector =
-        dataframe_.get_column<double>("Collision Count", read_lock);
+    write_histogram_with_log("displacement",
+                             settings_.displacement_histogram_output_file_,
+                             get_tallies().displacement_histogram, "count");
+    write_histogram_with_log("electronic loss",
+                             settings_.electronic_energy_loss_histogram_output_file_,
+                             get_tallies().electronic_energy_loss_histogram,
+                             "energy_loss_eV");
+    write_histogram_with_log("nuclear loss",
+                             settings_.nuclear_energy_loss_histogram_output_file_,
+                             get_tallies().nuclear_energy_loss_histogram,
+                             "energy_loss_eV");
+    write_histogram_with_log("total loss",
+                             settings_.total_energy_loss_histogram_output_file_,
+                             get_tallies().total_energy_loss_histogram,
+                             "energy_loss_eV");
 
-    for (size_t i = 0; i < depth_vector.size(); i++) {
-      file_stream << depth_vector[i] << "," << collision_vector[i] << "\n";
+    if (settings_.log_particle_tree_) {
+      write_particle_tree_log();
     }
 
-    // Also save tallies summary as JSON
-    std::ofstream tally_stream("output/tallies.json");
+    const std::filesystem::path tallies_path = output_root / "tallies.json";
+    LOG(INFO) << "Writing tallies summary to: " << tallies_path.string();
+    std::ofstream tally_stream(tallies_path);
+    if (!tally_stream.is_open()) {
+      throw std::runtime_error("Failed to open tallies output: " + tallies_path.string());
+    }
     tally_stream << get_tallies().to_json();
   } catch (const std::exception &e) {
     VLOG(1) << "Failed to write simulation output: " << e.what();
@@ -385,6 +414,16 @@ std::string Simulation::print_settings() const try {
   ss << "Is electron? " << (settings_.is_electron_ ? "Yes" : "No") << std::endl;
   ss << "Incident energy: " << settings_.incident_energy_ << std::endl;
   ss << "Thread count: " << settings_.thread_count_ << std::endl;
+  ss << "Displacement histogram bins: "
+     << settings_.displacement_bin_count_ << std::endl;
+  ss << "Electronic loss histogram bins: "
+     << settings_.electronic_energy_loss_bin_count_ << std::endl;
+  ss << "Nuclear loss histogram bins: "
+     << settings_.nuclear_energy_loss_bin_count_ << std::endl;
+  ss << "Total loss histogram bins: "
+     << settings_.total_energy_loss_bin_count_ << std::endl;
+  ss << "Log particle tree? "
+     << (settings_.log_particle_tree_ ? "Yes" : "No") << std::endl;
   return ss.str();
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
@@ -397,6 +436,61 @@ void Simulation::merge_tallies(const Tallies &tallies) {
 
 const Tallies &Simulation::get_tallies() const noexcept { return tallies_; }
 
+void Simulation::write_histogram_csv(const std::string &output_file,
+                                    const Histogram &histogram,
+                                    const std::string &value_label) const {
+  if (output_file.empty()) {
+    throw std::invalid_argument("Histogram output file path cannot be empty.");
+  }
+
+  const std::filesystem::path output_path(output_file);
+  if (!output_path.parent_path().empty()) {
+    std::filesystem::create_directories(output_path.parent_path());
+  }
+
+  std::ofstream output(output_path);
+  if (!output.is_open()) {
+    throw std::runtime_error("Failed to open histogram output: " + output_file);
+  }
+
+  const auto left_to_angstrom = [](double meters) {
+    return (length_quantity(meters * si::meter) / angstrom).value();
+  };
+
+  const auto value_name = value_label.empty() ? std::string("count") : value_label;
+  output << "depth_min_angstrom,depth_max_angstrom," << value_name << "\n";
+  const auto width = histogram.max - histogram.min;
+  if (histogram.bins.empty()) {
+    output << "0,0,0\n";
+    return;
+  }
+  for (size_t i = 0; i < histogram.bins.size(); ++i) {
+    const auto left = histogram.min + width * double(i) / double(histogram.bins.size());
+    const auto right = histogram.min + width * double(i + 1) / double(histogram.bins.size());
+    const auto value = value_name == "energy_loss_eV" ? histogram.bins[i] : histogram.bins[i];
+    output << left_to_angstrom(left) << "," << left_to_angstrom(right) << "," << value << "\n";
+  }
+  output.flush();
+  LOG(INFO) << "Histogram written to " << output_path.string() << " with "
+            << histogram.bins.size() << " bins";
+}
+
+void Simulation::write_particle_tree_log() const {
+  if (!settings_.log_particle_tree_) return;
+  std::filesystem::create_directories(
+      std::filesystem::path(settings_.particle_tree_output_file_).parent_path());
+  std::ofstream output(settings_.particle_tree_output_file_);
+  output << "{\n  \"bombardments\": [\n";
+  for (size_t i = 0; i < bombardments_.size(); ++i) {
+    if (i != 0) output << ",\n";
+    output << "    {\n";
+    output << "      \"bombardment_id\": " << i << ",\n";
+    output << "      \"tree\": " << bombardments_[i].get_data_leaf().to_json(8)
+           << "\n    }";
+  }
+  output << "\n  ]\n}\n";
+}
+
 // Bombardment tally helpers
 void Bombardment::record_incident(double range_meters) {
   local_tallies_.incidents += 1;
@@ -407,12 +501,22 @@ void Bombardment::record_incident(double range_meters) {
 void Bombardment::record_displacement(double depth_meters) {
   local_tallies_.total_displacements += 1;
   local_tallies_.depth_histogram.add(depth_meters);
+  local_tallies_.displacement_histogram.add(depth_meters);
 }
 
 void Bombardment::record_sputtered() { local_tallies_.sputtered += 1; }
 
-void Bombardment::record_energy_loss(long double energy_joules) {
+void Bombardment::record_energy_loss(long double energy_joules, double depth_meters,
+                                     EnergyLossType type) {
   local_tallies_.energy_loss_stats.add(energy_joules);
+  const auto energy_eV = (energy_quantity(static_cast<double>(energy_joules) * si::joule) / electron_volt).value();
+  if (type == EnergyLossType::electronic) {
+    local_tallies_.electronic_energy_loss_histogram.add_value(depth_meters, energy_eV);
+  } else if (type == EnergyLossType::nuclear) {
+    local_tallies_.nuclear_energy_loss_histogram.add_value(depth_meters, energy_eV);
+  } else {
+    local_tallies_.total_energy_loss_histogram.add_value(depth_meters, energy_eV);
+  }
 }
 
 // Bombardment function implementations{{{
@@ -433,14 +537,14 @@ Bombardment::Bombardment(Simulation &simulation, size_t id) try
 
 void Bombardment::run_bombardment() try {
   if (simulation_.get_settings(&Simulation::Settings::is_electron_)) {
-    LOG(INFO) << "Simulating electron bombardment...";
+    VLOG(1) << "Simulating electron bombardment...";
     incident_particle_ = std::make_unique<Electron>(
         simulation_.get_settings(&Simulation::Settings::z_number_),
         simulation_.get_settings(&Simulation::Settings::mass_number_),
         simulation_, uniform_distribution_, random_number_generator_,
         get_data_leaf(), *(this));
   } else {
-    LOG(INFO) << "Simulating ion bombardment";
+    VLOG(1) << "Simulating ion bombardment";
     incident_particle_ = std::make_unique<Ion>(
         simulation_.get_settings(&Simulation::Settings::z_number_),
         simulation_.get_settings(&Simulation::Settings::mass_number_),
@@ -448,14 +552,14 @@ void Bombardment::run_bombardment() try {
         get_data_leaf(), *(this));
   }
 
-  LOG(INFO) << "Firing incident particle with velocity quaternion (" << incident_particle_->get_velocity().quaternion_.r_ << ", "
+  VLOG(1) << "Firing incident particle with velocity quaternion (" << incident_particle_->get_velocity().quaternion_.r_ << ", "
             << incident_particle_->get_velocity().quaternion_.x_ << ", "
             << incident_particle_->get_velocity().quaternion_.y_ << ", "
             << incident_particle_->get_velocity().quaternion_.z_ << ")."
             << " and energy " << incident_particle_->get_velocity().energy_;
   incident_particle_->fire();
   std::this_thread::yield(); // TODO: Remove
-  LOG(INFO) << "...Bombardment complete.";
+  VLOG(1) << "...Bombardment complete.";
 
   // Simple local tally collection: record final range and counts
   try {
@@ -481,30 +585,6 @@ void Bombardment::run_bombardment() try {
   // hence why it is called a "leaf".
   // TODO:Remove this comment
 
-  // Collect collision tallies
-  // TODO: Replace this with a recursive algorithm that processes the whole tree
-  auto &dataframe = simulation_.get_dataframe();
-  auto write_lock = DataFrame<double, int>::WriteLock(dataframe);
-  // auto &collision_vector =
-  //     dataframe.get_column<double>("Collision Count", write_lock);
-  // Start with the incident particle's data.
-  // auto range = simulation_.get_settings(&Simulation::Settings::range_); //
-  // TODO: Uncomment and use range
-
-  // auto bin_count = 100; // TODO: Consolidate this value
-  // auto interval = range / (double)bin_count;
-  // for (auto coordinate : incident_particle_->get_coordinates()) { // TODO:
-  // Fix occasional segfaults
-  //   auto depth_index = (int)(coordinate.z_ / interval);
-  //   if (depth_index < bin_count) {
-  //     collision_vector[depth_index] += 1;
-  //   }
-  // }
-
-  // for (auto particle_data : // TODO: Complete data parsing for children,
-  // currently this causes segfaults?
-  //      incident_particle_->get_data_leaf().get_children()) {
-  // }
 
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
@@ -1034,13 +1114,13 @@ void Electron::fire() try {
 
 // Ion function implementations // {{{
 void Ion::fire() try {
-  LOG(INFO) << "Firing ion with initial energy " << velocity_.energy_;
+  VLOG(1) << "Firing ion with initial energy " << velocity_.energy_;
   auto ion_stopping_energy = simulation_.get_settings(
       &Simulation::Settings::
           ion_stopping_energy_); // TODO: Make this a user-configurable
                                  // element property. Each element may have a
                                  // different value for this in each material.
-  LOG(INFO) << "Ion stopping energy: " << ion_stopping_energy;
+  VLOG(2) << "Ion stopping energy: " << ion_stopping_energy;
 
   // HACK: Temp check for bombardment counting
   size_t incident =
@@ -1050,9 +1130,9 @@ void Ion::fire() try {
           : 1;
  
           if(incident == 1) {
-            LOG(INFO) << "Incident particle is a knock-on particle.";
+            VLOG(2) << "Incident particle is a knock-on particle.";
           } else {
-            LOG(INFO) << "Incident particle is the primary particle.";
+            VLOG(2) << "Incident particle is the primary particle.";
           }
 
   // #ifdef NDEBUG [>{{{<]
@@ -1078,91 +1158,96 @@ void Ion::fire() try {
 
   auto &energy = velocity_.energy_; // A reference is required so that energy
                                     // can changed in-place through the alias.
-  LOG(INFO) << "Initial energy: " << energy;
+  VLOG(1) << "Initial energy: " << energy;
   auto max_depth = simulation_.get_volume().get_depth();
-  LOG(INFO) << "Max depth: " << max_depth;
+  VLOG(2) << "Max depth: " << max_depth;
   auto knock_on_threshold = simulation_.get_settings(
       &Simulation::Settings::
           ion_displacement_energy_); // TODO: Replace this with
                                      // element-specific displacement energy
                                      // (extracted from user-provided layer
                                      // information)
-  LOG(INFO) << "Knock-on threshold: " << knock_on_threshold;
+  VLOG(2) << "Knock-on threshold: " << knock_on_threshold;
   auto enable_knock_on =
       simulation_.get_settings(&Simulation::Settings::enable_damage_cascade_);
-    LOG(INFO) << "Knock-on enabled: " << enable_knock_on;
+    VLOG(2) << "Knock-on enabled: " << enable_knock_on;
 
   while (velocity_.energy_ > ion_stopping_energy) {
     const auto current_layer_pair =
         simulation_.get_volume().get_layer(coordinate_.z_);
-        LOG(INFO) << "Current layer: " << current_layer_pair.second;
+        VLOG(3) << "Current layer: " << current_layer_pair.second;
     const Layer &current_layer = *(
         current_layer_pair.first); // TODO: Check for next layer during history
     // Select atom type from current layer
     const size_t atom_index =
         current_layer.get_random_index(random_number_generator_);
-    LOG(INFO) << "Selected atom index: " << atom_index;
+    VLOG(3) << "Selected atom index: " << atom_index;
     const auto layer_properties = current_layer.get_property(atom_index);
     auto z_1 = properties_.charge_;
-    LOG(INFO) << "Ion charge: " << z_1;
+    VLOG(3) << "Ion charge: " << z_1;
     auto z_2 = layer_properties.charge_;
-    LOG(INFO) << "Target atom charge: " << z_2;
+    VLOG(3) << "Target atom charge: " << z_2;
     auto m_1 = properties_.mass_;
-    LOG(INFO) << "Ion mass: " << m_1;
+    VLOG(3) << "Ion mass: " << m_1;
     auto m_2 = layer_properties.mass_;
-    LOG(INFO) << "Target atom mass: " << m_2;
+    VLOG(3) << "Target atom mass: " << m_2;
     auto number_density = current_layer.get_number_density();
-    LOG(INFO) << "Layer number density: " << number_density;
+    VLOG(3) << "Layer number density: " << number_density;
 
     // Calculate electronic stopping energy
     auto e_energy_loss = electronic_stopping_energy(
         z_1, m_1, energy, number_density, layer_properties);
-    LOG(INFO) << "Electronic stopping energy loss: " << e_energy_loss;
+    VLOG(2) << "Electronic stopping energy loss: " << e_energy_loss;
     energy -= e_energy_loss;
-    LOG(INFO) << "Energy after electronic stopping: " << energy;
-    // Record energy loss (electronic)
-    bombardment_.record_energy_loss((long double)e_energy_loss.value());
-    // TODO: Record electronic energy loss as a function of depth
+    VLOG(2) << "Energy after electronic stopping: " << energy;
+    // Record energy loss (electronic) at the actual particle depth.
+    bombardment_.record_energy_loss((long double)e_energy_loss.value(),
+                                    coordinate_.z_.value(),
+                                    Bombardment::EnergyLossType::electronic);
 
     // Calculate nuclear scattering energy loss (energy, m_1, m_2, z_1, z_2,
     // number_density)
     auto speed = speed_from_energy(energy, m_1);
-    LOG(INFO) << "Speed from energy: " << speed;
+    VLOG(3) << "Speed from energy: " << speed;
     auto c_mass_energy = cm_energy(m_1, speed);
-    LOG(INFO) << "Center of mass energy: " << c_mass_energy;
+    VLOG(3) << "Center of mass energy: " << c_mass_energy;
     auto screen_length = screening_length(z_1, z_2);
-    LOG(INFO) << "Screening length: " << screen_length;
+    VLOG(3) << "Screening length: " << screen_length;
     auto rd_energy = reduced_energy(screen_length, c_mass_energy, z_1, z_2);
-    LOG(INFO) << "Reduced energy: " << rd_energy;
+    VLOG(3) << "Reduced energy: " << rd_energy;
     auto path_length = free_flying_path_length(m_1, m_2, rd_energy,
                                                screen_length, number_density);
-    LOG(INFO) << "Free flying path length: " << path_length;
+    VLOG(3) << "Free flying path length: " << path_length;
     auto i_param = impact_parameter(number_density, path_length, rd_energy);
-    LOG(INFO) << "Impact parameter: " << i_param;
+    VLOG(3) << "Impact parameter: " << i_param;
     auto closest_appr = closest_approach(z_1, z_2, c_mass_energy, i_param);
-    LOG(INFO) << "Closest approach: " << closest_appr;
+    VLOG(3) << "Closest approach: " << closest_appr;
     auto rad_curv = radius_of_curvature(closest_appr, c_mass_energy, z_1, z_2);
-    LOG(INFO) << "Radius of curvature: " << rad_curv;
+    VLOG(3) << "Radius of curvature: " << rad_curv;
     auto magic_correction = magic_formula_correction_parameter(
         rd_energy, i_param, screen_length, closest_appr);
-    LOG(INFO) << "Magic formula correction parameter: " << magic_correction;
+    VLOG(3) << "Magic formula correction parameter: " << magic_correction;
     auto cm_scatter_angle = magic_formula_scattering_angle(
         i_param, closest_appr, rad_curv, magic_correction, screen_length);
-    LOG(INFO) << "Center of mass scattering angle: " << cm_scatter_angle;
+    VLOG(3) << "Center of mass scattering angle: " << cm_scatter_angle;
     auto nuclear_e_loss =
         nuclear_energy_loss(m_1, m_2, energy, cm_scatter_angle);
-    LOG(INFO) << "Nuclear energy loss: " << nuclear_e_loss;
+    VLOG(2) << "Nuclear energy loss: " << nuclear_e_loss;
 
     energy -= nuclear_e_loss;
-    // Record nuclear energy loss
-    bombardment_.record_energy_loss((long double)nuclear_e_loss.value());
-    // TODO: Record nuclear energy loss as a function of depth
+    // Record nuclear and total energy loss at the actual particle depth.
+    bombardment_.record_energy_loss((long double)nuclear_e_loss.value(),
+                                    coordinate_.z_.value(),
+                                    Bombardment::EnergyLossType::nuclear);
+    bombardment_.record_energy_loss((long double)(e_energy_loss + nuclear_e_loss).value(),
+                                    coordinate_.z_.value(),
+                                    Bombardment::EnergyLossType::total);
 
 
     auto laboratory_scatter_angle =
         laboratory_scattering_angle(cm_scatter_angle, m_1, m_2);
     if (nuclear_e_loss > knock_on_threshold && enable_knock_on) {
-      LOG(INFO) << "Knock-on particle created with energy " << nuclear_e_loss;
+      VLOG(2) << "Knock-on particle created with energy " << nuclear_e_loss;
       data_leaf_.add_child(ParticleDataLeaf());
       // Record displacement due to knock-on (top-level recoil)
       bombardment_.record_displacement(coordinate_.z_.value());
@@ -1405,10 +1490,10 @@ boost::mt19937::result_type EntropySeeder::generate() {
         seed ^= value;
       }
 
-      LOG(INFO) << "Hardware entropy-generated seed value is " << seed;
+      VLOG(1) << "Hardware entropy-generated seed value is " << seed;
       return static_cast<boost::mt19937::result_type>(seed);
     } else {
-      LOG(INFO) << "Hardware entropy generator not found";
+      VLOG(2) << "Hardware entropy generator not found";
     }
   } catch (const std::exception &e) {
     LOG(WARNING) << "Exception caught after attempting hardware entropy generation: "
@@ -1424,7 +1509,7 @@ boost::mt19937::result_type EntropySeeder::generate() {
       std::hash<std::thread::id>{}(std::this_thread::get_id()));
   LOG(WARNING) << "Falling back on time " << time_seed << " and pid " << pid_seed;
   auto seed = time_seed ^ pid_seed;
-  LOG(INFO) << "Calculated fallback seed as " << seed;
+  VLOG(1) << "Calculated fallback seed as " << seed;
 
   return static_cast<boost::mt19937::result_type>(seed);
 }

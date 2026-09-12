@@ -1,39 +1,32 @@
 #include "counter.h"
 
-// FIX: Does not work. Abandon for queue approach
 Counter::Counter(QObject *parent)
     : QObject(parent), m_value(0), m_changed(false) {}
 
 int Counter::getValue() const {
-  QMutexLocker locker(&q_mutex);
-  m_mutex.lock();
-  m_changed = false;
-  m_mutex.unlock();
-  return m_value;
+  return m_value.load(std::memory_order_acquire);
+}
+
+void Counter::setValue(int value) {
+  const auto previous = m_value.exchange(value, std::memory_order_acq_rel);
+  if (previous != value) {
+    m_changed.store(true, std::memory_order_release);
+    emit valueChanged(value);
+  }
 }
 
 void Counter::increment() {
-  QMutexLocker locker(&q_mutex);
-  m_mutex.lock();
-  m_value++;
-  m_changed = true;
-  m_mutex.unlock();
-  emit valueChanged(m_value);
+  const auto next = m_value.fetch_add(1, std::memory_order_acq_rel) + 1;
+  m_changed.store(true, std::memory_order_release);
+  emit valueChanged(next);
 }
 
 void Counter::reset() {
-  QMutexLocker locker(&q_mutex);
-  m_mutex.lock();
-  m_value = 0;
-  m_changed = false;
-  m_mutex.unlock();
-  emit valueChanged(m_value);
+  m_value.store(0, std::memory_order_release);
+  m_changed.store(false, std::memory_order_release);
+  emit valueChanged(0);
 }
 
 bool Counter::hasChanged() {
-  QMutexLocker locker(&q_mutex);
-  m_mutex.lock();
-  auto result = m_changed;
-  m_mutex.unlock();
-  return result;
+  return m_changed.exchange(false, std::memory_order_acq_rel);
 }

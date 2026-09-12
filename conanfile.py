@@ -49,7 +49,7 @@ class amcsetRecipe(ConanFile):
         self.requires("gtest/[=1.15.0]")
         self.requires("gflags/[=2.2.2]")
         self.requires("glog/[=0.7.1]")
-        self.requires("qt/[=6.7.3]")
+        self.requires("qt/[=6.11.1]")
 
     def build_requirements(self):
         self.tool_requires("cmake/[=3.29]")
@@ -74,8 +74,9 @@ class amcsetRecipe(ConanFile):
         # Enable Vulkan support.
         self.options["qt"].with_vulkan = True
 
-        # Enable Qt 3D.
+        # Enable Qt 3D and Graphs for 2D/3D plotting.
         self.options["qt"].qt3d = True
+        self.options["qt"].qtgraphs = True
 
         # Enable Wayland support.
         #

@@ -72,6 +72,9 @@ int main(int argc, char *argv[]) {
   }
 
   try { // {{{
+    setlocale(LC_ALL, "C.UTF-8");
+    qputenv("LC_ALL", "C.UTF-8");
+    qputenv("LANG", "C.UTF-8");
 
     // Initialize logger
     google::InitGoogleLogging(argv[0]);
@@ -98,10 +101,7 @@ int main(int argc, char *argv[]) {
       VLOG(1) << "Initializing window";
       amcset::gui::MainWindow mainWindow(&application);
       VLOG(1) << "Executing application";
-      auto exit_code = app.exec();
-      // LOG(INFO) << "...Quitting AMCSET GUI. Exit code: " << exit_code;
-      return exit_code;
-      return 0;
+      return app.exec();
     } else {
       LOG(INFO) << "Starting AMCSET in CLI mode...";
       LOG(ERROR) << "CLI implemementation not complete";

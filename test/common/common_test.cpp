@@ -27,6 +27,7 @@
 #include <boost/units/systems/si/codata/physico-chemical_constants.hpp>
 #include <cstdio>
 #include <ctime>
+#include <filesystem>
 #include <iomanip>
 #include <glog/logging.h>
 
@@ -128,6 +129,41 @@ protected:
 TEST_F(CommonTest, common_assertions) try {
   EXPECT_STRNE("hello", "world");
   EXPECT_EQ(7 * 6, 42);
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
+TEST_F(CommonTest, simulation_tracks_completed_bombardments) try {
+  auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
+  size_t z_number = 14;
+  size_t mass_number = 28;
+  bool enable_damage_cascade = true;
+  auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
+  auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
+  bool log_single_displacement = true;
+  size_t divisor_angle_number = 1000;
+  size_t flying_distance_number = 1000;
+  auto range = length_quantity(80000000.0 * angstrom);
+  size_t bombardment_count = 3;
+  bool is_electron = false;
+  auto incident_energy = energy_quantity(50.0 * kilo_electron_volt);
+  size_t thread_count = 2;
+  angle_quantity incident_angle = 0;
+
+  auto volume = Volume({create_water_layer(length_quantity(2.0 * angstrom)),
+                        create_iron_layer(length_quantity(500.0 * angstrom)),
+                        create_water_layer(length_quantity(1000.0 * angstrom))});
+  Simulation::Settings settings(
+      electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
+      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      divisor_angle_number, flying_distance_number, range, bombardment_count,
+      is_electron, incident_energy, thread_count, incident_angle);
+
+  Simulation simulation(settings, std::move(volume));
+  EXPECT_EQ(simulation.get_completed_bombardment_count(), size_t{0});
+  EXPECT_EQ(simulation.run_simulation(), 0);
+  EXPECT_EQ(simulation.get_completed_bombardment_count(), bombardment_count);
 } catch (const std::exception &e) {
   print_exception(e);
   FAIL();
@@ -344,7 +380,13 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
       ion_stopping_energy, ion_displacement_energy, log_single_displacement,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
-      is_electron, incident_energy, thread_count);
+      is_electron, incident_energy, thread_count,
+      0.0 * amcset::common::radian, 64, 128, 256, 512,
+      "output/displacement_histogram.csv",
+      "output/electronic_loss_histogram.csv",
+      "output/nuclear_loss_histogram.csv",
+      "output/total_loss_histogram.csv", false,
+      "output/particle_tree.json");
 
   ASSERT_EQ(settings.electron_stopping_energy_, electron_stopping_energy);
   ASSERT_EQ(settings.incident_particle_properties_.mass_,
@@ -361,6 +403,15 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
   ASSERT_EQ(settings.is_electron_, is_electron);
   ASSERT_EQ(settings.incident_energy_, incident_energy);
   ASSERT_EQ(settings.thread_count_, thread_count);
+  ASSERT_EQ(settings.displacement_bin_count_, 64u);
+  ASSERT_EQ(settings.electronic_energy_loss_bin_count_, 128u);
+  ASSERT_EQ(settings.nuclear_energy_loss_bin_count_, 256u);
+  ASSERT_EQ(settings.total_energy_loss_bin_count_, 512u);
+  ASSERT_EQ(settings.displacement_histogram_output_file_,
+            std::string("output/displacement_histogram.csv"));
+  ASSERT_FALSE(settings.log_particle_tree_);
+  ASSERT_EQ(settings.particle_tree_output_file_,
+            std::string("output/particle_tree.json"));
 
   Simulation simulation(settings, std::move(volume));
 
@@ -399,6 +450,53 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
             thread_count);
 
   EXPECT_NO_THROW(simulation.run_simulation());
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
+TEST_F(CommonTest, simulation_writes_all_output_files) try {
+  std::filesystem::remove_all("output/test_regression");
+  std::filesystem::remove("output/collisions.csv");
+
+  auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
+  size_t z_number = 14;
+  size_t mass_number = 28;
+  bool enable_damage_cascade = false;
+  auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
+  auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
+  bool log_single_displacement = true;
+  size_t divisor_angle_number = 1000;
+  size_t flying_distance_number = 1000;
+  auto range = length_quantity(5000000.0 * angstrom);
+  size_t bombardment_count = 1;
+  bool is_electron = false;
+  auto incident_energy = energy_quantity(10.0 * kilo_electron_volt);
+  size_t thread_count = 1;
+  angle_quantity incident_angle = 0.0 * amcset::common::radian;
+
+  auto volume = Volume({create_water_layer(length_quantity(2.0 * angstrom)),
+                        create_iron_layer(length_quantity(100.0 * angstrom))});
+
+  Simulation::Settings settings(
+      electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
+      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      divisor_angle_number, flying_distance_number, range, bombardment_count,
+      is_electron, incident_energy, thread_count, incident_angle, 64, 64, 64,
+      64, "output/test_regression/displacement_histogram.csv",
+      "output/test_regression/electronic_loss_histogram.csv",
+      "output/test_regression/nuclear_loss_histogram.csv",
+      "output/test_regression/total_loss_histogram.csv", false,
+      "output/test_regression/particle_tree.json");
+
+  Simulation simulation(settings, std::move(volume));
+  EXPECT_NO_THROW(simulation.run_simulation());
+
+  EXPECT_TRUE(std::filesystem::exists("output/test_regression/displacement_histogram.csv"));
+  EXPECT_TRUE(std::filesystem::exists("output/test_regression/electronic_loss_histogram.csv"));
+  EXPECT_TRUE(std::filesystem::exists("output/test_regression/nuclear_loss_histogram.csv"));
+  EXPECT_TRUE(std::filesystem::exists("output/test_regression/total_loss_histogram.csv"));
+  EXPECT_FALSE(std::filesystem::exists("output/collisions.csv"));
 } catch (const std::exception &e) {
   print_exception(e);
   FAIL();

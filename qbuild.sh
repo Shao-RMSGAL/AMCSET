@@ -52,8 +52,9 @@ cmake_cmd="cmake"
 build_dir="$project_dir/build/$mode"
 
 conan_flags=(--build=missing --settings=build_type="$mode")
-cmake_flags=(--preset "conan-$mode_lower" -DENABLE_ASAN=ON)
-run_flags=(-v=0 --gui=true)
+# cmake_flags=(--preset "conan-$mode_lower" -DENABLE_ASAN=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
+cmake_flags=(--preset "conan-$mode_lower")
+run_flags=(--minloglevel=3   --gui=true)
 
 test_dir="$project_dir/build/$mode/test"
 export TESTDIR="$build_dir/log"
@@ -66,10 +67,25 @@ check_status() {
 }
 
 build() {
-    "$cmake_cmd" --preset "$mode_lower" -DENABLE_ASAN=ON
+    # Enable AddressSanitizer only for debug builds; keep Release fast
+    asan_flag="OFF"
+    if [ "$mode_lower" == "debug" ]; then
+        asan_flag="ON"
+    fi
+    "$cmake_cmd" --preset "$mode_lower" -DENABLE_ASAN="$asan_flag" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE="$mode"
     check_status
     "$cmake_cmd" --build --preset "$mode_lower"
     check_status
+    copy_compile_commands
+}
+
+copy_compile_commands() {
+    if [ -f "$build_dir/compile_commands.json" ]; then
+        cp "$build_dir/compile_commands.json" "$project_dir/compile_commands.json"
+        check_status
+    else
+        echo "Warning: compile_commands.json not found in $build_dir"
+    fi
 }
 
 test() {

@@ -19,18 +19,25 @@
 // Qt includes
 #include <QCheckBox>
 #include <QContextMenuEvent>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDoubleSpinBox>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMainWindow>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStandardItemModel>
+#include <QTabWidget>
 #include <QTableView>
+#include <QTextBrowser>
 #include <QUndoStack>
 #include <QVBoxLayout>
+#include <QtGraphs/QLineSeries>
 #include <boost/lockfree/spsc_queue.hpp>
 #include <qnamespace.h>
 #include <qpainter.h>
@@ -53,6 +60,7 @@ class MainWindow : public QMainWindow {
 
 public:
   explicit MainWindow(Application *app);
+  ~MainWindow() override;
 
 protected:
 #ifndef QT_NO_CONTEXTMENU
@@ -88,6 +96,15 @@ private slots:
 private:
   void createActions();
   void createMenus();
+  void createSettingsDialog();
+  void openSettingsDialog();
+  void browseOutputDirectory(QLineEdit *lineEdit, const QString &title);
+  void browseOutputFile(QLineEdit *lineEdit, const QString &title,
+                       const QString &defaultSuffix = QString());
+  void populateResultCharts();
+  QString buildOutputPath(const QString &filename) const;
+  void updateResultPane(const QString &message);
+  void refreshResultsPane();
   QGroupBox *createIncidentParticleForms(QWidget *parent = nullptr);
   QGroupBox *createLayerForms(QWidget *parent = nullptr);
   double calculateLayerDensity();
@@ -101,7 +118,9 @@ private:
   QMenu *editMenu;
   QMenu *formatMenu;
   QMenu *helpMenu;
+  QMenu *settingsMenu;
   QActionGroup *alignmentGroup;
+  QAction *settingsAction;
   QAction *newAct;
   QAction *openAct;
   QAction *saveAct;
@@ -122,42 +141,58 @@ private:
   QAction *setParagraphSpacingAct;
   QAction *aboutAct;
   QAction *aboutQtAct;
-  QLabel *infoLabel;
+  QLabel *infoLabel = nullptr;
 
   // Incident particle forms
-  QCheckBox *incidentElectron;
-  QCheckBox *damageCascade;
-  QDoubleSpinBox *incidentEnergy;
-  QSpinBox *incidentMass;
-  QSpinBox *incidentCharge;
-  QDoubleSpinBox *incidentAngle;
-  QFormLayout *incidentFormLayout;
+  QCheckBox *incidentElectron = nullptr;
+  QCheckBox *damageCascade = nullptr;
+  QDoubleSpinBox *incidentEnergy = nullptr;
+  QSpinBox *incidentMass = nullptr;
+  QSpinBox *incidentCharge = nullptr;
+  QDoubleSpinBox *incidentAngle = nullptr;
+  QFormLayout *incidentFormLayout = nullptr;
   size_t incidentChargeFormIndex;
   size_t incidentMassFormIndex;
-  QSpinBox *bombardmentCountSpinBox;
-  QSpinBox *threadCountSpinBox;
-  QDoubleSpinBox *rangeSpinBox;
+  QSpinBox *bombardmentCountSpinBox = nullptr;
+  QSpinBox *threadCountSpinBox = nullptr;
+  QDoubleSpinBox *rangeSpinBox = nullptr;
+  QTabWidget *mainTabs = nullptr;
+  QDialog *settingsDialog = nullptr;
+  QTabWidget *resultsTabs = nullptr;
+  QTabWidget *histogramTabs = nullptr;
+  QTextBrowser *simulationSummaryView = nullptr;
+  QLineEdit *outputDirectoryEdit = nullptr;
+  QLineEdit *logFileEdit = nullptr;
+  QLineEdit *displacementOutputEdit = nullptr;
+  QLineEdit *electronicOutputEdit = nullptr;
+  QLineEdit *nuclearOutputEdit = nullptr;
+  QLineEdit *totalOutputEdit = nullptr;
+  QLineEdit *particleTreeEdit = nullptr;
+  QCheckBox *enableLoggingCheck = nullptr;
+  QPlainTextEdit *resultPane = nullptr;
 
   // View controls
-  QCheckBox *use3DView;
-  QCheckBox *use2DView;
-  QGroupBox *canvasBox;
-  QGroupBox *view3DBox;
-  Counter *counter;
-  QLabel *counterLabel;
+  QCheckBox *use3DView = nullptr;
+  QCheckBox *use2DView = nullptr;
+  QCheckBox *viewModeToggle = nullptr;
+  QGroupBox *canvasBox = nullptr;
+  QGroupBox *view3DBox = nullptr;
+  Counter *counter = nullptr;
+  QLabel *counterLabel = nullptr;
 
   // Layer forms
-  QStandardItemModel *layerModel;
-  QTableView *layerTable;
+  QStandardItemModel *layerModel = nullptr;
+  QTableView *layerTable = nullptr;
   QStringList layerHeaders;
 
   // For particle track painting
-  Canvas *canvas;
-  Widget3DView *view3D;
-  QPainter *painter;
+  Canvas *canvas = nullptr;
+  Widget3DView *view3D = nullptr;
+  QPainter *painter = nullptr;
   // boost::lockfree::spsc_queue<common::Simulation::DataVariant *> &queue;
 
-  SimulationThread *simulationThread;
+  common::Simulation *activeSimulation = nullptr;
+  SimulationThread *simulationThread = nullptr;
   // For Undo/Redo
   // QUndoStack *undoStack; // TODO: Implement undo/redo
 

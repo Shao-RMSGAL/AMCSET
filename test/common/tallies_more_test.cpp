@@ -39,6 +39,16 @@ TEST(TalliesUnit, MergeBehavior) {
   EXPECT_EQ(a.energy_loss_stats.n, 2u);
 }
 
+TEST(TalliesUnit, EnergyLossHistogramStoresEnergyPerDepthBin) {
+  Histogram energy_loss(10, 0.0, 10.0);
+  energy_loss.add_value(1.5, 3.0);
+  energy_loss.add_value(1.5, 2.5);
+  energy_loss.add_value(9.0, 4.0);
+
+  EXPECT_DOUBLE_EQ(energy_loss.bins[1], 5.5);
+  EXPECT_DOUBLE_EQ(energy_loss.bins[9], 4.0);
+}
+
 TEST(TalliesIntegration, SimulationAggregatesTallies) {
   auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
   size_t z_number = 26;

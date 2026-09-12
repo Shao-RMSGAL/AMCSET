@@ -28,7 +28,9 @@
 // Includes{{{
 
 #include <boost/units/systems/si/length.hpp>
+#include <iomanip>
 #include <memory>
+#include <sstream>
 
 // Detects the platform and sets the DECLSPEC macro for exporting symbols from a
 // DLL on Windows.
@@ -43,6 +45,7 @@
 #endif
 
 // Standard library
+#include <atomic>
 #include <mutex>
 #include <ranges>
 #include <shared_mutex>
@@ -400,54 +403,115 @@ private:
 
 class ParticleDataLeaf {
 public:
-  //!< Construct a ParticleDataLeaf using a move constructor
+  struct Sample {
+    double x_m = 0.0;
+    double y_m = 0.0;
+    double z_m = 0.0;
+    double vx = 0.0;
+    double vy = 0.0;
+    double vz = 0.0;
+    double energy_joules = 0.0;
+    std::string label;
+  };
+
   ParticleDataLeaf() = default;
 
-  /**
-   * @brief Append a coordinate to this leaf.
-   * @param coordinate Coordinate to append (typically a position visited by a
-   * particle).
-   */
-  void add_coordinate(const Coordinate &coordinate) {
-    data.push_back(coordinate);
-  };
+  void set_identity(std::string id, std::string parent_id,
+                    std::string particle_type, size_t z_number,
+                    size_t mass_number) {
+    id_ = std::move(id);
+    parent_id_ = std::move(parent_id);
+    particle_type_ = std::move(particle_type);
+    z_number_ = z_number;
+    mass_number_ = mass_number;
+  }
 
-  /**
-   * @brief Add a child data leaf (used for storing cascade knock-on data).
-   * @param child A child ParticleDataLeaf to be moved into this node.
-   */
-  void add_child(ParticleDataLeaf &&child) {
-    children.emplace_back(
-        std::move(child)); // Efficient construction of ParticleDataLeaf right
-                           // in the vector.
-  };
+  const std::string &get_id() const noexcept { return id_; }
+  const std::string &get_parent_id() const noexcept { return parent_id_; }
+  const std::string &get_particle_type() const noexcept {
+    return particle_type_;
+  }
 
-  /**
-   * @brief Return stored coordinates for this leaf.
-   * @return Vector of coordinates recorded for the particle.
-   */
+  void add_coordinate(const Coordinate &coordinate) { data.push_back(coordinate); }
+
+  void add_child(ParticleDataLeaf &&child) { children.emplace_back(std::move(child)); }
+
   const std::vector<Coordinate> &get_data() const { return data; }
-
-  /**
-   * @brief Return the child leaves of this node (mutable).
-   * @return Vector of child ParticleDataLeaf instances.
-   */
   std::vector<ParticleDataLeaf> &get_children() { return children; }
 
-  /**
-   * @brief Mark this leaf as representing a sputtered particle.
-   */
-  void sputter() { sputtered = true; }
+  void add_sample(const Coordinate &coordinate, const Velocity &velocity,
+                  std::string label = "state") {
+    Sample sample;
+    sample.x_m = coordinate.x_.value();
+    sample.y_m = coordinate.y_.value();
+    sample.z_m = coordinate.z_.value();
+    sample.energy_joules = velocity.energy_.value();
 
-  /**
-   * @brief Mark this leaf as representing a particle that escaped the
-   * volume.
-   */
+    const auto &q = velocity.quaternion_;
+    const auto norm = std::sqrt(q.x_ * q.x_ + q.y_ * q.y_ + q.z_ * q.z_);
+    if (norm > 0.0) {
+      sample.vx = q.x_ / norm;
+      sample.vy = q.y_ / norm;
+      sample.vz = q.z_ / norm;
+    }
+    sample.label = std::move(label);
+    samples.push_back(sample);
+  }
+
+  void sputter() { sputtered = true; }
   void escape() { escaped = true; }
 
+  std::string to_json(size_t indent = 0) const {
+    std::ostringstream ss;
+    const auto pad = std::string(indent, ' ');
+    ss << pad << "{\n";
+    ss << pad << "  \"id\": \"" << id_ << "\",\n";
+    ss << pad << "  \"parent_id\": \"" << parent_id_ << "\",\n";
+    ss << pad << "  \"type\": \"" << particle_type_ << "\",\n";
+    ss << pad << "  \"z\": " << z_number_ << ",\n";
+    ss << pad << "  \"mass_number\": " << mass_number_ << ",\n";
+    ss << pad << "  \"sputtered\": " << (sputtered ? "true" : "false")
+       << ",\n";
+    ss << pad << "  \"escaped\": " << (escaped ? "true" : "false")
+       << ",\n";
+    ss << pad << "  \"samples\": [";
+    for (size_t i = 0; i < samples.size(); ++i) {
+      if (i != 0) ss << ", ";
+      ss << "{\"label\":\"" << samples[i].label << "\",\"x_m\":"
+         << samples[i].x_m << ",\"y_m\":" << samples[i].y_m
+         << ",\"z_m\":" << samples[i].z_m << ",\"vx\":"
+         << samples[i].vx << ",\"vy\":" << samples[i].vy
+         << ",\"vz\":" << samples[i].vz << ",\"energy_joules\":"
+         << samples[i].energy_joules << "}";
+    }
+    ss << "],\n";
+    ss << pad << "  \"coordinates\": [";
+    for (size_t i = 0; i < data.size(); ++i) {
+      if (i != 0) ss << ", ";
+      ss << "{\"x_m\":" << data[i].x_.value() << ",\"y_m\":"
+         << data[i].y_.value() << ",\"z_m\":" << data[i].z_.value()
+         << "}";
+    }
+    ss << "],\n";
+    ss << pad << "  \"children\": [";
+    for (size_t i = 0; i < children.size(); ++i) {
+      if (i != 0) ss << ", ";
+      ss << children[i].to_json(indent + 2);
+    }
+    ss << "]\n";
+    ss << pad << "}";
+    return ss.str();
+  }
+
 private:
+  std::string id_;
+  std::string parent_id_;
+  std::string particle_type_ = "incident";
+  size_t z_number_ = 0;
+  size_t mass_number_ = 0;
   std::vector<ParticleDataLeaf> children;
   std::vector<Coordinate> data;
+  std::vector<Sample> samples;
   bool sputtered = false;
   bool escaped = false;
 };
@@ -1115,10 +1179,14 @@ public:
   void run_bombardment();
 
   // Tally recording helpers (used by Particle implementations)
+  enum class EnergyLossType { electronic, nuclear, total };
+
   void record_incident(double range_meters);
   void record_displacement(double depth_meters);
   void record_sputtered();
-  void record_energy_loss(long double energy_joules);
+  void record_energy_loss(long double energy_joules,
+                         double depth_meters = 0.0,
+                         EnergyLossType type = EnergyLossType::total);
 
   /*!
    * \brief Return the ID of the bombardment
@@ -1134,6 +1202,7 @@ public:
    * history.
    */
   ParticleDataLeaf &get_data_leaf() { return data_leaf_; };
+  const ParticleDataLeaf &get_data_leaf() const { return data_leaf_; };
 
   /*!
    * \brief Returns a reference to the simulation
@@ -1216,18 +1285,19 @@ public:
 
     const angle_quantity
         incident_angle_; //!< The incident anlge of the particle
+    const size_t displacement_bin_count_;
+    const size_t electronic_energy_loss_bin_count_;
+    const size_t nuclear_energy_loss_bin_count_;
+    const size_t total_energy_loss_bin_count_;
+    const std::string displacement_histogram_output_file_;
+    const std::string electronic_energy_loss_histogram_output_file_;
+    const std::string nuclear_energy_loss_histogram_output_file_;
+    const std::string total_energy_loss_histogram_output_file_;
+    const bool log_particle_tree_;
+    const std::string particle_tree_output_file_;
 
     Settings() = delete; //!< Default constructor ensures initialization
 
-    /*!
-     * \brief Constructor for a Settings struct.
-     *
-     * By deleting the default constructor and allowing construction using
-     * this struct, initialization of all fields is guaranteed. All members
-     * of Settings are represented as parameters in this constructor.
-     *
-     * TODO: Modify to accept a map instead
-     */
     Settings(energy_quantity electron_stopping_energy, size_t z_number,
              size_t mass_number, bool enable_damage_cascade,
              energy_quantity ion_stopping_energy,
@@ -1236,7 +1306,22 @@ public:
              size_t flying_distance_number, length_quantity range,
              size_t bombardment_count, bool is_electron,
              energy_quantity incident_energy, size_t thread_count,
-             angle_quantity incident_angle = 0.0 * radian);
+             angle_quantity incident_angle = 0.0 * radian,
+             size_t displacement_bin_count = 100,
+             size_t electronic_energy_loss_bin_count = 100,
+             size_t nuclear_energy_loss_bin_count = 100,
+             size_t total_energy_loss_bin_count = 100,
+             std::string displacement_histogram_output_file =
+                 "output/displacement_histogram.csv",
+             std::string electronic_energy_loss_histogram_output_file =
+                 "output/electronic_loss_histogram.csv",
+             std::string nuclear_energy_loss_histogram_output_file =
+                 "output/nuclear_loss_histogram.csv",
+             std::string total_energy_loss_histogram_output_file =
+                 "output/total_loss_histogram.csv",
+             bool log_particle_tree = false,
+             std::string particle_tree_output_file =
+                 "output/particle_tree.json");
   };
 
   Simulation() = delete;
@@ -1293,6 +1378,14 @@ public:
    */
   int run_simulation();
 
+  size_t get_completed_bombardment_count() const noexcept {
+    return completed_bombardments_.load(std::memory_order_acquire);
+  }
+
+  void increment_completed_bombardment_count() noexcept {
+    completed_bombardments_.fetch_add(1, std::memory_order_acq_rel);
+  }
+
   /*!
    * \brief Return a string of settings.
    *
@@ -1310,28 +1403,6 @@ public:
   const Volume &get_volume() const { return volume_; };
 
   /*!
-   * \brief Return a mutable reference to the Simulation dataframe.
-   *
-   * This allows bombardment threads to access the simulation tallies and
-   * modify them. It can store either integer types or data types.
-   */
-  DataFrame<double, int> &get_dataframe() { return dataframe_; };
-
-  using DataVariant =
-      std::variant<std::vector<double>>; //!< A type for storing data that
-                                         //!< will be communicated to the
-                                         //!< frontend asynchronously
-  /*!
-   * \brief Return a mutable reference to the Simulation dataframe.
-   *
-   * This allows bombardment threads to access the simulation tallies and
-   * modify them. It can store either integer types or data types.
-   */
-  boost::lockfree::spsc_queue<DataVariant *> &get_spsc_queue() {
-    return queue_;
-  };
-
-  /*!
    * \brief Return the function used for point drawing
    */
   DrawFunction &get_draw_function() { return draw_function_; };
@@ -1340,6 +1411,11 @@ public:
   void merge_tallies(const Tallies &tallies);
   const Tallies &get_tallies() const noexcept;
 
+  void write_histogram_csv(const std::string &output_file,
+                           const Histogram &histogram,
+                           const std::string &value_label = "count") const;
+  void write_particle_tree_log() const;
+
 private:
   const Settings settings_;
   Volume volume_;
@@ -1347,11 +1423,8 @@ private:
   mutable std::mutex tallies_mutex_;
   std::vector<Bombardment> bombardments_;
   boost::asio::thread_pool thread_pool_;
-  DataFrame<double, int> dataframe_; //!< Stores simulation tallies contributed
-                                     //!< by multiple bombardments.
-  boost::lockfree::spsc_queue<DataVariant *>
-      queue_;                  //!< A queue for sending data to the frontend
   DrawFunction draw_function_; //!< Function used for drawing to the canvas
+  std::atomic<size_t> completed_bombardments_{0};
 }; // }}}
 
 /*!

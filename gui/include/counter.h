@@ -2,6 +2,7 @@
 #include <QMutex>
 #include <QObject>
 
+#include <atomic>
 #include <boost/thread/mutex.hpp>
 
 class Counter : public QObject {
@@ -11,6 +12,7 @@ public:
 
   int getValue() const;
   void increment();
+  void setValue(int value);
   bool hasChanged();
   void reset();
 
@@ -18,8 +20,6 @@ signals:
   void valueChanged(int newValue);
 
 private:
-  mutable boost::mutex m_mutex;
-  mutable QMutex q_mutex;
-  int m_value;
-  mutable bool m_changed;
+  std::atomic<int> m_value{0};
+  std::atomic<bool> m_changed{false};
 };

@@ -35,6 +35,25 @@ target_compile_options(compiler_flags INTERFACE
   "$<${msvc_cxx}:$<BUILD_INTERFACE:-W3>>"
 )
 
+# Performance: tune Release flags for maximum runtime performance
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+        set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
+endif()
+
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -flto -funroll-loops -pipe -DNDEBUG")
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto")
+
+target_compile_options(compiler_flags INTERFACE
+    $<$<CONFIG:Release>:-O3;-march=native;-flto;-funroll-loops;-pipe>
+)
+target_compile_definitions(compiler_flags INTERFACE
+    $<$<CONFIG:Release>:NDEBUG>
+    $<$<CONFIG:Release>:GOOGLE_STRIP_LOG=2>
+)
+target_link_options(compiler_flags INTERFACE
+    $<$<CONFIG:Release>:-flto>
+)
+
 # Build shared libraries
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
@@ -50,7 +69,7 @@ find_package(GTest 1.15.0 REQUIRED)
 find_package(glog 0.7.1 REQUIRED)
 find_package(gflags 2.2.2 REQUIRED)
 # find_package(OpenSSL REQUIRED CONFIG COMPONENTS filesystem)
-find_package(Qt6 COMPONENTS Core Gui Widgets 3DCore 3DExtras 3DRender 3DInput REQUIRED)
+find_package(Qt6 6.11.1 COMPONENTS Core Gui Widgets Graphs 3DCore 3DExtras 3DRender 3DInput REQUIRED)
 if (Qt6_FOUND)
     qt_standard_project_setup()
 endif ()
@@ -94,6 +113,7 @@ target_link_libraries(amcset-gui PRIVATE
     Qt6::Core
     Qt6::Widgets
     Qt6::Gui
+    Qt6::Graphs
     Qt6::3DCore
     Qt6::3DExtras
     Qt6::3DRender
