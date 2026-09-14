@@ -49,6 +49,8 @@ Widget3DView::Widget3DView(QWidget *parent) : QWidget(parent) {
 }
 
 void Widget3DView::clearScene() {
+  QMutexLocker lock(&m_mutex);
+  m_lineRequestQueue.clear();
   // Delete all entities we've added to the scene
   foreach (Qt3DCore::QEntity *entity, m_sceneEntities) {
     // Remove from parent first (ensures proper cleanup in Qt3D)
@@ -68,34 +70,29 @@ void Widget3DView::setRange(double range) {
 
 void Widget3DView::requestDrawLine(const QVector3D &from, const QVector3D &to,
                                    const QColor &color) {
-  // This method can be called from any thread
-  // m_mutex.lock();
+  QMutexLocker lock(&m_mutex);
   m_lineRequestQueue.enqueue({from, to, color});
-  // m_mutex.unlock();
 }
 void Widget3DView::requestClearScene() {
-  // This method can be called from any thread
-  // m_mutex.lock();
+  QMutexLocker lock(&m_mutex);
   m_clearSceneRequested = true;
-  // m_mutex.unlock();
 }
 
 void Widget3DView::processPendingLineRequests() {
   // This method runs in the UI thread
-  // m_mutex.lock();
+  QQueue<LineRequest> requests;
+  {
+    QMutexLocker lock(&m_mutex);
+    requests.swap(m_lineRequestQueue);
+  }
 
-  while (!m_lineRequestQueue.isEmpty()) {
-    LineRequest request = m_lineRequestQueue.dequeue();
-    // m_mutex.unlock(); // Unlock while drawing to prevent blocking other
-    // threads
+  while (!requests.isEmpty()) {
+    LineRequest request = requests.dequeue();
 
     // Draw the line (this must happen in the UI thread)
     drawLine(request.from, request.to, request.color);
 
-    // m_mutex.lock();
   }
-
-  // m_mutex.unlock();
 }
 
 Widget3DView::~Widget3DView() {

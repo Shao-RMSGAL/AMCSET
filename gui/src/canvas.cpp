@@ -19,7 +19,6 @@
  *  \brief A class for drawing particle trajectories in the user interface
  */
 
-// Qt includes
 #include <QPainter>
 #include <QPainterPath>
 #include <QTimer>
@@ -27,37 +26,30 @@
 // Local includes
 #include "canvas.h"
 
-// FIX: Not properly synchronizing
 Canvas::Canvas(QWidget *parent) : QWidget(parent) {
   QTimer *timer = new QTimer(this);
   connect(timer, &QTimer::timeout, this, [this]() {
-    QMutexLocker locker(&q_mutex);
-    mutex.lock();
     update();
-    mutex.unlock();
   });
   timer->start(16); // ~60 FPS
 }
 
 void Canvas::addLine(const QLine &line) {
-  QMutexLocker locker(&q_mutex);
-  mutex.lock();
+  std::lock_guard<std::mutex> lock(mutex);
   lines.emplace_back(line);
-  // update();
-  mutex.unlock();
 }
 
 void Canvas::clear() {
+  std::lock_guard<std::mutex> lock(mutex);
   lines.clear();
   update();
 }
 
 void Canvas::paintEvent(QPaintEvent *event) {
-  QMutexLocker locker(&q_mutex);
-  mutex.lock();
+  Q_UNUSED(event);
+  std::lock_guard<std::mutex> lock(mutex);
   QPainter painter(this);
   for (auto &line : lines) {
     painter.drawLine(line);
   }
-  mutex.unlock();
 }

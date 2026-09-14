@@ -7,11 +7,14 @@ Debug/
 Release/
 common/CMakeFiles/
 *.vcxproj*
-*.cmake*
+*.cmake
+total_loss_histogram.png
+
 *autogen*
 CMakeCache.txt
 *CMakeFiles*
 amcset.sln
+common/src/old_amcset.cpp
 
 ConanPresets.json
 CMakeLists.txt.user

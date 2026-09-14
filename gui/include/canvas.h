@@ -21,14 +21,11 @@
 #pragma once
 
 // Qt includes
-#include <QMutex>
 #include <QPen>
 #include <QPixmap>
 #include <QVector>
 #include <QWidget>
-
-// Boost includes
-#include <boost/thread/thread.hpp>
+#include <mutex>
 
 // TODO: Implement a functionality that saves the lines as a pixel map that is
 // drawn in addition to new lines to save on computation time.
@@ -46,6 +43,5 @@ protected:
   void paintEvent(QPaintEvent *event) override;
   QVector<QLine> lines;
 
-  boost::mutex mutex;
-  QMutex q_mutex;
+  std::mutex mutex;
 };

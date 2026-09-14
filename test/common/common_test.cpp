@@ -169,6 +169,77 @@ TEST_F(CommonTest, simulation_tracks_completed_bombardments) try {
   FAIL();
 }
 
+TEST_F(CommonTest, electron_transport_helpers_match_legacy_formulas) try {
+  Electron::load_transport_tables(
+      "common/assets/electron_screening_parameters.csv",
+      "common/assets/mott_scattering_parameters.csv", 92, 118);
+  EXPECT_EQ(Electron::screening_parameter_count(), size_t{92});
+  EXPECT_EQ(Electron::mott_parameter_count(), size_t{118});
+
+  const auto expected_angle = -pi / 9.0 *
+      (1.0 - std::pow(10.0, 3.0 / 1000.0));
+  EXPECT_DOUBLE_EQ(Electron::division_angle(2, 1000), expected_angle);
+
+  const std::vector<double> angles{-0.1, 0.2, 0.5, 1.0};
+  const std::vector<double> partial{0.2, 0.5, 0.8, 1.0};
+  const auto expected_scattering = (angles[1] + angles[2]) / 2.0 -
+      (0.5 - 0.3) * (angles[2] - angles[0]) / 2.0 / 0.5;
+  EXPECT_DOUBLE_EQ(Electron::interpolate_scattering_angle(
+                       angles, partial, 1.0, 0.3),
+                   expected_scattering);
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
+TEST_F(CommonTest, electron_transport_smoke_test) try {
+  Simulation::Settings settings(
+      0.04 * kilo_electron_volt, 0, 0, true, 0.04 * kilo_electron_volt,
+      0.04 * kilo_electron_volt, true, 8, 8, 10000.0 * angstrom, 1, true,
+      10.0 * kilo_electron_volt, 1);
+  Simulation simulation(settings,
+                        Volume({create_iron_layer(10000.0 * angstrom)}));
+
+  EXPECT_EQ(simulation.run_simulation(), 0);
+  EXPECT_GT(simulation.get_tallies().energy_loss_stats.n, size_t{0});
+  EXPECT_GT(simulation.get_tallies().electronic_energy_loss_histogram.bins[0] +
+                simulation.get_tallies().nuclear_energy_loss_histogram.bins[0],
+            0.0);
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
+TEST_F(CommonTest, electron_transport_stops_after_volume_escape) try {
+  Simulation::Settings settings(
+      0.04 * kilo_electron_volt, 0, 0, false, 0.04 * kilo_electron_volt,
+      0.04 * kilo_electron_volt, false, 8, 8, 1.0 * angstrom, 1, true,
+      10.0 * kilo_electron_volt, 1);
+  Simulation simulation(settings,
+                        Volume({create_iron_layer(1.0 * angstrom)}));
+
+  EXPECT_EQ(simulation.run_simulation(), 0);
+  EXPECT_EQ(simulation.get_completed_bombardment_count(), size_t{1});
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
+TEST_F(CommonTest, electron_transport_low_energy_records_history) try {
+  Simulation::Settings settings(
+      0.04 * kilo_electron_volt, 0, 0, false, 0.04 * kilo_electron_volt,
+      0.04 * kilo_electron_volt, false, 8, 8, 10000.0 * angstrom, 1, true,
+      1.0 * kilo_electron_volt, 1);
+  Simulation simulation(settings,
+                        Volume({create_iron_layer(10000.0 * angstrom)}));
+
+  EXPECT_EQ(simulation.run_simulation(), 0);
+  EXPECT_GT(simulation.get_tallies().energy_loss_stats.n, size_t{0});
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
 //! Coordinate struct test.
 TEST_F(CommonTest, coordinate_constructor_test) try {
   constexpr Coordinate coordinate(length_quantity(-1.0 * angstrom),

@@ -4,6 +4,8 @@ add_library(amcset-common STATIC
     ${PROJECT_SOURCE_DIR}/common/include/isotope_data.h
     ${PROJECT_SOURCE_DIR}/common/include/amcset_utilities.h
     ${PROJECT_SOURCE_DIR}/common/generated/isotope_database.h
+    ${PROJECT_SOURCE_DIR}/common/assets/electron_screening_parameters.csv
+    ${PROJECT_SOURCE_DIR}/common/assets/mott_scattering_parameters.csv
     )
 
 # state that common need PIC when the default is shared libraries

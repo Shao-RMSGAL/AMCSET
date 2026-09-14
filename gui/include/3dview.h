@@ -16,6 +16,7 @@
 #include <Qt3DRender/QCamera>
 // #include <Qt3DRender/QGeometry>
 #include <QQueue>
+#include <QMutex>
 #include <Qt3DRender/QGeometryRenderer>
 #include <Qt3DRender/QMesh>
 
@@ -63,7 +64,7 @@ private:
 
   bool m_clearSceneRequested;
   QQueue<LineRequest> m_lineRequestQueue;
-  // std::mutex m_mutex;
+  QMutex m_mutex;
   QTimer *m_updateTimer;
   QList<Qt3DCore::QEntity *> m_sceneEntities;
 };

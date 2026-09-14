@@ -27,6 +27,7 @@
 
 // Includes{{{
 
+#include <array>
 #include <boost/units/systems/si/length.hpp>
 #include <iomanip>
 #include <memory>
@@ -761,6 +762,26 @@ public:
    * Fires an electron using electron-specific energy loss functions.
    */
   void fire() override;
+
+  static void load_transport_tables(const std::string &screening_file,
+                                    const std::string &mott_file,
+                                    size_t screening_element_count,
+                                    size_t mott_element_count);
+  static double division_angle(size_t index, size_t divisor_count);
+  static double interpolate_scattering_angle(
+      const std::vector<double> &angles,
+      const std::vector<double> &partial_cross_sections,
+      double total_cross_section, double random_cross_section);
+  static size_t screening_parameter_count() noexcept;
+  static size_t mott_parameter_count() noexcept;
+
+private:
+  using screening_row = std::array<double, 6>;
+  using mott_row = std::array<double, 6>;
+
+  static std::vector<screening_row> screening_parameters_;
+  static std::vector<std::array<mott_row, 5>> mott_parameters_;
+  static std::mutex transport_table_mutex_;
 }; // }}}
 
 class Volume;
@@ -774,6 +795,10 @@ class Volume;
  */
 class Ion : public Particle {
 public:
+  using Particle::rotate_inplace;
+  using Particle::set_coordinate;
+  using Particle::set_velocity;
+
   /*!
    * \brief Construct an electron.
    *
@@ -1285,6 +1310,12 @@ public:
 
     const angle_quantity
         incident_angle_; //!< The incident anlge of the particle
+    const std::string electron_screening_parameters_file_;
+    const std::string mott_scattering_parameters_file_;
+    const size_t electron_screening_parameter_count_;
+    const size_t mott_scattering_parameter_count_;
+    const bool log_end_of_flying_distance_only_;
+    const bool log_stopping_point_only_;
     const size_t displacement_bin_count_;
     const size_t electronic_energy_loss_bin_count_;
     const size_t nuclear_energy_loss_bin_count_;
@@ -1321,7 +1352,15 @@ public:
                  "output/total_loss_histogram.csv",
              bool log_particle_tree = false,
              std::string particle_tree_output_file =
-                 "output/particle_tree.json");
+               "output/particle_tree.json",
+             std::string electron_screening_parameters_file =
+               "common/assets/electron_screening_parameters.csv",
+             std::string mott_scattering_parameters_file =
+               "common/assets/mott_scattering_parameters.csv",
+             size_t electron_screening_parameter_count = 92,
+             size_t mott_scattering_parameter_count = 118,
+             bool log_end_of_flying_distance_only = false,
+             bool log_stopping_point_only = false);
   };
 
   Simulation() = delete;
@@ -1378,6 +1417,14 @@ public:
    */
   int run_simulation();
 
+  void request_cancel() noexcept {
+    cancel_requested_.store(true, std::memory_order_release);
+  }
+
+  bool is_cancel_requested() const noexcept {
+    return cancel_requested_.load(std::memory_order_acquire);
+  }
+
   size_t get_completed_bombardment_count() const noexcept {
     return completed_bombardments_.load(std::memory_order_acquire);
   }
@@ -1425,6 +1472,7 @@ private:
   boost::asio::thread_pool thread_pool_;
   DrawFunction draw_function_; //!< Function used for drawing to the canvas
   std::atomic<size_t> completed_bombardments_{0};
+  std::atomic<bool> cancel_requested_{false};
 }; // }}}
 
 /*!
