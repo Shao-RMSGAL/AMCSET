@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QMutex>
 #include <QVBoxLayout>
 #include <QVector3D>
 #include <QVector>
@@ -16,7 +17,6 @@
 #include <Qt3DRender/QCamera>
 // #include <Qt3DRender/QGeometry>
 #include <QQueue>
-#include <QMutex>
 #include <Qt3DRender/QGeometryRenderer>
 #include <Qt3DRender/QMesh>
 
@@ -62,9 +62,9 @@ private:
     QColor color;
   };
 
-  bool m_clearSceneRequested;
+  bool m_clearSceneRequested = false;
   QQueue<LineRequest> m_lineRequestQueue;
-  QMutex m_mutex;
+  QMutex m_lineRequestMutex;
   QTimer *m_updateTimer;
   QList<Qt3DCore::QEntity *> m_sceneEntities;
 };

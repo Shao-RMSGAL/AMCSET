@@ -7,14 +7,11 @@ Debug/
 Release/
 common/CMakeFiles/
 *.vcxproj*
-*.cmake
-total_loss_histogram.png
-
+*.cmake*
 *autogen*
 CMakeCache.txt
 *CMakeFiles*
 amcset.sln
-common/src/old_amcset.cpp
 
 ConanPresets.json
 CMakeLists.txt.user
@@ -26,3 +23,6 @@ output
 common/generated/isotope_database.cpp
 test_output.txt
 log.txt
+*/info.log
+.vscode/.conan_tools
+

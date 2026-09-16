@@ -21,11 +21,11 @@
 #pragma once
 
 // Qt includes
+#include <QMutex>
 #include <QPen>
 #include <QPixmap>
 #include <QVector>
 #include <QWidget>
-#include <mutex>
 
 // TODO: Implement a functionality that saves the lines as a pixel map that is
 // drawn in addition to new lines to save on computation time.
@@ -41,7 +41,13 @@ public:
 
 protected:
   void paintEvent(QPaintEvent *event) override;
-  QVector<QLine> lines;
 
-  std::mutex mutex;
+private:
+  void flushLinesToBitmap();
+
+  static constexpr int kBitmapFlushThreshold = 10;
+
+  QVector<QLine> lines;
+  QPixmap renderCache;
+  QMutex mutex;
 };

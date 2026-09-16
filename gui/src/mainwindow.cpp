@@ -284,41 +284,20 @@ public:
     for (const auto &point : points) {
       series_->append(point);
     }
-
-    saveButton_ = new QPushButton(tr("Save graph"), this);
-    saveButton_->setToolTip(tr("Save this graph as a PNG image"));
-    connect(saveButton_, &QPushButton::clicked, this, [this]() {
-      const auto path = QFileDialog::getSaveFileName(
-          this, tr("Save graph"), title_ + QStringLiteral(".png"),
-          tr("PNG image (*.png);;All files (*)"));
-      if (!path.isEmpty()) {
-        saveImage(path);
-      }
-    });
   }
 
 protected:
-  void resizeEvent(QResizeEvent *event) override {
-    QWidget::resizeEvent(event);
-    saveButton_->adjustSize();
-    saveButton_->move(width() - saveButton_->width() - 8, 4);
-  }
-
   void paintEvent(QPaintEvent *event) override {
     QWidget::paintEvent(event);
 
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.fillRect(rect(), QColor(245, 245, 245));
-    drawPlot(painter, rect().adjusted(62, 28, 18, 48));
-  }
 
-private:
-  void drawPlot(QPainter &painter, const QRectF &plotRect) const {
     const auto points = series_->points();
     if (points.size() < 2) {
       painter.setPen(Qt::gray);
-      painter.drawText(plotRect, Qt::AlignCenter, tr("No data available"));
+      painter.drawText(rect(), Qt::AlignCenter, tr("No data available"));
       return;
     }
 
@@ -342,25 +321,18 @@ private:
       maxY = std::max(1.0, maxY) + 1.0;
     }
 
+    const auto margin = 24.0;
     auto transform = [&](const QPointF &pt) {
       const double sx = (pt.x() - minX) / std::max(maxX - minX, 1e-12);
       const double sy = (pt.y() - minY) / std::max(maxY - minY, 1e-12);
-      const double x = plotRect.left() + sx * plotRect.width();
-      const double y = plotRect.bottom() - sy * plotRect.height();
+      const double x = margin + sx * (width() - 2.0 * margin);
+      const double y = height() - margin - sy * (height() - 2.0 * margin);
       return QPointF(x, y);
     };
 
-    painter.setPen(QPen(QColor(210, 210, 210), 1.0, Qt::DashLine));
-    constexpr int tickCount = 5;
-    for (int i = 0; i <= tickCount; ++i) {
-      const auto fraction = static_cast<double>(i) / tickCount;
-      const auto x = plotRect.left() + fraction * plotRect.width();
-      const auto y = plotRect.bottom() - fraction * plotRect.height();
-      painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
-      painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
-    }
 
-    painter.setPen(QPen(Qt::blue, 2.0));
+    QPen pen(Qt::blue, 2.0);
+    painter.setPen(pen);
     QPolygonF polygon;
     for (const auto &point : points) {
       polygon << transform(point);
@@ -368,61 +340,35 @@ private:
     painter.drawPolyline(polygon);
 
     painter.setPen(Qt::black);
-    painter.drawLine(plotRect.bottomLeft(), plotRect.bottomRight());
-    painter.drawLine(plotRect.topLeft(), plotRect.bottomLeft());
-
-    painter.setPen(Qt::black);
-    for (int i = 0; i <= tickCount; ++i) {
-      const auto fraction = static_cast<double>(i) / tickCount;
-      const auto x = plotRect.left() + fraction * plotRect.width();
-      const auto y = plotRect.bottom() - fraction * plotRect.height();
-      painter.drawText(QRectF(x - 35, plotRect.bottom() + 4, 70, 18),
-                       Qt::AlignHCenter | Qt::AlignTop,
-                       QString::number(minX + fraction * (maxX - minX), 'g', 4));
-      painter.drawText(QRectF(0, y - 9, plotRect.left() - 8, 18),
-                       Qt::AlignRight | Qt::AlignVCenter,
-                       QString::number(minY + fraction * (maxY - minY), 'g', 4));
-    }
+    painter.drawLine(QPointF(margin, height() - margin),
+                     QPointF(width() - margin, height() - margin));
+    painter.drawLine(QPointF(margin, margin),
+                     QPointF(margin, height() - margin));
 
     const auto xLabel = histogramAxisLabel(kind_, true);
     const auto yLabel = histogramAxisLabel(kind_, false);
-    painter.drawText(QRectF(plotRect.left(), height() - 32, plotRect.width(), 20),
-                     Qt::AlignCenter, xLabel);
+    painter.drawText(QRectF(0, height() - 20, width(), 20), Qt::AlignCenter, xLabel);
     painter.save();
     painter.rotate(-90.0);
-    painter.drawText(QRectF(-height() + 8, 0, height(), 20), Qt::AlignCenter, yLabel);
+    painter.drawText(QRectF(-height(), 0, height(), 20), Qt::AlignCenter, yLabel);
     painter.restore();
-    painter.drawText(QRectF(0, 0, width(), 24), Qt::AlignCenter, title_);
+    painter.drawText(QRectF(0, 0, width(), 18), Qt::AlignCenter, title_);
   }
 
-  void saveImage(const QString &filePath) const {
-    QImage image(1200, 800, QImage::Format_ARGB32);
-    image.fill(QColor(245, 245, 245));
-    QPainter painter(&image);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    drawPlot(painter, QRectF(90, 45, image.width() - 125, image.height() - 115));
-    image.save(filePath);
-  }
-
+private:
   QString title_;
   HistogramDataKind kind_;
   QLineSeries *series_;
-  QPushButton *saveButton_ = nullptr;
 };
 
 // TODO: Implement proper error handling
 void MainWindow::handleSimulationResult(int result) {
   activeSimulation = nullptr;
-  simulationFinished_.store(true, std::memory_order_release);
-  if (cancelButton) {
-    cancelButton->setEnabled(false);
-  }
-  if (result == 2) {
-    updateResultPane(QStringLiteral("Simulation cancelled."));
-  } else if (result != 0) {
-    updateResultPane(QStringLiteral("Simulation failed."));
+  if (result != 0) {
+    std::cerr << "Something went wrong" << std::endl;
+    std::terminate();
   } else {
-    updateResultPane(QStringLiteral("Simulation complete."));
+    std::cerr << "Success" << std::endl;
     refreshResultsPane();
   }
 };
@@ -580,76 +526,7 @@ void MainWindow::populateResultCharts() {
   }
 }
 
-void MainWindow::drainTrackQueue() {
-  std::deque<CompletedTrack> tracks;
-  {
-    std::lock_guard<std::mutex> lock(trackQueueMutex);
-    if (!completedTrackQueue.empty()) {
-      tracks.push_back(std::move(completedTrackQueue.front()));
-      completedTrackQueue.pop_front();
-    }
-  }
-
-  for (const auto &track : tracks) {
-    counter->setValue(static_cast<int>(track.bombardmentId + 1));
-    counterLabel->setText(QString("Bombardment %1 out of %2")
-                              .arg(static_cast<int>(track.bombardmentId + 1))
-                              .arg(bombardmentCountSpinBox->value()));
-
-    if (track.points.size() < 2) {
-      continue;
-    }
-
-    if (use2DView && use2DView->isChecked() && canvas) {
-      const auto range = std::max(rangeSpinBox->value(), 1e-12);
-      const auto canvasWidth = canvas->width();
-      const auto canvasHeight = canvas->height();
-      for (size_t i = 1; i < track.points.size(); ++i) {
-        const auto &from = track.points[i - 1];
-        const auto &to = track.points[i];
-        const auto fromX = (from.z_ / common::angstrom).value() / range * canvasWidth;
-        const auto toX = (to.z_ / common::angstrom).value() / range * canvasWidth;
-        const auto fromY = canvasHeight / 2.0 -
-                           (from.x_ / common::angstrom).value() / range * canvasHeight / 2.0;
-        const auto toY = canvasHeight / 2.0 -
-                         (to.x_ / common::angstrom).value() / range * canvasHeight / 2.0;
-        canvas->addLine(QLine(QPoint(qRound(fromX), qRound(fromY)),
-                              QPoint(qRound(toX), qRound(toY))));
-      }
-    }
-
-    if (use3DView && use3DView->isChecked() && view3D) {
-      for (size_t i = 1; i < track.points.size(); ++i) {
-        const auto &from = track.points[i - 1];
-        const auto &to = track.points[i];
-        view3D->requestDrawLine(
-            QVector3D((from.x_ / common::angstrom).value(),
-                      (from.y_ / common::angstrom).value(),
-                      (from.z_ / common::angstrom).value()),
-            QVector3D((to.x_ / common::angstrom).value(),
-                      (to.y_ / common::angstrom).value(),
-                      (to.z_ / common::angstrom).value()), Qt::green);
-      }
-    }
-
-  }
-}
-
-void MainWindow::cancelSimulation() {
-  if (!activeSimulation) {
-    return;
-  }
-  activeSimulation->request_cancel();
-  updateResultPane(QStringLiteral("Cancellation requested..."));
-  if (cancelButton) {
-    cancelButton->setEnabled(false);
-  }
-}
-
 void MainWindow::runSimulation() {
-  if (activeSimulation) {
-    return;
-  }
   if (enableLoggingCheck && enableLoggingCheck->isChecked()) {
     const auto outputDir = outputDirectoryEdit->text().trimmed();
     const auto logFile = QDir(outputDir).absoluteFilePath(logFileEdit->text().trimmed());
@@ -692,15 +569,18 @@ void MainWindow::runSimulation() {
   const auto totalOutput = buildOutputPath(totalOutputEdit->text().trimmed());
   const auto particleTreeOutput = buildOutputPath(particleTreeEdit->text().trimmed());
 
-    common::energy_quantity electron_stopping_energy =
-      electronStoppingEnergySpinBox->value() * common::kilo_electron_volt;
+  common::energy_quantity electron_stopping_energy =
+      40.0 * common::electron_volt; // Energy at which electrons stop.
   common::energy_quantity ion_stopping_energy =
       40.0 * common::electron_volt; // Typical for iron.
   common::energy_quantity ion_displacement_energy =
       40.0 * common::electron_volt; // Typical for iron
-  bool log_single_displacement = logSingleDisplacementCheck->isChecked();
-  size_t divisor_angle_number = electronAngleDivisorSpinBox->value();
-  size_t flying_distance_number = electronFlyingDistanceSpinBox->value();
+  bool log_single_displacement = false;
+  size_t divisor_angle_number = 1000; // Break angle range into 1000 segements.
+                                      // TEST: Test with different numbers
+  size_t flying_distance_number =
+      1000; // Break flying distnaces into groups of 1000. TEST: Test with
+            // different numbers
 
   bool is_electron =
       (incidentElectron->checkState() ==
@@ -727,13 +607,7 @@ void MainWindow::runSimulation() {
       is_electron, incident_energy, thread_count, incident_angle, 100, 100, 100,
       100, displacementOutput.toStdString(), electronicOutput.toStdString(),
       nuclearOutput.toStdString(), totalOutput.toStdString(),
-      enableLoggingCheck->isChecked(), particleTreeOutput.toStdString(),
-      electronScreeningFileEdit->text().trimmed().toStdString(),
-      mottScatteringFileEdit->text().trimmed().toStdString(),
-      electronScreeningCountSpinBox->value(),
-      mottScatteringCountSpinBox->value(),
-      logEndOfFlyingDistanceCheck->isChecked(),
-      logStoppingPointCheck->isChecked());
+      enableLoggingCheck->isChecked(), particleTreeOutput.toStdString());
 
   // Create AMCSET volume (TODO: Read this from a file and allow a user to
   // configure)
@@ -823,29 +697,24 @@ void MainWindow::runSimulation() {
 
   auto volume = common::Volume(std::move(layers));
 
-  // Publish one immutable, completed bombardment track for the GUI to consume.
-  auto simulation = std::make_unique<common::Simulation>(
-      settings, std::move(volume),
-      [this](const std::vector<common::Coordinate> &points,
-             size_t bombardment_id) {
-        std::lock_guard<std::mutex> lock(trackQueueMutex);
-          constexpr size_t maxPendingTracks = 8;
-          if (completedTrackQueue.size() < maxPendingTracks) {
-            completedTrackQueue.push_back({points, bombardment_id});
-          }
-      });
+  // Create the AMCSET simulation object. PERF: Replace the hacky lambda drawing
+  // function with proper queue feed to the frontend so drawing doesn't slow
+  // down the simulation.
+  // Use an empty draw function; frontend will poll the simulation queue instead.
+  auto simulation = std::make_unique<common::Simulation>(settings, std::move(volume),
+                                                         [](const std::vector<common::Coordinate> &, size_t) {});
 
   activeSimulation = simulation.get();
-  simulationFinished_.store(false, std::memory_order_release);
-  {
-    std::lock_guard<std::mutex> lock(trackQueueMutex);
-    completedTrackQueue.clear();
-  }
 
   try {
     launchSimulationThread(std::move(simulation));
-    if (cancelButton) {
-      cancelButton->setEnabled(true);
+    // Start a short-interval timer to poll for completed bombardment
+    // collision vectors and draw them in the UI. This yields for 1ms
+    // after each processed bombardment to give the backend time to publish.
+    if (!bombardmentPollTimer) {
+      bombardmentPollTimer = new QTimer(this);
+      connect(bombardmentPollTimer, &QTimer::timeout, this, &MainWindow::pollBombardmentQueue);
+      bombardmentPollTimer->start(1);
     }
   } catch (const std::exception &e) {
     common::print_exception(e);
@@ -868,10 +737,59 @@ void MainWindow::update3DViewMode(Qt::CheckState state) {
   }
 }
 
-MainWindow::~MainWindow() {
-  if (activeSimulation) {
-    activeSimulation->request_cancel();
+void MainWindow::pollBombardmentQueue() {
+  if (!activeSimulation) return;
+  std::vector<common::CollisionPoint> vec;
+  if (!activeSimulation->try_pop_bombardment_results(vec)) {
+    // no data
+    return;
   }
+
+  const auto canvasPtr = QPointer<Canvas>(canvas);
+  const auto viewPtr = QPointer<Widget3DView>(view3D);
+  const auto counterPtr = QPointer<Counter>(counter);
+
+  const auto range = activeSimulation->get_settings(&common::Simulation::Settings::range_);
+
+  if (canvasPtr && use2DView && use2DView->checkState() == Qt::Checked) {
+    const auto width = canvasPtr->width();
+    const auto half_height = canvasPtr->height() / 2;
+    for (size_t i = 0; i + 1 < vec.size(); ++i) {
+      const auto &p1 = vec[i].coordinate;
+      const auto &p2 = vec[i + 1].coordinate;
+      const auto start_x = (p1.x_ / range).value() * width + half_height;
+      const auto start_z = (p1.z_ / range).value() * width;
+      const auto finish_x = (p2.x_ / range).value() * width + half_height;
+      const auto finish_z = (p2.z_ / range).value() * width;
+      canvasPtr->addLine({(int)start_z, (int)start_x, (int)finish_z, (int)finish_x});
+    }
+  }
+
+  if (viewPtr && use3DView && use3DView->checkState() == Qt::Checked) {
+    for (size_t i = 0; i + 1 < vec.size(); ++i) {
+      const auto &p1 = vec[i].coordinate;
+      const auto &p2 = vec[i + 1].coordinate;
+      const auto start_x = p1.x_ / common::angstrom;
+      const auto start_y = p1.y_ / common::angstrom;
+      const auto start_z = p1.z_ / common::angstrom;
+      const auto finish_x = p2.x_ / common::angstrom;
+      const auto finish_y = p2.y_ / common::angstrom;
+      const auto finish_z = p2.z_ / common::angstrom;
+      QVector3D point1(start_x, start_y, start_z);
+      QVector3D point2(finish_x, finish_y, finish_z);
+      viewPtr->requestDrawLine(point1, point2, Qt::green);
+    }
+  }
+
+  if (counterPtr && activeSimulation != nullptr) {
+    counterPtr->setValue(static_cast<int>(activeSimulation->get_completed_bombardment_count()));
+  }
+
+  // Yield for 1ms to allow backend to publish
+  QThread::msleep(1);
+}
+
+MainWindow::~MainWindow() {
   if (simulationThread) {
     simulationThread->quit();
     simulationThread->wait();
@@ -926,16 +844,12 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   auto *runButton = new QPushButton("Run Simulation");
   runButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   connect(runButton, &QPushButton::clicked, this, &MainWindow::runSimulation);
-  auto *cancelButtonWidget = new QPushButton("Cancel Run ");
-  this->cancelButton = cancelButtonWidget;
-  cancelButtonWidget->setSizePolicy(QSizePolicy::Expanding,
-                                    QSizePolicy::Expanding);
-  cancelButtonWidget->setEnabled(false);
-  connect(cancelButtonWidget, &QPushButton::clicked, this,
-          &MainWindow::cancelSimulation);
+  auto *cancelButton = new QPushButton("Cancel Run ");
+  cancelButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  // TODO: Figure out how to implement cancellation.
 
   runCancelButtonLayout->addWidget(runButton);
-  runCancelButtonLayout->addWidget(cancelButtonWidget);
+  runCancelButtonLayout->addWidget(cancelButton);
 
   canvas = new Canvas;
   canvas->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
@@ -1033,10 +947,6 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   createMenus();
   createSettingsDialog();
 
-  auto *trackTimer = new QTimer(this);
-  connect(trackTimer, &QTimer::timeout, this, &MainWindow::drainTrackQueue);
-  trackTimer->start(16);
-
   auto message = tr("A context menu is available by right-clicking");
   statusBar()->showMessage(message);
   setWindowTitle(tr("AMCSET"));
@@ -1065,14 +975,6 @@ QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
   const auto defaultEnergy = 10;
   incidentEnergy->setValue(defaultEnergy);
   incidentFormLayout->addRow("Incident Energy (keV)", incidentEnergy);
-
-  electronStoppingEnergySpinBox = new QDoubleSpinBox(this);
-  electronStoppingEnergySpinBox->setRange(0.000001, 1000.0);
-  electronStoppingEnergySpinBox->setDecimals(6);
-  electronStoppingEnergySpinBox->setValue(0.04);
-  electronStoppingEnergyFormIndex = incidentFormLayout->rowCount();
-  incidentFormLayout->addRow("Electron stopping energy (keV)",
-                             electronStoppingEnergySpinBox);
 
   incidentMass = new QSpinBox(this);
   incidentMass->setRange(1, 295);
@@ -1106,6 +1008,12 @@ QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
   bombardmentCountSpinBox->setValue(defaultBombardments);
   incidentFormLayout->addRow("Number of Bombardments", bombardmentCountSpinBox);
 
+  threadCountSpinBox = new QSpinBox(this);
+  const auto numberOfThreads = std::thread::hardware_concurrency();
+  threadCountSpinBox->setRange(1, numberOfThreads);
+  threadCountSpinBox->setValue(numberOfThreads);
+  incidentFormLayout->addRow("Number of Threads", threadCountSpinBox);
+
   rangeSpinBox = new QDoubleSpinBox(this);
   const auto minRange = 0.1;
   const auto maxRange = std::numeric_limits<decltype(minRange)>::max();
@@ -1137,6 +1045,25 @@ QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
   counterLabel->setText(
       QString("Bombardment %1 out of %2").arg(0).arg(defaultBombardments));
   counter = new Counter(this);
+  QTimer *timer = new QTimer(this);
+  connect(timer, &QTimer::timeout, this, [this]() {
+    if (activeSimulation != nullptr) {
+      const auto completed = static_cast<int>(
+          activeSimulation->get_completed_bombardment_count());
+      if (completed != counter->getValue()) {
+        counter->setValue(completed);
+      }
+    }
+
+    if (counter->hasChanged()) {
+      int value = counter->getValue();
+      auto totalBombardments = bombardmentCountSpinBox->value();
+      counterLabel->setText(QString("Bombardment %1 out of %2")
+                                .arg(value)
+                                .arg(totalBombardments));
+    }
+  });
+  timer->start(10); // check every 100ms
   incidentFormLayout->addRow("Bombardment Counter", counterLabel);
 
   return formGroupBox;
@@ -1148,9 +1075,6 @@ void MainWindow::toggleIncidentIonFormVisibility(int state) {
   incidentFormLayout->setRowVisible(incidentChargeFormIndex,
                                     state != Qt::Checked);
   incidentMass->setVisible(state != Qt::Checked);
-  if (electronSettingsGroup) {
-    electronSettingsGroup->setVisible(state == Qt::Checked);
-  }
 }
 
 void MainWindow::handleLayerButtonClicked(size_t row) { openLayerWindow(row); }
@@ -1589,57 +1513,6 @@ void MainWindow::createSettingsDialog() {
   auto *formLayout = new QFormLayout();
   formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   formLayout->setLabelAlignment(Qt::AlignLeft);
-
-    auto *generalSettingsGroup = new QGroupBox(tr("Simulation controls"), settingsTab);
-    auto *generalSettingsLayout = new QFormLayout(generalSettingsGroup);
-    logSingleDisplacementCheck = new QCheckBox(generalSettingsGroup);
-    logEndOfFlyingDistanceCheck = new QCheckBox(generalSettingsGroup);
-    logStoppingPointCheck = new QCheckBox(generalSettingsGroup);
-    generalSettingsLayout->addRow(tr("Log single displacements"),
-                  logSingleDisplacementCheck);
-    generalSettingsLayout->addRow(tr("Log end of flying distance only"),
-                  logEndOfFlyingDistanceCheck);
-    generalSettingsLayout->addRow(tr("Log stopping point only"),
-                  logStoppingPointCheck);
-    threadCountSpinBox = new QSpinBox(generalSettingsGroup);
-    const auto numberOfThreads = std::max(1u, std::thread::hardware_concurrency());
-    threadCountSpinBox->setRange(1, static_cast<int>(numberOfThreads));
-    threadCountSpinBox->setValue(static_cast<int>(numberOfThreads));
-    generalSettingsLayout->addRow(tr("Number of threads"), threadCountSpinBox);
-    settingsLayout->addWidget(generalSettingsGroup);
-
-    electronSettingsGroup = new QGroupBox(tr("Electron simulation"), settingsTab);
-    auto *electronSettingsLayout = new QFormLayout(electronSettingsGroup);
-    electronScreeningFileEdit = new QLineEdit(
-      QStringLiteral("common/assets/electron_screening_parameters.csv"),
-      electronSettingsGroup);
-    mottScatteringFileEdit = new QLineEdit(
-      QStringLiteral("common/assets/mott_scattering_parameters.csv"),
-      electronSettingsGroup);
-    electronScreeningCountSpinBox = new QSpinBox(electronSettingsGroup);
-    electronScreeningCountSpinBox->setRange(1, 10000);
-    electronScreeningCountSpinBox->setValue(92);
-    mottScatteringCountSpinBox = new QSpinBox(electronSettingsGroup);
-    mottScatteringCountSpinBox->setRange(1, 10000);
-    mottScatteringCountSpinBox->setValue(118);
-    electronAngleDivisorSpinBox = new QSpinBox(electronSettingsGroup);
-    electronAngleDivisorSpinBox->setRange(8, 100000);
-    electronAngleDivisorSpinBox->setValue(1000);
-    electronFlyingDistanceSpinBox = new QSpinBox(electronSettingsGroup);
-    electronFlyingDistanceSpinBox->setRange(1, 100000);
-    electronFlyingDistanceSpinBox->setValue(1000);
-    electronSettingsLayout->addRow(tr("Screening parameters file"),
-                   electronScreeningFileEdit);
-    electronSettingsLayout->addRow(tr("Screening parameter elements"),
-                   electronScreeningCountSpinBox);
-    electronSettingsLayout->addRow(tr("Mott scattering parameters file"),
-                   mottScatteringFileEdit);
-    electronSettingsLayout->addRow(tr("Mott scattering elements"),
-                   mottScatteringCountSpinBox);
-    electronSettingsLayout->addRow(tr("Angle divisions"), electronAngleDivisorSpinBox);
-    electronSettingsLayout->addRow(tr("Flying distances"), electronFlyingDistanceSpinBox);
-    settingsLayout->addWidget(electronSettingsGroup);
-    toggleIncidentIonFormVisibility(incidentElectron->checkState());
 
   auto *outputDirRow = new QWidget(settingsTab);
   auto *outputDirLayout = new QHBoxLayout(outputDirRow);

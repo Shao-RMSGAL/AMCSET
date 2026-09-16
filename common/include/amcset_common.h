@@ -27,7 +27,6 @@
 
 // Includes{{{
 
-#include <array>
 #include <boost/units/systems/si/length.hpp>
 #include <iomanip>
 #include <memory>
@@ -54,6 +53,7 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
+#include <deque>
 
 // Boost random numbers
 #include <boost/random/discrete_distribution.hpp>
@@ -117,6 +117,15 @@ struct Coordinate {
   constexpr Coordinate(length_quantity x, length_quantity y,
                        length_quantity z) noexcept
       : x_(x), y_(y), z_(z) {}
+};
+
+//! A struct to hold a single collision point including velocity and generation
+struct CollisionPoint {
+  Coordinate coordinate;    //!< Position where nuclear energy lost
+  double vx = 0.0;         //!< Velocity x-component (derived from quaternion & energy)
+  double vy = 0.0;         //!< Velocity y-component
+  double vz = 0.0;         //!< Velocity z-component
+  size_t generation = 0;   //!< Generation number: 0 = incident, 1 = primary knock-on, ...
 };
 
 struct Quaternion {
@@ -607,7 +616,8 @@ public:
   Particle(size_t z_number, size_t mass_number, const Simulation &simulation,
            boost::random::uniform_01<double> &uniform_distribution,
            boost::random::mt19937 &random_number_generator,
-           ParticleDataLeaf &data_leaf, Bombardment &bomardment);
+           ParticleDataLeaf &data_leaf, Bombardment &bomardment,
+           size_t generation = 0);
 
   /*!
    * \brief A pure virtual firing function for Particle.
@@ -722,6 +732,7 @@ protected:
   const Simulation &simulation_; //!< Reference to the simulation object
   Velocity velocity_;            //!< Current velocity of the particle
   Coordinate coordinate_;        //!< Current coordinate of the particle
+  size_t generation_ = 0;        //!< Generation (0 incident, >0 knock-ons)
   boost::random::uniform_01<double>
       &uniform_distribution_; //!< Reference to uniform distribution between 0
                               //!< and 1 for various uses.
@@ -752,9 +763,10 @@ public:
   Electron(size_t z_number, size_t mass_number, const Simulation &simulation,
            boost::random::uniform_01<double> &uniform_distribution,
            boost::random::mt19937 &random_number_generator,
-           ParticleDataLeaf &data_leaf, Bombardment &bombardment)
-      : Particle(z_number, mass_number, simulation, uniform_distribution,
-                 random_number_generator, data_leaf, bombardment) {};
+       ParticleDataLeaf &data_leaf, Bombardment &bombardment,
+       size_t generation = 0)
+     : Particle(z_number, mass_number, simulation, uniform_distribution,
+          random_number_generator, data_leaf, bombardment, generation) {};
 
   /*!
    * \brief Fire an electron
@@ -762,26 +774,6 @@ public:
    * Fires an electron using electron-specific energy loss functions.
    */
   void fire() override;
-
-  static void load_transport_tables(const std::string &screening_file,
-                                    const std::string &mott_file,
-                                    size_t screening_element_count,
-                                    size_t mott_element_count);
-  static double division_angle(size_t index, size_t divisor_count);
-  static double interpolate_scattering_angle(
-      const std::vector<double> &angles,
-      const std::vector<double> &partial_cross_sections,
-      double total_cross_section, double random_cross_section);
-  static size_t screening_parameter_count() noexcept;
-  static size_t mott_parameter_count() noexcept;
-
-private:
-  using screening_row = std::array<double, 6>;
-  using mott_row = std::array<double, 6>;
-
-  static std::vector<screening_row> screening_parameters_;
-  static std::vector<std::array<mott_row, 5>> mott_parameters_;
-  static std::mutex transport_table_mutex_;
 }; // }}}
 
 class Volume;
@@ -795,10 +787,6 @@ class Volume;
  */
 class Ion : public Particle {
 public:
-  using Particle::rotate_inplace;
-  using Particle::set_coordinate;
-  using Particle::set_velocity;
-
   /*!
    * \brief Construct an electron.
    *
@@ -810,9 +798,10 @@ public:
   Ion(size_t z_number, size_t mass_number, const Simulation &simulation,
       boost::random::uniform_01<double> &uniform_distribution,
       boost::random::mt19937 &random_number_generator,
-      ParticleDataLeaf &data_leaf, Bombardment &bombardment)
+      ParticleDataLeaf &data_leaf, Bombardment &bombardment,
+      size_t generation = 0)
       : Particle(z_number, mass_number, simulation, uniform_distribution,
-                 random_number_generator, data_leaf, bombardment) {};
+           random_number_generator, data_leaf, bombardment, generation) {};
 
   /*!
    * \brief Fire an ion
@@ -1220,6 +1209,12 @@ public:
    */
   size_t get_id() const noexcept { return id_; }
 
+  /*! Add a collision point to this bombardment's internal list. */
+  void add_collision_point(const CollisionPoint &pt) { collision_points_.push_back(pt); }
+
+  /*! Move-out full collision vector and clear internal storage. */
+  std::vector<CollisionPoint> take_collision_points() { std::vector<CollisionPoint> tmp = std::move(collision_points_); collision_points_.clear(); return tmp; }
+
   /*!
    * \brief Returns a reference to the ParticleDataLeaf.
    *
@@ -1236,6 +1231,7 @@ public:
 
 private:
   Simulation &simulation_;
+  std::vector<CollisionPoint> collision_points_;
   amcset::common::Tallies local_tallies_;
   std::unique_ptr<Particle> incident_particle_;
   boost::random::mt19937 random_number_generator_;
@@ -1310,12 +1306,6 @@ public:
 
     const angle_quantity
         incident_angle_; //!< The incident anlge of the particle
-    const std::string electron_screening_parameters_file_;
-    const std::string mott_scattering_parameters_file_;
-    const size_t electron_screening_parameter_count_;
-    const size_t mott_scattering_parameter_count_;
-    const bool log_end_of_flying_distance_only_;
-    const bool log_stopping_point_only_;
     const size_t displacement_bin_count_;
     const size_t electronic_energy_loss_bin_count_;
     const size_t nuclear_energy_loss_bin_count_;
@@ -1352,15 +1342,7 @@ public:
                  "output/total_loss_histogram.csv",
              bool log_particle_tree = false,
              std::string particle_tree_output_file =
-               "output/particle_tree.json",
-             std::string electron_screening_parameters_file =
-               "common/assets/electron_screening_parameters.csv",
-             std::string mott_scattering_parameters_file =
-               "common/assets/mott_scattering_parameters.csv",
-             size_t electron_screening_parameter_count = 92,
-             size_t mott_scattering_parameter_count = 118,
-             bool log_end_of_flying_distance_only = false,
-             bool log_stopping_point_only = false);
+                 "output/particle_tree.json");
   };
 
   Simulation() = delete;
@@ -1417,14 +1399,6 @@ public:
    */
   int run_simulation();
 
-  void request_cancel() noexcept {
-    cancel_requested_.store(true, std::memory_order_release);
-  }
-
-  bool is_cancel_requested() const noexcept {
-    return cancel_requested_.load(std::memory_order_acquire);
-  }
-
   size_t get_completed_bombardment_count() const noexcept {
     return completed_bombardments_.load(std::memory_order_acquire);
   }
@@ -1472,7 +1446,16 @@ private:
   boost::asio::thread_pool thread_pool_;
   DrawFunction draw_function_; //!< Function used for drawing to the canvas
   std::atomic<size_t> completed_bombardments_{0};
-  std::atomic<bool> cancel_requested_{false};
+  // Queue of completed bombardment collision vectors for UI consumption
+  std::deque<std::vector<CollisionPoint>> bombardment_queue_;
+  mutable std::mutex bombardment_queue_mutex_;
+
+public:
+  /*! Push a completed bombardment collision vector into the queue. Thread-safe. */
+  void push_bombardment_results(std::vector<CollisionPoint> &&vec);
+
+  /*! Try to pop a bombardment collision vector from the queue. Returns true if one was popped. Thread-safe. */
+  bool try_pop_bombardment_results(std::vector<CollisionPoint> &out);
 }; // }}}
 
 /*!

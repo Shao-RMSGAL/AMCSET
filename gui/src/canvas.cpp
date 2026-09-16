@@ -19,6 +19,7 @@
  *  \brief A class for drawing particle trajectories in the user interface
  */
 
+// Qt includes
 #include <QPainter>
 #include <QPainterPath>
 #include <QTimer>
@@ -27,29 +28,57 @@
 #include "canvas.h"
 
 Canvas::Canvas(QWidget *parent) : QWidget(parent) {
-  QTimer *timer = new QTimer(this);
-  connect(timer, &QTimer::timeout, this, [this]() {
-    update();
-  });
-  timer->start(16); // ~60 FPS
+  renderCache = QPixmap(size());
+  renderCache.fill(Qt::transparent);
+}
+
+void Canvas::flushLinesToBitmap() {
+  if (lines.isEmpty()) {
+    return;
+  }
+
+  if (renderCache.size() != size()) {
+    renderCache = QPixmap(size());
+    renderCache.fill(Qt::transparent);
+  }
+
+  QPainter painter(&renderCache);
+  for (const auto &line : lines) {
+    painter.drawLine(line);
+  }
+  lines.clear();
 }
 
 void Canvas::addLine(const QLine &line) {
-  std::lock_guard<std::mutex> lock(mutex);
-  lines.emplace_back(line);
+  {
+    QMutexLocker locker(&mutex);
+    lines.emplace_back(line);
+    if (lines.size() >= kBitmapFlushThreshold) {
+      flushLinesToBitmap();
+    }
+  }
+
+  update();
 }
 
 void Canvas::clear() {
-  std::lock_guard<std::mutex> lock(mutex);
+  QMutexLocker locker(&mutex);
   lines.clear();
+  renderCache = QPixmap(size());
+  renderCache.fill(Qt::transparent);
   update();
 }
 
 void Canvas::paintEvent(QPaintEvent *event) {
   Q_UNUSED(event);
-  std::lock_guard<std::mutex> lock(mutex);
+  QMutexLocker locker(&mutex);
+
   QPainter painter(this);
-  for (auto &line : lines) {
+  if (!renderCache.isNull()) {
+    painter.drawPixmap(0, 0, renderCache);
+  }
+
+  for (const auto &line : lines) {
     painter.drawLine(line);
   }
 }

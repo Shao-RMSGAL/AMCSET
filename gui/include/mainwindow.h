@@ -38,12 +38,11 @@
 #include <QUndoStack>
 #include <QVBoxLayout>
 #include <QtGraphs/QLineSeries>
-#include <deque>
-#include <atomic>
-#include <mutex>
+#include <boost/lockfree/spsc_queue.hpp>
 #include <qnamespace.h>
 #include <qpainter.h>
 #include <qthread.h>
+#include <QTimer>
 
 // Local includes
 #include "3dview.h"
@@ -94,7 +93,7 @@ private slots:
   void toggleIncidentIonFormVisibility(int state);
   void createLayerRow();
   void runSimulation();
-  void cancelSimulation();
+  void pollBombardmentQueue();
 
 private:
   void createActions();
@@ -105,7 +104,6 @@ private:
   void browseOutputFile(QLineEdit *lineEdit, const QString &title,
                        const QString &defaultSuffix = QString());
   void populateResultCharts();
-  void drainTrackQueue();
   QString buildOutputPath(const QString &filename) const;
   void updateResultPane(const QString &message);
   void refreshResultsPane();
@@ -151,32 +149,12 @@ private:
   QCheckBox *incidentElectron = nullptr;
   QCheckBox *damageCascade = nullptr;
   QDoubleSpinBox *incidentEnergy = nullptr;
-  QDoubleSpinBox *electronStoppingEnergySpinBox = nullptr;
-  QSpinBox *electronAngleDivisorSpinBox = nullptr;
-  QSpinBox *electronFlyingDistanceSpinBox = nullptr;
-  QLineEdit *electronScreeningFileEdit = nullptr;
-  QLineEdit *mottScatteringFileEdit = nullptr;
-  QSpinBox *electronScreeningCountSpinBox = nullptr;
-  QSpinBox *mottScatteringCountSpinBox = nullptr;
-  QCheckBox *logSingleDisplacementCheck = nullptr;
-  QCheckBox *logEndOfFlyingDistanceCheck = nullptr;
-  QCheckBox *logStoppingPointCheck = nullptr;
   QSpinBox *incidentMass = nullptr;
   QSpinBox *incidentCharge = nullptr;
   QDoubleSpinBox *incidentAngle = nullptr;
   QFormLayout *incidentFormLayout = nullptr;
   size_t incidentChargeFormIndex;
   size_t incidentMassFormIndex;
-  size_t electronScreeningFileFormIndex;
-  size_t mottScatteringFileFormIndex;
-  size_t electronScreeningCountFormIndex;
-  size_t mottScatteringCountFormIndex;
-  size_t electronStoppingEnergyFormIndex;
-  size_t electronAngleDivisorFormIndex;
-  size_t electronFlyingDistanceFormIndex;
-  size_t logSingleDisplacementFormIndex;
-  size_t logEndOfFlyingDistanceFormIndex;
-  size_t logStoppingPointFormIndex;
   QSpinBox *bombardmentCountSpinBox = nullptr;
   QSpinBox *threadCountSpinBox = nullptr;
   QDoubleSpinBox *rangeSpinBox = nullptr;
@@ -194,7 +172,6 @@ private:
   QLineEdit *particleTreeEdit = nullptr;
   QCheckBox *enableLoggingCheck = nullptr;
   QPlainTextEdit *resultPane = nullptr;
-  QGroupBox *electronSettingsGroup = nullptr;
 
   // View controls
   QCheckBox *use3DView = nullptr;
@@ -218,14 +195,7 @@ private:
 
   common::Simulation *activeSimulation = nullptr;
   SimulationThread *simulationThread = nullptr;
-  QPushButton *cancelButton = nullptr;
-  std::atomic<bool> simulationFinished_{true};
-  struct CompletedTrack {
-    std::vector<common::Coordinate> points;
-    size_t bombardmentId = 0;
-  };
-  std::mutex trackQueueMutex;
-  std::deque<CompletedTrack> completedTrackQueue;
+  QTimer *bombardmentPollTimer = nullptr;
   // For Undo/Redo
   // QUndoStack *undoStack; // TODO: Implement undo/redo
 

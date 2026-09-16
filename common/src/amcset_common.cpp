@@ -40,7 +40,6 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
-#include <limits>
 // #include <limits>
 #include <numeric>
 #include <random>
@@ -52,110 +51,6 @@
 
 namespace amcset {
 namespace common {
-
-std::vector<Electron::screening_row> Electron::screening_parameters_;
-std::vector<std::array<Electron::mott_row, 5>> Electron::mott_parameters_;
-std::mutex Electron::transport_table_mutex_;
-
-void Electron::load_transport_tables(const std::string &screening_file,
-                                      const std::string &mott_file,
-                                      size_t screening_element_count,
-                                      size_t mott_element_count) {
-  auto read_rows = [](const std::string &filename, size_t row_count) {
-    std::ifstream input(filename);
-    if (!input.is_open()) {
-      throw std::runtime_error("Unable to open electron transport table: " +
-                               filename);
-    }
-
-    std::vector<std::array<double, 6>> rows;
-    std::string line;
-    while (std::getline(input, line)) {
-      if (line.empty() || line.front() == '#') {
-        continue;
-      }
-
-      std::array<double, 6> row{};
-      std::istringstream values(line);
-      std::string value;
-      size_t index = 0;
-      try {
-        while (std::getline(values, value, ',') && index < row.size()) {
-          row[index++] = std::stod(value);
-        }
-      } catch (const std::exception &) {
-        continue;
-      }
-      if (index == row.size()) {
-        rows.push_back(row);
-      }
-      if (rows.size() == row_count) {
-        break;
-      }
-    }
-
-    if (rows.size() != row_count) {
-      throw std::runtime_error("Electron transport table has " +
-                               std::to_string(rows.size()) +
-                               " rows; expected " + std::to_string(row_count));
-    }
-    return rows;
-  };
-
-  const auto screening = read_rows(screening_file, screening_element_count);
-  const auto mott_rows = read_rows(mott_file, mott_element_count * 5);
-
-  std::lock_guard<std::mutex> lock(transport_table_mutex_);
-  screening_parameters_ = screening;
-  mott_parameters_.assign(mott_element_count, {});
-  for (size_t element = 0; element < mott_element_count; ++element) {
-    for (size_t row = 0; row < 5; ++row) {
-      mott_parameters_[element][row] = mott_rows[element * 5 + row];
-    }
-  }
-}
-
-double Electron::division_angle(size_t index, size_t divisor_count) {
-  return -pi / 9.0 *
-         (1.0 - std::pow(10.0, static_cast<double>(index + 1) /
-                                  static_cast<double>(divisor_count)));
-}
-
-double Electron::interpolate_scattering_angle(
-    const std::vector<double> &angles,
-    const std::vector<double> &partial_cross_sections,
-    double total_cross_section, double random_cross_section) {
-  double previous_fraction = 0.0;
-  for (size_t j = 0; j < angles.size(); ++j) {
-    const double fraction = partial_cross_sections[j] / total_cross_section;
-    if (fraction > random_cross_section) {
-      if (j > 0 && j < angles.size() - 1) {
-        return (angles[j] + angles[j + 1]) / 2.0 -
-               (fraction - random_cross_section) *
-                   (angles[j + 1] - angles[j - 1]) / 2.0 /
-                   (fraction - previous_fraction);
-      }
-      if (j == 0) {
-        return (angles[j] + angles[j + 1]) / 2.0 -
-               (fraction - random_cross_section) *
-                   (angles[j] + angles[j + 1]) / 2.0 /
-                   (fraction - previous_fraction);
-      }
-      return pi - (fraction - random_cross_section) *
-                       (pi - (angles[j - 2] + angles[j - 3]) / 2.0) /
-                       (fraction - previous_fraction);
-    }
-  }
-  return angles.back();
-}
-
-size_t Electron::screening_parameter_count() noexcept {
-  return screening_parameters_.size();
-}
-
-size_t Electron::mott_parameter_count() noexcept {
-  return mott_parameters_.size();
-}
 
 // Layer function implementations{{{
 Layer::Layer(material_vector &&material, length_quantity depth,
@@ -320,13 +215,7 @@ Simulation::Settings::Settings(
     std::string electronic_energy_loss_histogram_output_file,
     std::string nuclear_energy_loss_histogram_output_file,
     std::string total_energy_loss_histogram_output_file,
-    bool log_particle_tree, std::string particle_tree_output_file,
-    std::string electron_screening_parameters_file,
-    std::string mott_scattering_parameters_file,
-    size_t electron_screening_parameter_count,
-    size_t mott_scattering_parameter_count,
-    bool log_end_of_flying_distance_only,
-    bool log_stopping_point_only) try
+    bool log_particle_tree, std::string particle_tree_output_file) try
     : electron_stopping_energy_(electron_stopping_energy), z_number_(z_number),
       mass_number_(mass_number),
       incident_particle_properties_(
@@ -340,12 +229,6 @@ Simulation::Settings::Settings(
       bombardment_count_(bombardment_count), is_electron_(is_electron),
       incident_energy_(incident_energy), thread_count_(thread_count),
       incident_angle_(incident_angle),
-      electron_screening_parameters_file_(std::move(electron_screening_parameters_file)),
-      mott_scattering_parameters_file_(std::move(mott_scattering_parameters_file)),
-      electron_screening_parameter_count_(electron_screening_parameter_count),
-      mott_scattering_parameter_count_(mott_scattering_parameter_count),
-      log_end_of_flying_distance_only_(log_end_of_flying_distance_only),
-      log_stopping_point_only_(log_stopping_point_only),
       displacement_bin_count_(displacement_bin_count),
       electronic_energy_loss_bin_count_(electronic_energy_loss_bin_count),
       nuclear_energy_loss_bin_count_(nuclear_energy_loss_bin_count),
@@ -432,37 +315,19 @@ Simulation::Simulation(const Settings settings, Volume &&volume,
 
 int Simulation::run_simulation() try {
   LOG(INFO) << "Starting Simulation...";
-  if (settings_.is_electron_) {
-    Electron::load_transport_tables(
-        settings_.electron_screening_parameters_file_,
-        settings_.mott_scattering_parameters_file_,
-        settings_.electron_screening_parameter_count_,
-        settings_.mott_scattering_parameter_count_);
-  }
   for (auto &bombardment : bombardments_) {
     // TODO: Enable multithreading
-    auto *bombardment_ptr = &bombardment;
-    boost::asio::post(thread_pool_, [this, bombardment_ptr]() {
-      if (is_cancel_requested()) {
-        return;
-      }
+    boost::asio::post(thread_pool_, [this, &bombardment]() {
       VLOG(1) << "Starting Bombardment...";
-      bombardment_ptr->run_bombardment();
-      if (!is_cancel_requested()) {
-        increment_completed_bombardment_count();
-      }
+      bombardment.run_bombardment();
+      increment_completed_bombardment_count();
       VLOG(1) << "...Bombardment Complete! Completed: "
               << get_completed_bombardment_count() << "/"
               << settings_.bombardment_count_;
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
     });
   }
   thread_pool_.join();
   LOG(INFO) << "...Simulation complete";
-  if (is_cancel_requested()) {
-    LOG(INFO) << "Simulation cancelled";
-    return 2;
-  }
   // TODO: Come up with a more elegant solution to this.
   LOG(INFO) << "Saving simulation data...";
   try {
@@ -521,6 +386,19 @@ int Simulation::run_simulation() try {
   rethrow(EXCEPTION_MESSAGE(""));
 }
 
+void Simulation::push_bombardment_results(std::vector<CollisionPoint> &&vec) {
+  std::lock_guard<std::mutex> lock(bombardment_queue_mutex_);
+  bombardment_queue_.emplace_back(std::move(vec));
+}
+
+bool Simulation::try_pop_bombardment_results(std::vector<CollisionPoint> &out) {
+  std::lock_guard<std::mutex> lock(bombardment_queue_mutex_);
+  if (bombardment_queue_.empty()) return false;
+  out = std::move(bombardment_queue_.front());
+  bombardment_queue_.pop_front();
+  return true;
+}
+
 std::string Simulation::print_settings() const try {
   std::ostringstream ss;
   ss << "Electron stopping energy: " << settings_.electron_stopping_energy_
@@ -549,19 +427,6 @@ std::string Simulation::print_settings() const try {
   ss << "Is electron? " << (settings_.is_electron_ ? "Yes" : "No") << std::endl;
   ss << "Incident energy: " << settings_.incident_energy_ << std::endl;
   ss << "Thread count: " << settings_.thread_count_ << std::endl;
-    ss << "Electron screening parameters: "
-      << settings_.electron_screening_parameters_file_ << std::endl;
-    ss << "Mott scattering parameters: "
-      << settings_.mott_scattering_parameters_file_ << std::endl;
-    ss << "Electron screening elements: "
-      << settings_.electron_screening_parameter_count_ << std::endl;
-    ss << "Mott scattering elements: "
-      << settings_.mott_scattering_parameter_count_ << std::endl;
-      ss << "Log end of flying distance only: "
-        << (settings_.log_end_of_flying_distance_only_ ? "Yes" : "No")
-        << std::endl;
-      ss << "Log stopping point only: "
-        << (settings_.log_stopping_point_only_ ? "Yes" : "No") << std::endl;
   ss << "Displacement histogram bins: "
      << settings_.displacement_bin_count_ << std::endl;
   ss << "Electronic loss histogram bins: "
@@ -684,13 +549,11 @@ Bombardment::Bombardment(Simulation &simulation, size_t id) try
 }
 
 void Bombardment::run_bombardment() try {
-  if (simulation_.is_cancel_requested()) {
-    return;
-  }
   if (simulation_.get_settings(&Simulation::Settings::is_electron_)) {
     VLOG(1) << "Simulating electron bombardment...";
     incident_particle_ = std::make_unique<Electron>(
-        0, 0,
+        simulation_.get_settings(&Simulation::Settings::z_number_),
+        simulation_.get_settings(&Simulation::Settings::mass_number_),
         simulation_, uniform_distribution_, random_number_generator_,
         get_data_leaf(), *(this));
   } else {
@@ -728,6 +591,14 @@ void Bombardment::run_bombardment() try {
   // Merge local tallies into simulation-level accumulator
   simulation_.merge_tallies(local_tallies_);
 
+  // Publish collected collision points for this bombardment into the
+  // simulation queue so the frontend can consume them asynchronously.
+  try {
+    simulation_.push_bombardment_results(take_collision_points());
+  } catch (...) {
+    VLOG(1) << "Failed to publish bombardment collision points to queue";
+  }
+
   // Post-bombardment processing.
   // This goes through the incident_particle_ data_leaf_ and
   // looks for knock-ons through the list of pointers
@@ -744,7 +615,8 @@ Particle::Particle(size_t z_number, size_t mass_number,
                    const Simulation &simulation,
                    boost::random::uniform_01<double> &uniform_distribution,
                    boost::random::mt19937 &random_number_generator,
-                   ParticleDataLeaf &data_leaf, Bombardment &bombardment) try
+                   ParticleDataLeaf &data_leaf, Bombardment &bombardment,
+                   size_t generation) try
     : properties_(Particle::Properties(z_number, mass_number)),
       coordinates_(std::vector<Coordinate>()), simulation_(simulation),
       velocity_(Velocity(
@@ -762,7 +634,7 @@ Particle::Particle(size_t z_number, size_t mass_number,
       coordinate_(Coordinate(angstrom * 0.0, angstrom * 0.0, angstrom * 0.0)),
       uniform_distribution_(uniform_distribution),
       random_number_generator_(random_number_generator), data_leaf_(data_leaf),
-      bombardment_(bombardment) {
+      bombardment_(bombardment), generation_(generation) {
   VLOG(1) << "Creating particle with velocity (" << velocity_.quaternion_.r_
           << ", " << velocity_.quaternion_.z_ << ", "
           << velocity_.quaternion_.y_ << ", " << velocity_.quaternion_.z_
@@ -1256,291 +1128,8 @@ Ion::laboratory_scattering_angle(angle_quantity cm_scattering_angle,
 
 // Electron function implementations{{{
 void Electron::fire() try {
-  VLOG(1) << "Firing electron with initial energy " << velocity_.energy_;
-  const auto stopping_energy = simulation_.get_settings(
-      &Simulation::Settings::electron_stopping_energy_);
-  const auto max_depth = simulation_.get_volume().get_depth();
-  const auto displacement_energy = simulation_.get_settings(
-      &Simulation::Settings::ion_displacement_energy_);
-  const auto enable_knock_on = simulation_.get_settings(
-      &Simulation::Settings::enable_damage_cascade_);
-  const auto divisor_count = std::max<size_t>(
-      8, simulation_.get_settings(&Simulation::Settings::divisor_angle_number_));
-  const auto group_count = simulation_.get_settings(
-      &Simulation::Settings::flying_distance_number_);
-  const auto electron_rest_energy = constants::m_e * constants::c * constants::c;
-  const double rest_energy_kev = (electron_rest_energy / kilo_electron_volt).value();
-  constexpr double avogadro_number = 6.02214076e23;
-  double correction_factor = 1.0;
-  bool first_iteration = true;
-  bool escaped = false;
-
-  auto table_index = [](size_t atomic_number, size_t table_size) {
-    if (atomic_number < table_size) return atomic_number;
-    return atomic_number == 0 ? size_t{0} : atomic_number - 1;
-  };
-
-  auto relative_to_absolute = [&](double particle_angle, double target_angle) {
-    const double theta0 = std::acos(std::clamp(velocity_.quaternion_.z_, -1.0, 1.0));
-    const double alpha0 = std::atan2(velocity_.quaternion_.y_,
-                                     velocity_.quaternion_.x_);
-    const double alpha_particle =
-        uniform_distribution_(random_number_generator_) * 2.0 * pi;
-    const double alpha_target = alpha_particle + pi;
-    auto transform = [&](double theta, double alpha) {
-      const double x1 = std::sin(theta) * std::cos(alpha);
-      const double y1 = std::sin(theta) * std::sin(alpha);
-      const double z1 = std::cos(theta);
-      const double y0 = y1 * std::cos(theta0) + z1 * std::sin(theta0);
-      const double z0 = -y1 * std::sin(theta0) + z1 * std::cos(theta0);
-      const double x = x1 * std::sin(alpha0) + y0 * std::cos(alpha0);
-      const double y = -x1 * std::cos(alpha0) + y0 * std::sin(alpha0);
-      return Quaternion(0.0, x, y, z0);
-    };
-    return std::array<Quaternion, 2>{
-        transform(particle_angle, alpha_particle),
-        transform(target_angle, alpha_target)};
-  };
-
-    while (velocity_.energy_ > stopping_energy &&
-      !simulation_.is_cancel_requested()) {
-    const auto layer_pair = simulation_.get_volume().get_layer(coordinate_.z_);
-    const auto &layer = *layer_pair.first;
-    const auto target = layer.get_property(
-        layer.get_random_index(random_number_generator_));
-    const size_t atomic_number = static_cast<size_t>(target.charge_.value());
-    const auto screening_index = table_index(atomic_number, screening_parameters_.size());
-    const auto mott_index = table_index(atomic_number, mott_parameters_.size());
-    const auto target_mass_amu = (target.mass_ / atomic_mass_unit).value();
-    const double atom_density =
-        (layer.get_number_density() * constants::N_A).value();
-    const auto energy_before = velocity_.energy_;
-    const double energy_kev = (energy_before / kilo_electron_volt).value();
-    const double corrected_energy = energy_kev * correction_factor;
-    const double gamma = 1.0 + corrected_energy / rest_energy_kev;
-    const double beta_squared = 1.0 - 1.0 / (gamma * gamma);
-    if (beta_squared <= 0.0 || screening_index >= screening_parameters_.size() ||
-        mott_index >= mott_parameters_.size()) {
-      break;
-    }
-
-    const auto &screening = screening_parameters_[screening_index];
-    const auto &mott = mott_parameters_[mott_index];
-    auto differential_cross_section = [&](double theta) {
-      constexpr double beta_average = 0.7181287;
-      constexpr double electron_classical_radius = 2.817938e-15;
-      const double one_minus_cos = 1.0 - std::cos(theta);
-      const double beta_quartic = beta_squared * beta_squared;
-      const double dsc = std::pow(target.charge_.value() *
-        electron_classical_radius, 2.0) * (1.0 - beta_squared) /
-        (beta_quartic * one_minus_cos * one_minus_cos);
-      const double momentum = 2.0 * std::sqrt(beta_squared) * gamma *
-        137.0 * std::sin(theta / 2.0);
-      const double beta = std::sqrt(beta_squared);
-      double rmott = 0.0;
-      for (size_t row = 0; row < mott.size(); ++row) {
-        double coefficient = 0.0;
-        for (size_t power = 0; power < mott[row].size(); ++power) {
-          coefficient += mott[row][power] *
-              std::pow(beta - beta_average, static_cast<int>(power));
-        }
-        rmott += coefficient * std::pow(std::sqrt(one_minus_cos),
-                                        static_cast<int>(row));
-      }
-      double feq = 0.0;
-      for (size_t row = 0; row < 3; ++row) {
-        const double coefficient = screening[row];
-        const double radius = screening[row + 3];
-         feq += coefficient * radius * radius /
-           (radius * radius + momentum * momentum);
-      }
-      const double mott_factor = (1.0 - feq) * (1.0 - feq);
-      return rmott * dsc * mott_factor;
-    };
-
-    std::vector<double> angles(divisor_count);
-    std::vector<double> partial_cross_sections(divisor_count);
-    double total_cross_section = differential_cross_section(
-        division_angle(0, divisor_count)) * 2.0 * pi *
-        std::sin(division_angle(0, divisor_count)) *
-        (division_angle(1, divisor_count) - division_angle(0, divisor_count)) / 2.0;
-    for (size_t i = 0; i < divisor_count; ++i) {
-      angles[i] = division_angle(i, divisor_count);
-    }
-    partial_cross_sections[0] = total_cross_section;
-    double differential_cross_section_value = 0.0;
-    for (size_t i = 1; i < divisor_count - 1; ++i) {
-      differential_cross_section_value = differential_cross_section(angles[i]);
-      total_cross_section += differential_cross_section_value * 2.0 * pi *
-          std::sin(angles[i]) * (angles[i + 1] - angles[i - 1]) / 2.0;
-      partial_cross_sections[i] = total_cross_section;
-    }
-    total_cross_section += differential_cross_section_value * 2.0 * pi *
-        std::sin(angles.back()) *
-        (pi - (angles[divisor_count - 3] - angles[divisor_count - 2]) / 2.0);
-    partial_cross_sections.back() = total_cross_section;
-    if (!(total_cross_section > 0.0) || !std::isfinite(total_cross_section)) {
-      break;
-    }
-
-    std::vector<double> random_cross_sections(group_count);
-    std::vector<double> flying_distances(group_count);
-    std::vector<double> scattering_angles(group_count);
-    std::vector<double> elastic_losses(group_count);
-    const double spacing = std::pow(1.0 / atom_density, 1.0 / 3.0);
-    double flight_group_length = 0.0;
-    for (size_t i = 0; i < group_count &&
-               !simulation_.is_cancel_requested(); ++i) {
-      flying_distances[i] = spacing - std::log(std::max(
-          uniform_distribution_(random_number_generator_),
-          std::numeric_limits<double>::min())) /
-          (atom_density * total_cross_section);
-      flight_group_length += flying_distances[i];
-    }
-    for (auto &random_value : random_cross_sections) {
-      random_value = uniform_distribution_(random_number_generator_);
-    }
-    std::sort(random_cross_sections.begin(), random_cross_sections.end());
-    for (size_t i = 0; i < group_count &&
-               !simulation_.is_cancel_requested(); ++i) {
-      scattering_angles[i] = interpolate_scattering_angle(
-          angles, partial_cross_sections, total_cross_section,
-          random_cross_sections[i]);
-    }
-    std::shuffle(scattering_angles.begin(), scattering_angles.end(),
-                 random_number_generator_);
-
-    const double density_angstrom = atom_density * std::pow(angstrom.value(), 3);
-    const double beta = std::sqrt(beta_squared);
-    const double k_loss = 0.734 * std::pow(target.charge_.value(), 0.037);
-    double j_loss = target.charge_.value() < 13.0
-        ? 0.0115 * target.charge_.value()
-        : 0.00976 * target.charge_.value() +
-          0.0585 * std::pow(target.charge_.value(), -0.19);
-    j_loss /= 1.0 + k_loss * j_loss / corrected_energy;
-    const double ionization_per_angstrom =
-        153.55e24 * density_angstrom * target.charge_.value() /
-        avogadro_number / (beta * beta) *
-        (std::log(511.0 * beta * beta * corrected_energy /
-                  (2.0 * j_loss * j_loss * (1.0 - beta * beta))) -
-         std::log(2.0) * (2.0 * std::sqrt(1.0 - beta * beta) - 1.0 + beta * beta) +
-         1.0 - beta * beta + 0.125 *
-             std::pow(1.0 - std::sqrt(1.0 - beta * beta), 2.0));
-    const double brems_per_angstrom =
-        1.4e-4 * 1e24 * density_angstrom / avogadro_number *
-        target.charge_.value() * (target.charge_.value() + 1.0) *
-        (corrected_energy + 511.0) *
-        (4.0 * std::log(2.0 * (corrected_energy + 511.0) / 511.0) - 4.0 / 3.0);
-    double total_elastic_kev = 0.0;
-    for (size_t i = 0; i < group_count &&
-               !simulation_.is_cancel_requested(); ++i) {
-      const double sine = std::sin(scattering_angles[i]);
-      const double cosine = std::cos(scattering_angles[i]);
-      const double numerator = ((energy_kev + 511.0) * sine * sine +
-          target_mass_amu * 931.0 * 1000.0 * (1.0 - cosine)) *
-          energy_kev * (energy_kev + 2.0 * 511.0);
-      const double denominator = std::pow(energy_kev +
-          target_mass_amu * 931.5 * 1000.0, 2.0) -
-          energy_kev * (energy_kev + 2.0 * 511.0) * cosine * cosine;
-      elastic_losses[i] = numerator / denominator;
-      total_elastic_kev += elastic_losses[i];
-    }
-    const double flight_group_length_cm = flight_group_length * 100.0;
-    const double ionization_kev = std::max(0.0, ionization_per_angstrom) *
-      flight_group_length_cm;
-    const double brems_kev = std::max(0.0, brems_per_angstrom) *
-      flight_group_length_cm;
-    const double new_energy_kev = energy_kev - total_elastic_kev -
-      ionization_kev - brems_kev;
-    correction_factor = (energy_kev + new_energy_kev) /
-        (2.0 * energy_kev);
-    if (correction_factor <= 0.0 || !std::isfinite(correction_factor)) {
-      break;
-    }
-    if (first_iteration) {
-      first_iteration = false;
-      continue;
-    }
-    velocity_.energy_ = new_energy_kev * kilo_electron_volt;
-
-    for (size_t i = 0; i < group_count &&
-               !simulation_.is_cancel_requested(); ++i) {
-      const auto nuclear_loss = elastic_losses[i] * kilo_electron_volt;
-        const auto electronic_loss = std::max(0.0, ionization_per_angstrom) *
-          (flying_distances[i] * 100.0) * kilo_electron_volt;
-        const auto brems_loss = std::max(0.0, brems_per_angstrom) *
-          (flying_distances[i] * 100.0) * kilo_electron_volt;
-      const auto total_loss = nuclear_loss + electronic_loss + brems_loss;
-      bombardment_.record_energy_loss(
-          (electronic_loss + brems_loss).value(), coordinate_.z_.value(),
-          Bombardment::EnergyLossType::electronic);
-      bombardment_.record_energy_loss(nuclear_loss.value(), coordinate_.z_.value(),
-                                      Bombardment::EnergyLossType::nuclear);
-      bombardment_.record_energy_loss(total_loss.value(), coordinate_.z_.value(),
-                                      Bombardment::EnergyLossType::total);
-
-        const auto directions = relative_to_absolute(
-          scattering_angles[i], (pi - scattering_angles[i]) / 2.0);
-        velocity_.quaternion_ = directions[0];
-      coordinate_.x_ += flying_distances[i] * si::meter *
-             velocity_.quaternion_.x_;
-      coordinate_.y_ += flying_distances[i] * si::meter *
-             velocity_.quaternion_.y_;
-      coordinate_.z_ += flying_distances[i] * si::meter *
-             velocity_.quaternion_.z_;
-      if (coordinate_.z_ < 0.0 * angstrom) {
-        data_leaf_.sputter();
-        bombardment_.record_sputtered();
-        return;
-      }
-      if (coordinate_.z_ > max_depth) {
-        data_leaf_.escape();
-        escaped = true;
-        break;
-      }
-
-      if (enable_knock_on && nuclear_loss > displacement_energy) {
-        data_leaf_.add_child(ParticleDataLeaf());
-        bombardment_.record_displacement(coordinate_.z_.value());
-        Ion knock_on(atomic_number,
-                     static_cast<size_t>(std::round(target_mass_amu)),
-                     simulation_, uniform_distribution_, random_number_generator_,
-                     data_leaf_.get_children().back(), bombardment_);
-        knock_on.set_velocity(Velocity(directions[1], nuclear_loss));
-        knock_on.set_coordinate(coordinate_);
-        knock_on.fire();
-      }
-
-      if (!simulation_.get_settings(
-              &Simulation::Settings::log_end_of_flying_distance_only_) &&
-          !simulation_.get_settings(
-              &Simulation::Settings::log_stopping_point_only_)) {
-        data_leaf_.add_coordinate(coordinate_);
-        coordinates_.emplace_back(coordinate_);
-      }
-    }
-    if (simulation_.get_settings(
-            &Simulation::Settings::log_end_of_flying_distance_only_) &&
-        !simulation_.get_settings(
-            &Simulation::Settings::log_stopping_point_only_)) {
-      data_leaf_.add_coordinate(coordinate_);
-      coordinates_.emplace_back(coordinate_);
-    }
-    if (escaped) {
-      break;
-    }
-  }
-
-  if (simulation_.get_settings(
-          &Simulation::Settings::log_stopping_point_only_)) {
-    data_leaf_.add_coordinate(coordinate_);
-    coordinates_.emplace_back(coordinate_);
-  }
-
-  if (!simulation_.is_cancel_requested()) {
-    const auto draw_function = bombardment_.get_simulation().get_draw_function();
-    draw_function(coordinates_, bombardment_.get_id());
-  }
+  // TODO: Implement Electron simulation
+  throw std::logic_error("Electron simulation is not implemented");
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
 } // }}}
@@ -1605,8 +1194,7 @@ void Ion::fire() try {
       simulation_.get_settings(&Simulation::Settings::enable_damage_cascade_);
     VLOG(2) << "Knock-on enabled: " << enable_knock_on;
 
-    while (velocity_.energy_ > ion_stopping_energy &&
-      !simulation_.is_cancel_requested()) {
+  while (velocity_.energy_ > ion_stopping_energy) {
     const auto current_layer_pair =
         simulation_.get_volume().get_layer(coordinate_.z_);
         VLOG(3) << "Current layer: " << current_layer_pair.second;
@@ -1673,6 +1261,23 @@ void Ion::fire() try {
     bombardment_.record_energy_loss((long double)nuclear_e_loss.value(),
                                     coordinate_.z_.value(),
                                     Bombardment::EnergyLossType::nuclear);
+    // Record a collision point for UI: position, velocity components, generation
+    {
+      // build CollisionPoint via aggregate initialization (Coordinate has no default ctor)
+      double vx = 0.0, vy = 0.0, vz = 0.0;
+      try {
+        auto speed = speed_from_energy(velocity_.energy_, properties_.mass_);
+        double sp = speed.value();
+        const auto &q = velocity_.quaternion_;
+        vx = q.x_ * sp;
+        vy = q.y_ * sp;
+        vz = q.z_ * sp;
+      } catch (...) {
+        vx = vy = vz = 0.0;
+      }
+      CollisionPoint cp{coordinate_, vx, vy, vz, generation_};
+      bombardment_.add_collision_point(cp);
+    }
     bombardment_.record_energy_loss((long double)(e_energy_loss + nuclear_e_loss).value(),
                                     coordinate_.z_.value(),
                                     Bombardment::EnergyLossType::total);
@@ -1685,11 +1290,11 @@ void Ion::fire() try {
       data_leaf_.add_child(ParticleDataLeaf());
       // Record displacement due to knock-on (top-level recoil)
       bombardment_.record_displacement(coordinate_.z_.value());
-      auto knock_on_particle =
+        auto knock_on_particle =
           Ion(z_2,
-              static_cast<size_t>(std::round((m_2 / atomic_mass_unit).value())),
-              simulation_, uniform_distribution_, random_number_generator_,
-              data_leaf_.get_children().back(), bombardment_);
+            static_cast<size_t>(std::round((m_2 / atomic_mass_unit).value())),
+            simulation_, uniform_distribution_, random_number_generator_,
+            data_leaf_.get_children().back(), bombardment_, generation_ + 1);
       auto scattering_angle_2 = asin(sin(laboratory_scatter_angle) *
                                      sqrt(energy * m_1 / nuclear_e_loss / m_2));
       auto velocity = Velocity(velocity_.quaternion_, nuclear_e_loss);
@@ -1736,10 +1341,7 @@ void Ion::fire() try {
     // }
   }
 
-  if (!simulation_.is_cancel_requested()) {
-    auto draw_function = bombardment_.get_simulation().get_draw_function();
-    draw_function(coordinates_, bombardment_.get_id());
-  }
+  // drawing is now handled by the GUI polling the bombardment queue
 
   // // TODO: Remove
   // std::ofstream file_stream("output.csv");
