@@ -1,5 +1,12 @@
 add_library(amcset-common STATIC
-    ${PROJECT_SOURCE_DIR}/common/src/amcset_common.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/simulation.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/particle.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/electron.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/ion.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/quaternion.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/entropy_seeder.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/layer.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/volume.cpp
     ${PROJECT_SOURCE_DIR}/common/include/amcset_common.h
     ${PROJECT_SOURCE_DIR}/common/include/isotope_data.h
     ${PROJECT_SOURCE_DIR}/common/include/amcset_utilities.h

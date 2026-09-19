@@ -33,6 +33,7 @@
 #include <QSpinBox>
 #include <QStandardItemModel>
 #include <QTabWidget>
+#include <QComboBox>
 #include <QTableView>
 #include <QTextBrowser>
 #include <QUndoStack>
@@ -171,6 +172,14 @@ private:
   QLineEdit *totalOutputEdit = nullptr;
   QLineEdit *particleTreeEdit = nullptr;
   QCheckBox *enableLoggingCheck = nullptr;
+  QCheckBox *logSingleDisplacementCheck = nullptr;
+  QCheckBox *logEndOfFlyingDistanceOnlyCheck = nullptr;
+  QCheckBox *logStoppingPointOnlyCheck = nullptr;
+  QSpinBox *angleDivisorSpinBox = nullptr;
+  QSpinBox *flyingDistanceSpinBox = nullptr;
+  QLineEdit *electronScreeningParametersEdit = nullptr;
+  QLineEdit *mottScatteringParametersEdit = nullptr;
+  QComboBox *screeningModelCombo = nullptr;
   QPlainTextEdit *resultPane = nullptr;
 
   // View controls

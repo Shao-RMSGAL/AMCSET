@@ -1,0 +1,472 @@
+/*! \file ion.cpp
+ *  \brief Ion transport implementation.
+ */
+
+#include "amcset_common.h"
+
+#include <glog/logging.h>
+
+#include <boost/math/constants/constants.hpp>
+#include <boost/random/discrete_distribution.hpp>
+#include <boost/random/mersenne_twister.hpp>
+#include <boost/random/uniform_01.hpp>
+#include <boost/units/cmath.hpp>
+#include <boost/units/pow.hpp>
+#include <boost/units/static_rational.hpp>
+#include <boost/units/systems/si/amount.hpp>
+#include <boost/units/systems/si/codata/physico-chemical_constants.hpp>
+#include <boost/units/systems/si/energy.hpp>
+#include <boost/units/systems/si/length.hpp>
+#include <boost/units/systems/si/mass.hpp>
+
+#include <array>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <mutex>
+#include <sstream>
+#include <stdexcept>
+
+namespace amcset {
+namespace common {
+
+dimensionless_quantity Ion::screening_function(dimensionless_quantity reduced_radius) const {
+  const auto result = 0.1818 * exp(-3.2 * reduced_radius) +
+                      0.5099 * exp(-0.9423 * reduced_radius) +
+                      0.2802 * exp(-0.4028 * reduced_radius) +
+                      0.2817 * exp(-0.2016 * reduced_radius);
+  VLOG(2) << "Screening function with reduced radius " << reduced_radius
+          << " is " << result;
+  return result;
+}
+
+length_quantity Ion::screening_length(dimensionless_quantity z_1,
+                    dimensionless_quantity z_2) const {
+  return Ion::screening_length_for_model(
+    z_1, z_2,
+    simulation_.get_settings(&Simulation::Settings::screening_model_) ==
+      Simulation::Settings::ScreeningModel::QuickBasic);
+}
+
+length_quantity Ion::screening_length_for_model(dimensionless_quantity z_1,
+                                                dimensionless_quantity z_2,
+                                                bool use_quickbasic) {
+  if (use_quickbasic) {
+    auto numerator = 0.8854 * 0.529 * angstrom;
+    auto denom = pow(pow(z_1, 0.5) + pow(z_2, 0.5), 2.0 / 3.0);
+    return numerator / denom;
+  }
+  return 0.25 * cbrt(9.0 * pi * pi / 2.0) * bohr_radius /
+         (pow(z_1, 0.23) + pow(z_2, 0.23));
+}
+
+energy_quantity Ion::screening_potential(length_quantity radius,
+                                         dimensionless_quantity z_1,
+                                         dimensionless_quantity z_2) const {
+  auto reduced_length = radius / screening_length(z_1, z_2);
+  auto result = screening_function(reduced_length) * z_1 * z_2 * e_statcoulomb *
+                e_statcoulomb / radius;
+  VLOG(2) << "Screening potential with radius " << radius << ", z_1 " << z_1
+          << ", and z_2 " << z_2 << " is " << result;
+  return result;
+}
+
+voltage_quantity Ion::screening_potential_derivative(length_quantity radius,
+                                    dimensionless_quantity z_1,
+                                    dimensionless_quantity z_2) const {
+  auto s_length = screening_length(z_1, z_2);
+  auto reduced_radius = radius / s_length;
+  auto result =
+      (0.1818 * exp(-3.2 * reduced_radius) * (-3.2 / s_length) +
+       0.5099 * exp(-0.9423 * reduced_radius) * (-0.9423 / s_length) +
+       0.2802 * exp(-0.4028 * reduced_radius) * (-0.4028 / s_length) +
+       0.2817 * exp(-0.2016 * reduced_radius) * (-0.2016 / s_length)) *
+          z_1 * z_2 * e_statcoulomb * e_statcoulomb / radius -
+      (0.1818 * exp(-3.2 * reduced_radius) +
+       0.5099 * exp(-0.9423 * reduced_radius) +
+       0.2802 * exp(-0.4028 * reduced_radius) +
+       0.2817 * exp(-0.2016 * reduced_radius)) *
+          z_1 * z_2 * e_statcoulomb * e_statcoulomb / (radius * radius);
+  VLOG(2) << "Screening potential derivative with radius " << radius << ", z_1 " << z_1
+          << ", and z_2 " << z_2 << " is " << result;
+  return result;
+}
+
+dimensionless_quantity Ion::reduced_energy(length_quantity screening_length,
+                                           energy_quantity cm_energy,
+                                           dimensionless_quantity z_1,
+                                           dimensionless_quantity z_2) const {
+  auto result = screening_length * cm_energy /
+                (z_1 * z_2 * e_statcoulomb * e_statcoulomb);
+  VLOG(2) << "Reduced energy with screening length " << screening_length
+          << ", center of mass energy " << cm_energy << ", z_1 " << z_1
+          << ", z_2 " << z_2 << ", result is " << result;
+  return result;
+}
+
+length_quantity Ion::free_flying_path_length(mass_quantity m_1, mass_quantity m_2,
+                             dimensionless_quantity reduced_energy,
+                             length_quantity screening_length,
+                             number_density_quantity number_density) const {
+  length_quantity L;
+  L = pow<static_rational<1, 3>>(1.0 / number_density / si::constants::codata::N_A);
+  VLOG(3) << "Low energy free flying path length with m_1 " << m_1 << ", m_2 "
+          << m_2 << ", reduced_energy " << reduced_energy
+          << ", screening_length " << screening_length
+          << ", and number_density " << number_density << " with result " << L;
+  return L;
+}
+
+length_quantity Ion::collision_diameter(dimensionless_quantity z_1,
+                                        dimensionless_quantity z_2,
+                                        mass_quantity rd_mass,
+                                        velocity_quantity speed) const {
+  auto result =
+      4 * z_1 * z_2 * e_statcoulomb * e_statcoulomb / (rd_mass * speed * speed);
+  VLOG(2) << "Collision diameter given z_1 " << z_1 << ", z_2 " << z_2
+          << " reduced mass " << rd_mass << ", and speed " << speed << " is "
+          << result;
+  return result;
+}
+
+length_quantity Ion::closest_approach(dimensionless_quantity z_1,
+                                      dimensionless_quantity z_2,
+                                      energy_quantity cm_energy,
+                                      length_quantity impact_param) const {
+  auto F = [&](length_quantity closest_approach) {
+    return 1 - screening_potential(closest_approach, z_1, z_2) / cm_energy -
+           pow<2>(impact_param / closest_approach);
+  };
+  auto dF = [&](length_quantity closest_approach) {
+    return -screening_potential_derivative(closest_approach, z_1, z_2) / cm_energy +
+           2.0 * impact_param * impact_param /
+               pow<static_rational<3>>(closest_approach);
+  };
+  auto old_result = impact_param;
+  VLOG(3) << "Closest approach initial guess " << old_result;
+  auto old_pot = F(old_result);
+  auto result = old_result - old_pot / dF(old_result);
+  auto pot = F(result);
+  size_t iterations = 0;
+  constexpr size_t max_iterations = 100;
+  constexpr double rel_tolerance = 1e-3;
+  while (iterations < max_iterations) {
+    auto rel_diff = abs(result - old_result) / result;
+    if (rel_diff < rel_tolerance) {
+      VLOG(2) << "Closest approach found after " << iterations
+              << " iterations. Result " << result;
+      return result;
+    }
+
+    auto d_pot = dF(old_result);
+    old_pot = pot;
+    pot = F(result);
+
+    if ((old_pot < 0.0 && pot > 0.0) || (old_pot > 0.0 && pot < 0.0)) {
+      size_t binary_search_iterations = 0;
+      while (true) {
+        if (iterations > max_iterations) {
+          break;
+        }
+        if (rel_diff < rel_tolerance) {
+          VLOG(2) << "Closest approach found after " << iterations << " and "
+                  << binary_search_iterations << " binary search iterations."
+                  << " iterations. Result " << result;
+          rel_diff = abs(result - old_result) / result;
+          return result;
+        }
+        auto mid_result = old_result + (result - old_result) / 2.0;
+        auto mid_pot = F(mid_result);
+        if (copysign(old_pot, mid_pot) == old_pot) {
+          old_result = mid_result;
+          old_pot = mid_pot;
+        } else {
+          result = mid_result;
+          pot = mid_pot;
+        }
+        binary_search_iterations++;
+      }
+    }
+
+    old_result = result;
+    result = old_result - pot / d_pot;
+    iterations++;
+  }
+
+  LOG(ERROR) << "Convergence error. Please adjust closest approach parameters. Previous result "
+             << old_result << ", current result " << result;
+  return result;
+}
+
+length_quantity Ion::radius_of_curvature(length_quantity radius,
+                                         energy_quantity cm_energy,
+                                         dimensionless_quantity z_1,
+                                         dimensionless_quantity z_2) const {
+  auto result = 2.0 * abs(cm_energy - screening_potential(radius, z_1, z_2)) /
+                (-screening_potential_derivative(radius, z_1, z_2));
+  VLOG(2) << "Radius of curvature for radius " << radius << " cm_energy "
+          << cm_energy << " z_1 " << z_1 << " z_2 " << z_2 << " has result "
+          << result;
+  return result;
+}
+
+dimensionless_quantity Ion::magic_formula_correction_parameter(
+    dimensionless_quantity reduced_energy, length_quantity impact_parameter,
+    length_quantity screening_length, length_quantity closest_approach) const {
+  auto C_1 = 0.99229;
+  auto C_2 = 0.011615;
+  auto C_3 = 0.007122;
+  auto C_4 = 9.3066;
+  auto C_5 = 14.813;
+
+  auto alpha = 1 + C_1 / sqrt(reduced_energy);
+  auto beta = (C_2 + sqrt(reduced_energy)) / (C_3 + sqrt(reduced_energy));
+  auto gamma = (C_4 + reduced_energy) / (C_5 + reduced_energy);
+  auto B = impact_parameter / screening_length;
+  auto A = 2 * alpha * reduced_energy * pow(B, beta);
+  auto G = gamma / (sqrt(1 + A * A) - A);
+  auto R_o = closest_approach / screening_length;
+  auto result = A * (R_o - B) / (1 + G);
+  VLOG(2) << "Magic formula correction parameter with reduced_energy "
+          << reduced_energy << ", impact_parameter " << impact_parameter
+          << ", screening_length " << screening_length << " result is "
+          << result;
+  return result;
+}
+
+angle_quantity Ion::magic_formula_scattering_angle(length_quantity impact_parameter,
+                                    length_quantity closest_approach,
+                                    length_quantity radius_of_curvature,
+                                    dimensionless_quantity correction_factor,
+                                    length_quantity screening_distance) const {
+  const auto B = impact_parameter / screening_distance;
+  const auto R_o = closest_approach / screening_distance;
+  const auto R_c = radius_of_curvature / screening_distance;
+  const auto result = acos((B + R_c + correction_factor) / (R_o + R_c));
+  VLOG(2) << "Magic scattering angle with impact_parameter " << impact_parameter
+          << " closest_approach " << closest_approach << " radius_of_curvature "
+          << radius_of_curvature << " correction_factor " << correction_factor
+          << " screening_distance " << screening_distance << " with result "
+          << result;
+  return result;
+}
+
+energy_quantity Ion::nuclear_energy_loss(mass_quantity atom_mass, mass_quantity target_mass,
+                         energy_quantity incident_energy,
+                         angle_quantity scattering_angle) const {
+  auto result = 4.0 * atom_mass * target_mass /
+                pow<2>(atom_mass + target_mass) * incident_energy *
+                pow<2>(sin(scattering_angle));
+  VLOG(2) << "Nuclear scattering energy loss atom mass " << atom_mass
+          << " target_mass " << target_mass << " incident_energy "
+          << incident_energy << " scattering_angle " << scattering_angle
+          << " has result " << result;
+  return result;
+}
+
+angle_quantity Ion::laboratory_scattering_angle(angle_quantity cm_scattering_angle,
+                                 mass_quantity atom_mass,
+                                 mass_quantity target_mass) const {
+  auto result = atan(sin(cm_scattering_angle) /
+                     (cos(cm_scattering_angle) + (atom_mass / target_mass)));
+
+  VLOG(2) << "Laboratory scattering angle with cm_scattering_angle "
+          << cm_scattering_angle << " atom_mass " << atom_mass
+          << " target_mass " << target_mass << " with result " << result;
+  return result;
+}
+
+void Ion::fire() try {
+  VLOG(1) << "Firing ion with initial energy " << velocity_.energy_;
+  auto ion_stopping_energy = simulation_.get_settings(
+      &Simulation::Settings::ion_stopping_energy_);
+  VLOG(2) << "Ion stopping energy: " << ion_stopping_energy;
+
+  size_t incident = (velocity_.energy_ == simulation_.get_settings(&Simulation::Settings::incident_energy_)) ? 0 : 1;
+  if (incident == 1) {
+    VLOG(2) << "Incident particle is a knock-on particle.";
+  } else {
+    VLOG(2) << "Incident particle is the primary particle.";
+  }
+
+  auto &energy = velocity_.energy_;
+  VLOG(1) << "Initial energy: " << energy;
+  auto max_depth = simulation_.get_volume().get_depth();
+  VLOG(2) << "Max depth: " << max_depth;
+  auto knock_on_threshold = simulation_.get_settings(&Simulation::Settings::ion_displacement_energy_);
+  VLOG(2) << "Knock-on threshold: " << knock_on_threshold;
+  auto enable_knock_on = simulation_.get_settings(&Simulation::Settings::enable_damage_cascade_);
+  VLOG(2) << "Knock-on enabled: " << enable_knock_on;
+
+  while (velocity_.energy_ > ion_stopping_energy) {
+    const auto current_layer_pair = simulation_.get_volume().get_layer(coordinate_.z_);
+    VLOG(3) << "Current layer: " << current_layer_pair.second;
+    const Layer &current_layer = *(current_layer_pair.first);
+    const size_t atom_index = current_layer.get_random_index(random_number_generator_);
+    VLOG(3) << "Selected atom index: " << atom_index;
+    const auto layer_properties = current_layer.get_property(atom_index);
+    auto z_1 = properties_.charge_;
+    VLOG(3) << "Ion charge: " << z_1;
+    auto z_2 = layer_properties.charge_;
+    VLOG(3) << "Target atom charge: " << z_2;
+    auto m_1 = properties_.mass_;
+    VLOG(3) << "Ion mass: " << m_1;
+    auto m_2 = layer_properties.mass_;
+    VLOG(3) << "Target atom mass: " << m_2;
+    auto number_density = current_layer.get_number_density();
+    VLOG(3) << "Layer number density: " << number_density;
+
+    auto e_energy_loss = electronic_stopping_energy(
+        z_1, m_1, energy, number_density, layer_properties);
+    VLOG(2) << "Electronic stopping energy loss: " << e_energy_loss;
+    energy -= e_energy_loss;
+    VLOG(2) << "Energy after electronic stopping: " << energy;
+    bombardment_.record_energy_loss((long double)e_energy_loss.value(), coordinate_.z_.value(), Bombardment::EnergyLossType::electronic);
+
+    auto speed = speed_from_energy(energy, m_1);
+    VLOG(3) << "Speed from energy: " << speed;
+    auto c_mass_energy = cm_energy(m_1, speed);
+    VLOG(3) << "Center of mass energy: " << c_mass_energy;
+    auto screen_length = screening_length(z_1, z_2);
+    VLOG(3) << "Screening length: " << screen_length;
+    auto rd_energy = reduced_energy(screen_length, c_mass_energy, z_1, z_2);
+    VLOG(3) << "Reduced energy: " << rd_energy;
+    auto path_length = free_flying_path_length(m_1, m_2, rd_energy, screen_length, number_density);
+    VLOG(3) << "Free flying path length: " << path_length;
+    auto i_param = impact_parameter(number_density, path_length, rd_energy);
+    VLOG(3) << "Impact parameter: " << i_param;
+    auto closest_appr = closest_approach(z_1, z_2, c_mass_energy, i_param);
+    VLOG(3) << "Closest approach: " << closest_appr;
+    auto rad_curv = radius_of_curvature(closest_appr, c_mass_energy, z_1, z_2);
+    VLOG(3) << "Radius of curvature: " << rad_curv;
+    auto magic_correction = magic_formula_correction_parameter(rd_energy, i_param, screen_length, closest_appr);
+    VLOG(3) << "Magic formula correction parameter: " << magic_correction;
+    auto cm_scatter_angle = magic_formula_scattering_angle(i_param, closest_appr, rad_curv, magic_correction, screen_length);
+    VLOG(3) << "Center of mass scattering angle: " << cm_scatter_angle;
+    auto nuclear_e_loss = nuclear_energy_loss(m_1, m_2, energy, cm_scatter_angle);
+    VLOG(2) << "Nuclear energy loss: " << nuclear_e_loss;
+
+    energy -= nuclear_e_loss;
+    bombardment_.record_energy_loss((long double)nuclear_e_loss.value(), coordinate_.z_.value(), Bombardment::EnergyLossType::nuclear);
+    {
+      double vx = 0.0, vy = 0.0, vz = 0.0;
+      try {
+        auto speed_v = speed_from_energy(velocity_.energy_, properties_.mass_);
+        double sp = speed_v.value();
+        const auto &q = velocity_.quaternion_;
+        vx = q.x_ * sp;
+        vy = q.y_ * sp;
+        vz = q.z_ * sp;
+      } catch (...) {
+        vx = vy = vz = 0.0;
+      }
+      CollisionPoint cp{coordinate_, vx, vy, vz, generation_};
+      bombardment_.add_collision_point(cp);
+    }
+    bombardment_.record_energy_loss((long double)(e_energy_loss + nuclear_e_loss).value(), coordinate_.z_.value(), Bombardment::EnergyLossType::total);
+
+    auto laboratory_scatter_angle = laboratory_scattering_angle(cm_scatter_angle, m_1, m_2);
+    if (nuclear_e_loss > knock_on_threshold && enable_knock_on) {
+      VLOG(2) << "Knock-on particle created with energy " << nuclear_e_loss;
+      data_leaf_.add_child(ParticleDataLeaf());
+      bombardment_.record_displacement(coordinate_.z_.value());
+      auto knock_on_particle =
+          Ion(z_2,
+            static_cast<size_t>(std::round((m_2 / atomic_mass_unit).value())),
+            simulation_, uniform_distribution_, random_number_generator_,
+            data_leaf_.get_children().back(), bombardment_, generation_ + 1);
+      auto scattering_angle_2 = asin(sin(laboratory_scatter_angle) *
+                                     sqrt(energy * m_1 / nuclear_e_loss / m_2));
+      auto velocity = Velocity(velocity_.quaternion_, nuclear_e_loss);
+      knock_on_particle.set_velocity(velocity);
+      knock_on_particle.set_coordinate(coordinate_);
+      knock_on_particle.rotate_inplace(scattering_angle_2);
+      knock_on_particle.fire();
+    }
+    rotate_inplace(laboratory_scatter_angle);
+    auto &velocity = velocity_.quaternion_;
+
+    VLOG(2) << "Original coordinate (" << coordinate_.x_ << ", "
+            << coordinate_.y_ << ", " << coordinate_.z_ << ")";
+    VLOG(2) << "Original velocity (" << velocity.x_ << ", " << velocity.y_
+            << ", " << velocity.z_ << ")";
+
+    data_leaf_.add_coordinate(coordinate_);
+    coordinates_.emplace_back(coordinate_);
+    coordinate_.x_ += path_length * velocity.x_;
+    coordinate_.y_ += path_length * velocity.y_;
+    coordinate_.z_ += path_length * velocity.z_;
+
+    if (coordinate_.z_ < 0.0 * angstrom) {
+      data_leaf_.sputter();
+      bombardment_.record_sputtered();
+      break;
+    }
+
+    if (coordinate_.z_.value() > max_depth.value()) {
+      data_leaf_.escape();
+      break;
+    }
+  }
+} catch (...) {
+  rethrow(EXCEPTION_MESSAGE(""));
+}
+
+length_quantity Ion::impact_parameter(number_density_quantity number_density,
+                      length_quantity length,
+                      dimensionless_quantity reduced_energy) const {
+  length_quantity result;
+  auto random_number = uniform_distribution_(random_number_generator_);
+  if (reduced_energy > 10.0) {
+    result = sqrt(-log(random_number) /
+                  (pi * number_density * length * si::constants::codata::N_A));
+    VLOG(2) << "Impact parameter at high energy for number density "
+            << number_density << ", length " << length
+            << ", and reduced energy " << reduced_energy << " is " << result;
+  } else {
+    result = sqrt(random_number /
+                  (pi * pow<static_rational<2, 3>>(
+                            number_density * si::constants::codata::N_A)));
+    VLOG(2) << "Impact parameter at low energy for number density "
+            << number_density << ", length " << length
+            << ", and reduced energy " << reduced_energy << " is " << result;
+  }
+  return result;
+}
+
+length_quantity Ion::interatomic_spacing(number_density_quantity number_density) const {
+  return root<-3>(number_density * constants::N_A);
+}
+
+energy_quantity Ion::electronic_stopping_energy(dimensionless_quantity charge,
+                                mass_quantity mass, energy_quantity energy,
+                                number_density_quantity number_density,
+                                const Properties &properties) const try {
+  VLOG(2) << "Calculating ion electronic stopping energy with charge " << charge
+          << ", mass " << mass << ", and energy " << energy;
+  auto c_1 =
+      1.212 * root<2>(constants::m_u) * root<2>(electron_volt) / angstrom;
+  VLOG(3) << "Value of c_1 " << c_1;
+  const auto k_l = c_1 * pow<static_rational<7, 6>>(charge) *
+                   properties.charge_ /
+                   (pow<static_rational<3, 2>>(
+                        pow<static_rational<2, 3>>(charge) +
+                        pow<static_rational<2, 3>>(properties.charge_)) *
+                    root<2>(mass));
+  VLOG(3) << "Value of k_l " << k_l;
+  const auto stopping_energy = k_l * root<2>(energy);
+  VLOG(3) << "Value of stopping_energy " << stopping_energy;
+  const auto c_2 = 1.59 * pow<3>(angstrom);
+  VLOG(3) << "Value of c_2 " << c_2;
+  const auto travel_length = interatomic_spacing(number_density);
+  VLOG(3) << "Value of travel_length " << travel_length;
+  const auto energy_loss =
+      c_2 * travel_length * number_density * constants::N_A * stopping_energy;
+  VLOG(3) << "Value of energy_loss " << energy_loss;
+  return energy_loss;
+} catch (...) {
+  rethrow(EXCEPTION_MESSAGE(""));
+}
+
+} // namespace common
+} // namespace amcset

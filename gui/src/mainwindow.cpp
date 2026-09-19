@@ -575,12 +575,23 @@ void MainWindow::runSimulation() {
       40.0 * common::electron_volt; // Typical for iron.
   common::energy_quantity ion_displacement_energy =
       40.0 * common::electron_volt; // Typical for iron
-  bool log_single_displacement = false;
-  size_t divisor_angle_number = 1000; // Break angle range into 1000 segements.
-                                      // TEST: Test with different numbers
-  size_t flying_distance_number =
-      1000; // Break flying distnaces into groups of 1000. TEST: Test with
-            // different numbers
+  const bool log_single_displacement =
+      logSingleDisplacementCheck ? logSingleDisplacementCheck->isChecked() : false;
+  const size_t divisor_angle_number =
+      angleDivisorSpinBox ? static_cast<size_t>(angleDivisorSpinBox->value()) : 1000;
+  const size_t flying_distance_number =
+      flyingDistanceSpinBox ? static_cast<size_t>(flyingDistanceSpinBox->value()) : 1000;
+
+  const bool log_end_of_flying_distance_only =
+      logEndOfFlyingDistanceOnlyCheck ? logEndOfFlyingDistanceOnlyCheck->isChecked() : false;
+  const bool log_stopping_point_only =
+      logStoppingPointOnlyCheck ? logStoppingPointOnlyCheck->isChecked() : false;
+  const std::string electron_screening_path =
+      electronScreeningParametersEdit ? electronScreeningParametersEdit->text().trimmed().toStdString()
+                                      : "common/assets/electron_screening_parameters.csv";
+  const std::string mott_path =
+      mottScatteringParametersEdit ? mottScatteringParametersEdit->text().trimmed().toStdString()
+                                  : "common/assets/mott_scattering_parameters.csv";
 
   bool is_electron =
       (incidentElectron->checkState() ==
@@ -591,7 +602,8 @@ void MainWindow::runSimulation() {
   common::angle_quantity incident_angle =
       common::degree * incidentAngle->value();
   common::length_quantity range = rangeSpinBox->value() * common::angstrom;
-  size_t bombardment_count = bombardmentCountSpinBox->value();
+  size_t bombardment_count =
+      static_cast<size_t>(bombardmentCountSpinBox->value());
   common::energy_quantity incident_energy =
       incidentEnergy->value() * common::kilo_electron_volt;
   size_t thread_count = threadCountSpinBox->value();
@@ -600,14 +612,22 @@ void MainWindow::runSimulation() {
   // compatability. Note that it is not available in conan. Either make a
   // conan recipe for it or use another installation method.
 
-  auto settings = common::Simulation::Settings(
+    // Map GUI selection to backend ScreeningModel
+    common::Simulation::Settings::ScreeningModel selected_model =
+      (screeningModelCombo && screeningModelCombo->currentIndex() == 1)
+        ? common::Simulation::Settings::ScreeningModel::QuickBasic
+        : common::Simulation::Settings::ScreeningModel::ThomasFermi;
+
+    auto settings = common::Simulation::Settings(
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
       ion_stopping_energy, ion_displacement_energy, log_single_displacement,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
       is_electron, incident_energy, thread_count, incident_angle, 100, 100, 100,
       100, displacementOutput.toStdString(), electronicOutput.toStdString(),
       nuclearOutput.toStdString(), totalOutput.toStdString(),
-      enableLoggingCheck->isChecked(), particleTreeOutput.toStdString());
+      enableLoggingCheck->isChecked(), particleTreeOutput.toStdString(),
+      electron_screening_path, mott_path, selected_model,
+      log_end_of_flying_distance_only, log_stopping_point_only);
 
   // Create AMCSET volume (TODO: Read this from a file and allow a user to
   // configure)
@@ -1496,6 +1516,11 @@ void MainWindow::refreshResultsPane() {
   summary << "Particle tree: " + (particleTreeEdit ? particleTreeEdit->text().trimmed() : QString());
   summary << "Log file: " + (logFileEdit ? logFileEdit->text().trimmed() : QString());
   summary << "Logging enabled: " + QString(enableLoggingCheck && enableLoggingCheck->isChecked() ? "Yes" : "No");
+  summary << "Log single displacement: " + QString(logSingleDisplacementCheck && logSingleDisplacementCheck->isChecked() ? "Yes" : "No");
+  summary << "Angle divisors: " + QString::number(angleDivisorSpinBox ? angleDivisorSpinBox->value() : 1000);
+  summary << "Flying distances: " + QString::number(flyingDistanceSpinBox ? flyingDistanceSpinBox->value() : 1000);
+  summary << "Log end-of-flight only: " + QString(logEndOfFlyingDistanceOnlyCheck && logEndOfFlyingDistanceOnlyCheck->isChecked() ? "Yes" : "No");
+  summary << "Log stopping point only: " + QString(logStoppingPointOnlyCheck && logStoppingPointOnlyCheck->isChecked() ? "Yes" : "No");
   resultPane->setPlainText(summary.join("\n"));
   populateResultCharts();
 }
@@ -1513,6 +1538,11 @@ void MainWindow::createSettingsDialog() {
   auto *formLayout = new QFormLayout();
   formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   formLayout->setLabelAlignment(Qt::AlignLeft);
+
+  auto *electronSettingsGroup = new QGroupBox("Electron transport", settingsTab);
+  auto *electronSettingsLayout = new QFormLayout(electronSettingsGroup);
+  electronSettingsLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+  electronSettingsLayout->setLabelAlignment(Qt::AlignLeft);
 
   auto *outputDirRow = new QWidget(settingsTab);
   auto *outputDirLayout = new QHBoxLayout(outputDirRow);
@@ -1572,7 +1602,64 @@ void MainWindow::createSettingsDialog() {
   enableLoggingCheck->setChecked(false);
   formLayout->addRow("Enable logging", enableLoggingCheck);
 
+  logSingleDisplacementCheck = new QCheckBox(settingsTab);
+  logSingleDisplacementCheck->setChecked(false);
+  formLayout->addRow("Log single displacement", logSingleDisplacementCheck);
+
+  logEndOfFlyingDistanceOnlyCheck = new QCheckBox(settingsTab);
+  logEndOfFlyingDistanceOnlyCheck->setChecked(false);
+  electronSettingsLayout->addRow("Log end-of-flight only", logEndOfFlyingDistanceOnlyCheck);
+
+  logStoppingPointOnlyCheck = new QCheckBox(settingsTab);
+  logStoppingPointOnlyCheck->setChecked(false);
+  electronSettingsLayout->addRow("Log stopping point only", logStoppingPointOnlyCheck);
+
+  angleDivisorSpinBox = new QSpinBox(settingsTab);
+  angleDivisorSpinBox->setRange(1, 1000000);
+  angleDivisorSpinBox->setValue(1000);
+  electronSettingsLayout->addRow("Angle divisors", angleDivisorSpinBox);
+
+  flyingDistanceSpinBox = new QSpinBox(settingsTab);
+  flyingDistanceSpinBox->setRange(1, 1000000);
+  flyingDistanceSpinBox->setValue(1000);
+  electronSettingsLayout->addRow("Flying distances", flyingDistanceSpinBox);
+
+  auto *electronScreeningRow = new QWidget(settingsTab);
+  auto *electronScreeningLayout = new QHBoxLayout(electronScreeningRow);
+  electronScreeningLayout->setContentsMargins(0, 0, 0, 0);
+  electronScreeningParametersEdit = new QLineEdit("common/assets/electron_screening_parameters.csv", settingsTab);
+  auto *electronScreeningBrowse = new QPushButton("Browse", settingsTab);
+  connect(electronScreeningBrowse, &QPushButton::clicked, this, [this]() {
+    browseOutputFile(electronScreeningParametersEdit, "Select electron screening parameter file", "csv");
+  });
+  electronScreeningLayout->addWidget(electronScreeningParametersEdit);
+  electronScreeningLayout->addWidget(electronScreeningBrowse);
+  electronSettingsLayout->addRow("Electron screening parameters", electronScreeningRow);
+
+  auto *mottRow = new QWidget(settingsTab);
+  auto *mottLayout = new QHBoxLayout(mottRow);
+  mottLayout->setContentsMargins(0, 0, 0, 0);
+  mottScatteringParametersEdit = new QLineEdit("common/assets/mott_scattering_parameters.csv", settingsTab);
+  auto *mottBrowse = new QPushButton("Browse", settingsTab);
+  connect(mottBrowse, &QPushButton::clicked, this, [this]() {
+    browseOutputFile(mottScatteringParametersEdit, "Select Mott scattering parameter file", "csv");
+  });
+  mottLayout->addWidget(mottScatteringParametersEdit);
+  mottLayout->addWidget(mottBrowse);
+  electronSettingsLayout->addRow("Mott scattering parameters", mottRow);
+
+  // Screening model selection
+  auto *screeningRow = new QWidget(settingsTab);
+  auto *screeningLayout = new QHBoxLayout(screeningRow);
+  screeningLayout->setContentsMargins(0, 0, 0, 0);
+  screeningModelCombo = new QComboBox(settingsTab);
+  screeningModelCombo->addItem("Thomas-Fermi (default)");
+  screeningModelCombo->addItem("QuickBasic (ion.bas)");
+  screeningLayout->addWidget(screeningModelCombo);
+  electronSettingsLayout->addRow("Screening model", screeningRow);
+
   settingsLayout->addLayout(formLayout);
+  settingsLayout->addWidget(electronSettingsGroup);
   settingsTabs->addTab(settingsTab, "Settings");
 
   auto *resultsPage = new QWidget(settingsTabs);

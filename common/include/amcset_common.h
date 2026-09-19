@@ -774,6 +774,30 @@ public:
    * Fires an electron using electron-specific energy loss functions.
    */
   void fire() override;
+
+private:
+  static void initialize_tables();
+  static void initialize_tables(const std::string &screening_path,
+                               const std::string &mott_path);
+  static double find_angle(size_t i, size_t divisor_count);
+  static const std::vector<std::array<double, 6>> &screening_table_for(size_t z_number);
+  static const std::vector<std::array<double, 6>> &mott_table_for(size_t z_number);
+
+  double mott_differential_cross_section(double theta_rad, double substrate_charge,
+                                         double energy_keV) const;
+  double mott_total_cross_section(double energy_keV, double substrate_charge,
+                                 size_t divisor_count) const;
+  double sample_scattering_angle(double total_cross_section,
+                                 double substrate_charge, double energy_keV,
+                                 size_t divisor_count) const;
+  double elastic_energy_loss(double scattering_angle_rad, double energy_keV,
+                            double substrate_mass_number) const;
+  double ionization_energy_loss(double energy_keV, double substrate_charge,
+                               double substrate_density_kg_m3) const;
+  double bremsstrahlung_loss(double energy_keV, double substrate_charge,
+                            double substrate_density_kg_m3) const;
+  double generate_flying_distance(double total_cross_section,
+                                 double number_density_m3_inv) const;
 }; // }}}
 
 class Volume;
@@ -809,6 +833,11 @@ public:
    * Fires an ion using ion-specific energy loss functions
    */
   void fire() override;
+
+  // Public helper: compute screening length for a chosen model (testable)
+  static length_quantity screening_length_for_model(dimensionless_quantity z_1,
+                                                   dimensionless_quantity z_2,
+                                                   bool use_quickbasic);
 
 private:
   /*!
@@ -1265,47 +1294,24 @@ public:
    * the incident energy, the substrate composition, cascade information, and
    * many other settings.
    */
-  struct Settings {
-    const energy_quantity
-        electron_stopping_energy_; //!< Threshold electron stopping energy
-                                   /*!< The energy at which precision of
-                                    * electron stopping calculations should be increased
-                                    */
+    struct Settings {
+    enum class ScreeningModel { ThomasFermi = 0, QuickBasic = 1 };
+    const energy_quantity electron_stopping_energy_; //!< Threshold electron stopping energy
     const size_t z_number_;        //!< The z number of the incident particle
-    const size_t mass_number_;     //! The mass number of the incident particle
-    const struct Particle::Properties
-        incident_particle_properties_; //!< Properties of the incident
-                                       //!< particle
-    const bool enable_damage_cascade_; //!< Control whether damage cascade
-                                       //!< is enabled
+    const size_t mass_number_;     //!< The mass number of the incident particle
+    const struct Particle::Properties incident_particle_properties_; //!< Properties of the incident particle
+    const bool enable_damage_cascade_; //!< Control whether damage cascade is enabled
     const energy_quantity ion_stopping_energy_; //!< Energy at which ions stop
     const energy_quantity ion_displacement_energy_; //!< Energy to displace ions
     const bool log_single_displacement_; //!< Track single displacements
-    /*!< Determine whether to log when a substrate atom is displaced only
-     * once.
-     */
     const size_t divisor_angle_number_; //!< Angle segment count
-    /*!< used for cross-section calculations, higher value means finer
-     * granularity for cross-section integration, but also more computation.
-     */
-    const size_t
-        flying_distance_number_; //!< Number of flying distances per group
-    /*!< Used for electron bombardment simulation optimization. Allows for
-     * the use of cross-section calculations on many electron interactions
-     * at similar energies.
-     */
+    const size_t flying_distance_number_; //!< Number of flying distances per group
     const length_quantity range_;    //!< Maximum range of particles
     const size_t bombardment_count_; //!< Number of bombardments to simulate
-
     const bool is_electron_; //!< Determines if bombardment is for an electron
-
     const energy_quantity incident_energy_; //!< Incident particle energy
-
-    const size_t
-        thread_count_; //!< The number of threads to use in the simulation
-
-    const angle_quantity
-        incident_angle_; //!< The incident anlge of the particle
+    const size_t thread_count_; //!< The number of threads to use in the simulation
+    const angle_quantity incident_angle_; //!< The incident angle of the particle
     const size_t displacement_bin_count_;
     const size_t electronic_energy_loss_bin_count_;
     const size_t nuclear_energy_loss_bin_count_;
@@ -1316,34 +1322,67 @@ public:
     const std::string total_energy_loss_histogram_output_file_;
     const bool log_particle_tree_;
     const std::string particle_tree_output_file_;
+    const std::string electron_screening_parameters_path_;
+    const std::string mott_scattering_parameters_path_;
+    const bool log_end_of_flying_distance_only_;
+    const bool log_stopping_point_only_;
+    const ScreeningModel screening_model_;
 
     Settings() = delete; //!< Default constructor ensures initialization
 
     Settings(energy_quantity electron_stopping_energy, size_t z_number,
-             size_t mass_number, bool enable_damage_cascade,
-             energy_quantity ion_stopping_energy,
-             energy_quantity ion_displacement_energy,
-             bool log_single_displacement, size_t divisor_angle_number,
-             size_t flying_distance_number, length_quantity range,
-             size_t bombardment_count, bool is_electron,
-             energy_quantity incident_energy, size_t thread_count,
-             angle_quantity incident_angle = 0.0 * radian,
-             size_t displacement_bin_count = 100,
-             size_t electronic_energy_loss_bin_count = 100,
-             size_t nuclear_energy_loss_bin_count = 100,
-             size_t total_energy_loss_bin_count = 100,
-             std::string displacement_histogram_output_file =
-                 "output/displacement_histogram.csv",
-             std::string electronic_energy_loss_histogram_output_file =
-                 "output/electronic_loss_histogram.csv",
-             std::string nuclear_energy_loss_histogram_output_file =
-                 "output/nuclear_loss_histogram.csv",
-             std::string total_energy_loss_histogram_output_file =
-                 "output/total_loss_histogram.csv",
-             bool log_particle_tree = false,
-             std::string particle_tree_output_file =
-                 "output/particle_tree.json");
-  };
+         size_t mass_number, bool enable_damage_cascade,
+         energy_quantity ion_stopping_energy,
+         energy_quantity ion_displacement_energy,
+         bool log_single_displacement, size_t divisor_angle_number,
+         size_t flying_distance_number, length_quantity range,
+         size_t bombardment_count, bool is_electron,
+         energy_quantity incident_energy, size_t thread_count,
+         angle_quantity incident_angle = 0.0 * radian,
+         size_t displacement_bin_count = 100,
+         size_t electronic_energy_loss_bin_count = 100,
+         size_t nuclear_energy_loss_bin_count = 100,
+         size_t total_energy_loss_bin_count = 100,
+         std::string displacement_histogram_output_file =
+           "output/displacement_histogram.csv",
+         std::string electronic_energy_loss_histogram_output_file =
+           "output/electronic_loss_histogram.csv",
+         std::string nuclear_energy_loss_histogram_output_file =
+           "output/nuclear_loss_histogram.csv",
+         std::string total_energy_loss_histogram_output_file =
+           "output/total_loss_histogram.csv",
+         bool log_particle_tree = false,
+         std::string particle_tree_output_file =
+           "output/particle_tree.json",
+         ScreeningModel screening_model = ScreeningModel::ThomasFermi,
+         bool log_end_of_flying_distance_only = false,
+         bool log_stopping_point_only = false);
+
+    Settings(energy_quantity electron_stopping_energy, size_t z_number,
+         size_t mass_number, bool enable_damage_cascade,
+         energy_quantity ion_stopping_energy,
+         energy_quantity ion_displacement_energy,
+         bool log_single_displacement, size_t divisor_angle_number,
+         size_t flying_distance_number, length_quantity range,
+         size_t bombardment_count, bool is_electron,
+         energy_quantity incident_energy, size_t thread_count,
+         angle_quantity incident_angle,
+         size_t displacement_bin_count,
+         size_t electronic_energy_loss_bin_count,
+         size_t nuclear_energy_loss_bin_count,
+         size_t total_energy_loss_bin_count,
+         std::string displacement_histogram_output_file,
+         std::string electronic_energy_loss_histogram_output_file,
+         std::string nuclear_energy_loss_histogram_output_file,
+         std::string total_energy_loss_histogram_output_file,
+         bool log_particle_tree,
+         std::string particle_tree_output_file,
+         std::string electron_screening_parameters_path,
+         std::string mott_scattering_parameters_path,
+         ScreeningModel screening_model = ScreeningModel::ThomasFermi,
+         bool log_end_of_flying_distance_only = false,
+         bool log_stopping_point_only = false);
+    };
 
   Simulation() = delete;
 
@@ -1356,6 +1395,7 @@ public:
    *
    * This constructor is used to construct a Simulation object. It accepts a
    * Settings struct to configure the simulation.
+      
    *
    * \param settings This is the struct that describes the configuration of
    * the Simulation. \param volume The volume that the Simulation will use to
@@ -1382,6 +1422,7 @@ public:
    * // Configure settings
    *
    * auto electron_stopping_energy =
+           
    * simulation.getSettings(&Simulation::Settings::electron_stopping_energy_);
    * \endcode
    */

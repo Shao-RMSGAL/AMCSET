@@ -21,6 +21,10 @@
  * library. It is designed for close to 100% code coverage.
  */
 
+#define private public
+#include "amcset_common.h"
+#undef private
+
 #include <gtest/gtest.h>
 
 #include <boost/random/mersenne_twister.hpp>
@@ -31,7 +35,6 @@
 #include <iomanip>
 #include <glog/logging.h>
 
-#include "amcset_common.h"
 #include "amcset_utilities.h"
 
 using namespace amcset::common;
@@ -219,6 +222,59 @@ TEST_F(CommonTest, isotope_data_get_isotope_mass_test) try {
   // out_of_range (no matching isotope in the database).
   ASSERT_THROW(IsotopeData::get_isotope_mass(1, 100), std::out_of_range);
 } catch (const std::exception &e) {
+  print_exception(e);
+  throw e;
+}
+
+TEST_F(CommonTest, screening_length_quickbasic_equivalence) try {
+  // Construct a minimal simulation with QuickBasic screening model
+  auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
+  size_t z_number = 14; // Silicon
+  size_t mass_number = 28;
+  bool enable_damage_cascade = true;
+  auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
+  auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
+  bool log_single_displacement = true;
+  size_t divisor_angle_number = 1000;
+  size_t flying_distance_number = 1000;
+  auto range = length_quantity(80000000.0 * angstrom);
+  size_t bombardment_count = 1;
+  bool is_electron = false;
+  auto incident_energy = energy_quantity(50.0 * kilo_electron_volt);
+  size_t thread_count = 1;
+  angle_quantity incident_angle = 0;
+
+  auto volume = Volume({create_water_layer(length_quantity(2.0 * angstrom)),
+                        create_iron_layer(length_quantity(500.0 * angstrom)),
+                        create_water_layer(length_quantity(1000.0 * angstrom))});
+
+  // Use QuickBasic screening model explicitly
+  Simulation::Settings settings(
+      electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
+      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      divisor_angle_number, flying_distance_number, range, bombardment_count,
+      is_electron, incident_energy, thread_count, incident_angle,
+      100, 100, 100, 100, std::string("output/displacement_histogram.csv"),
+      std::string("output/electronic_loss_histogram.csv"),
+      std::string("output/nuclear_loss_histogram.csv"),
+      std::string("output/total_loss_histogram.csv"), false,
+      std::string("output/particle_tree.json"),
+      Simulation::Settings::ScreeningModel::QuickBasic);
+
+  Simulation simulation(settings, std::move(volume));
+
+  const std::vector<size_t> tests = {1, 14, 29};
+  for (auto z : tests) {
+    auto z1 = amcset::common::dimensionless_quantity(static_cast<double>(z));
+    auto z2 = amcset::common::dimensionless_quantity(static_cast<double>(z));
+    auto got = Ion::screening_length_for_model(z1, z2, true);
+    auto qb = 0.8854 * 0.529 * angstrom / pow(pow(z1, 0.5) + pow(z2, 0.5), 2.0 / 3.0);
+    const double rel = std::abs(((got - qb) / qb).value());
+    EXPECT_LE(rel, 0.01);
+  }
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
   print_exception(e);
   FAIL();
 }
