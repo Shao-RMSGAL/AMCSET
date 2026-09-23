@@ -21,6 +21,9 @@
  * library. It is designed for close to 100% code coverage.
  */
 
+#include <any>
+#include <sstream>
+
 #define private public
 #include "amcset_common.h"
 #undef private

@@ -347,7 +347,6 @@ double Electron::sample_scattering_angle(double total_cross_section, double subs
 
 double Electron::elastic_energy_loss(double scattering_angle_rad, double energy_keV,
                                     double substrate_mass_number) const {
-  const double energy_mev = energy_keV * 1e-3;
   const double m_target = substrate_mass_number * 931.0;
   const double sin2 = std::sin(scattering_angle_rad) * std::sin(scattering_angle_rad);
   const double cos2 = std::cos(scattering_angle_rad) * std::cos(scattering_angle_rad);

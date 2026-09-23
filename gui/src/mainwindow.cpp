@@ -673,7 +673,7 @@ void MainWindow::runSimulation() {
     size_t elementCount = materialModel->rowCount();
     common::Layer::material_vector material;
     auto proportionSum = 0.0;
-    for (auto elementRow = 0; elementRow < elementCount; elementRow++) {
+    for (size_t elementRow = 0; elementRow < elementCount; elementRow++) {
       const auto atomicSymbolColumn = 0;
       const auto proportionColumn = 1;
 
@@ -1010,7 +1010,7 @@ QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
   incidentChargeFormIndex = incidentFormLayout->rowCount();
   incidentFormLayout->addRow("Incident Z-number", incidentCharge);
 
-  connect(incidentElectron, &QCheckBox::stateChanged, this,
+  connect(incidentElectron, &QCheckBox::checkStateChanged, this,
           &MainWindow::toggleIncidentIonFormVisibility);
 
   incidentAngle = new QDoubleSpinBox(this);

@@ -36,68 +36,6 @@ std::vector<std::array<double, 6>> g_electron_screening_params;
 std::once_flag g_electron_tables_initialized;
 std::mutex g_electron_tables_mutex;
 
-void load_electron_tables() {
-  const std::filesystem::path assets_path =
-      std::filesystem::current_path() / "common" / "assets";
-  const auto mott_path = assets_path / "mott_scattering_parameters.csv";
-  const auto screening_path = assets_path / "electron_screening_parameters.csv";
-
-  std::ifstream mott_stream(mott_path);
-  if (!mott_stream.is_open()) {
-    throw std::runtime_error("Unable to open Mott parameter table: " + mott_path.string());
-  }
-
-  std::string line;
-  size_t element_index = 0;
-  size_t row_index = 0;
-  constexpr size_t mott_rows_per_element = 5;
-  constexpr size_t mott_cols_per_row = 6;
-  while (std::getline(mott_stream, line)) {
-    if (line.empty()) continue;
-    std::stringstream iss(line);
-    std::array<double, mott_cols_per_row> vals{};
-    std::string token;
-    size_t col = 0;
-    while (std::getline(iss, token, ',')) {
-      if (col >= mott_cols_per_row) break;
-      vals[col++] = std::stod(token);
-    }
-    if (col == 0) continue;
-    if (row_index % mott_rows_per_element == 0 && row_index > 0) {
-      ++element_index;
-    }
-    if (g_mott_scattering_params.size() <= element_index) {
-      g_mott_scattering_params.resize(element_index + 1);
-    }
-    auto &element = g_mott_scattering_params[element_index];
-    while (element.size() <= row_index % mott_rows_per_element) {
-      element.push_back({});
-    }
-    for (size_t i = 0; i < col; ++i) {
-      element[row_index % mott_rows_per_element][i] = vals[i];
-    }
-    ++row_index;
-  }
-
-  std::ifstream screening_stream(screening_path);
-  if (!screening_stream.is_open()) {
-    throw std::runtime_error("Unable to open electron screening data: " + screening_path.string());
-  }
-  while (std::getline(screening_stream, line)) {
-    if (line.empty()) continue;
-    std::stringstream iss(line);
-    std::array<double, 6> vals{};
-    std::string token;
-    size_t col = 0;
-    while (std::getline(iss, token, ',')) {
-      if (col >= 6) break;
-      vals[col++] = std::stod(token);
-    }
-    if (col == 0) continue;
-    g_electron_screening_params.push_back(vals);
-  }
-}
-
 } // namespace
 
 void Electron::initialize_tables() {
@@ -120,16 +58,16 @@ void Electron::initialize_tables(const std::string &screening_path,
     std::lock_guard<std::mutex> lock(g_electron_tables_mutex);
     const std::filesystem::path assets_path =
         std::filesystem::current_path() / "common" / "assets";
-    const auto mott_path = mott_file.empty() ? assets_path / "mott_scattering_parameters.csv" : mott_file;
-    const auto screening_path = screening_file.empty() ? assets_path / "electron_screening_parameters.csv" : screening_file;
+    const auto mott_table_path = mott_file.empty() ? assets_path / "mott_scattering_parameters.csv" : mott_file;
+    const auto screening_table_path = screening_file.empty() ? assets_path / "electron_screening_parameters.csv" : screening_file;
 
-    std::ifstream mott_stream(mott_path);
+    std::ifstream mott_stream(mott_table_path);
     if (!mott_stream.is_open()) {
-      throw std::runtime_error("Unable to open Mott parameter table: " + mott_path.string());
+      throw std::runtime_error("Unable to open Mott parameter table: " + mott_table_path.string());
     }
-    std::ifstream screening_stream(screening_path);
+    std::ifstream screening_stream(screening_table_path);
     if (!screening_stream.is_open()) {
-      throw std::runtime_error("Unable to open electron screening data: " + screening_path.string());
+      throw std::runtime_error("Unable to open electron screening data: " + screening_table_path.string());
     }
 
     g_mott_scattering_params.clear();
