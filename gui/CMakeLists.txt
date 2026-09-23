@@ -37,7 +37,6 @@ if(WIN32)
   # Run windeployqt after build
   add_custom_command(TARGET amcset-gui POST_BUILD
     COMMAND "${WINDEPLOYQT_EXECUTABLE}"
-            --debug
             --no-translations
             "$<TARGET_FILE:amcset-gui>"
     COMMENT "Running windeployqt..."

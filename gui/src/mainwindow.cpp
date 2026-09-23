@@ -535,16 +535,16 @@ void MainWindow::runSimulation() {
       QDir().mkpath(logInfo.absoluteDir().absolutePath());
     }
     const auto stdPath = logFile.toStdString();
-    google::SetLogDestination(google::INFO, stdPath.c_str());
-    google::SetLogDestination(google::WARNING, stdPath.c_str());
-    google::SetLogDestination(google::ERROR, stdPath.c_str());
-    google::SetLogDestination(google::FATAL, stdPath.c_str());
+    google::SetLogDestination(google::GLOG_INFO, stdPath.c_str());
+    google::SetLogDestination(google::GLOG_WARNING, stdPath.c_str());
+    google::SetLogDestination(google::GLOG_ERROR, stdPath.c_str());
+    google::SetLogDestination(google::GLOG_FATAL, stdPath.c_str());
     updateResultPane(QString("Logging enabled to %1").arg(logFile));
   } else {
-    google::SetLogDestination(google::INFO, "");
-    google::SetLogDestination(google::WARNING, "");
-    google::SetLogDestination(google::ERROR, "");
-    google::SetLogDestination(google::FATAL, "");
+    google::SetLogDestination(google::GLOG_INFO, "");
+    google::SetLogDestination(google::GLOG_WARNING, "");
+    google::SetLogDestination(google::GLOG_ERROR, "");
+    google::SetLogDestination(google::GLOG_FATAL, "");
   }
 
   const auto outputDir = outputDirectoryEdit->text().trimmed();
@@ -632,14 +632,14 @@ void MainWindow::runSimulation() {
   // Create AMCSET volume (TODO: Read this from a file and allow a user to
   // configure)
 
-  const size_t layerCount = layerModel->rowCount();
+  const int layerCount = layerModel->rowCount();
 
   if (layerCount == 0) {
     throw std::logic_error("Layer count cannot be zero.");
   }
 
   std::vector<common::Layer> layers;
-  for (size_t layerRow = 0; layerRow < layerCount; layerRow++) {
+  for (int layerRow = 0; layerRow < layerCount; layerRow++) {
     const auto startingDepthColumn = 0;
     const auto depthColumn = 1;
     const auto densityColumn = 3;
@@ -670,10 +670,10 @@ void MainWindow::runSimulation() {
         qobject_cast<QTableView *>(materialLayout->itemAt(0)->widget());
     auto *materialModel = materialTable->model();
     // TODO: Check for duplicate elements
-    size_t elementCount = materialModel->rowCount();
+    const int elementCount = materialModel->rowCount();
     common::Layer::material_vector material;
     auto proportionSum = 0.0;
-    for (size_t elementRow = 0; elementRow < elementCount; elementRow++) {
+    for (int elementRow = 0; elementRow < elementCount; elementRow++) {
       const auto atomicSymbolColumn = 0;
       const auto proportionColumn = 1;
 
@@ -1097,7 +1097,7 @@ void MainWindow::toggleIncidentIonFormVisibility(int state) {
   incidentMass->setVisible(state != Qt::Checked);
 }
 
-void MainWindow::handleLayerButtonClicked(size_t row) { openLayerWindow(row); }
+void MainWindow::handleLayerButtonClicked(int row) { openLayerWindow(row); }
 
 // TODO: Finish this. Return false if depths are invalid.
 void MainWindow::updateLayerDepths() {
@@ -1105,7 +1105,7 @@ void MainWindow::updateLayerDepths() {
   // entries
   auto totalDepth = 0.0;
   auto range = rangeSpinBox->value();
-  for (size_t row = 1; row < (size_t)layerModel->rowCount(); row++) {
+  for (int row = 1; row < layerModel->rowCount(); row++) {
     auto prevLabelIndex = layerModel->index(row - 1, 0);
     auto prevEntryIndex = layerModel->index(row - 1, 1);
     auto labelIndex = layerModel->index(row, 0);
@@ -1138,19 +1138,19 @@ void MainWindow::updateLayerDepths() {
 double calculateLayerDensity(size_t row) { return row; }
 
 void MainWindow::createLayerRow() {
-  const size_t row = layerModel->rowCount();
+  const int row = layerModel->rowCount();
   // const size_t columns = layerModel->columnCount();
   layerModel->insertRow(row);
 
   // TODO: Figure out how to do this dynamically (optional)
-  const size_t startingDepthColumn = 0;
-  const size_t depthSpinBoxColumn = 1;
-  const size_t layerLineEditColumn = 2;
-  const size_t densitySpinBoxColumn = 3;
-  const size_t compositionViewColumn = 4;
-  const size_t phaseDropDownColumn = 5;
-  const size_t editButtonColumn = 6;
-  const size_t removeButtonColumn = 7;
+  const int startingDepthColumn = 0;
+  const int depthSpinBoxColumn = 1;
+  const int layerLineEditColumn = 2;
+  const int densitySpinBoxColumn = 3;
+  const int compositionViewColumn = 4;
+  const int phaseDropDownColumn = 5;
+  const int editButtonColumn = 6;
+  const int removeButtonColumn = 7;
 
   const auto startingDepthLabelIndex =
       layerModel->index(row, startingDepthColumn);
@@ -1361,10 +1361,10 @@ QGroupBox *MainWindow::createLayerForms(QWidget *parent) {
   return layerGroupBox;
 }
 
-void MainWindow::openLayerWindow(size_t row) {
-  const size_t compositionColumn = 4;
+void MainWindow::openLayerWindow(int row) {
+  const int compositionColumn = 4;
   const auto compositionIndex = layerModel->index(row, compositionColumn);
-  const size_t layerNameColumn = 2;
+  const int layerNameColumn = 2;
   // const auto layerNameIndex = layerModel->index(row, layerNameColumn);
 
   // The QTableView containing the element data is inside of the

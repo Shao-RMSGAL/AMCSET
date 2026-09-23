@@ -100,9 +100,11 @@ run() {
 }
 
 conan_run() {
-    # conan install . --settings=build_type=Debug --build=missing
-    # check_status
-    conan install . --settings=build_type=Release --build=missing
+    conan install . \
+        --settings=build_type=Release \
+        --settings=compiler.cppstd=gnu20 \
+        --settings=compiler.cstd=gnu17 \
+        --build=missing
     check_status
 }
 

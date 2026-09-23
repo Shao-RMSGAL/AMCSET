@@ -30,9 +30,9 @@ TEST(TalliesUnit, MergeBehavior) {
   EXPECT_EQ(a.sputtered, 5u);
   ASSERT_EQ(a.depth_histogram.bins.size(), 10u);
 
-  uint64_t sum = 0;
+  double sum = 0.0;
   for (auto v : a.depth_histogram.bins) sum += v;
-  EXPECT_EQ(sum, 2u);
+  EXPECT_EQ(sum, 2.0);
 
   EXPECT_EQ(a.range_stats.n, 3u);
   EXPECT_GT((double)a.range_stats.mean, 0.0);

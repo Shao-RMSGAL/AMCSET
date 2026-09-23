@@ -45,11 +45,13 @@ class amcsetRecipe(ConanFile):
         tc.generate()
 
     def requirements(self):
-        self.requires("boost/[=1.86.0]", transitive_headers=True)
+        self.requires("boost/[=1.89.0]", transitive_headers=True)
         self.requires("gtest/[=1.15.0]")
         self.requires("gflags/[=2.2.2]")
         self.requires("glog/[=0.7.1]")
         self.requires("qt/[=6.11.1]")
+        # libiconv 1.17 does not build with current MinGW/MSYS2 headers.
+        self.requires("libiconv/[=1.18]", override=True)
 
     def build_requirements(self):
         self.tool_requires("cmake/[=3.29]")
@@ -79,12 +81,9 @@ class amcsetRecipe(ConanFile):
         self.options["qt"].qtgraphs = True
         self.options["qt"].qtshadertools = True
 
-        # Enable Wayland support.
-        #
-        # This is a build-time feature, not something that should
-        # depend on whether DISPLAY/WAYLAND_DISPLAY happens to exist
-        # when Conan is executed.
-        self.options["qt"].qtwayland = True
+        # Wayland is a Linux build feature. The Windows xkbcommon package
+        # does not expose the option required by Qt's Wayland validation.
+        self.options["qt"].qtwayland = self.settings.os != "Windows"
         self.options["qt"].with_egl = True
 
     def build(self):

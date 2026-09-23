@@ -9,8 +9,13 @@ project(amcset VERSION 0.0.1)
 
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 if(ENABLE_ASAN)
-    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
-    add_link_options(-fsanitize=address)
+    if(MSVC)
+        add_compile_options(/fsanitize=address)
+        add_link_options(/fsanitize=address)
+    else()
+        add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+        add_link_options(-fsanitize=address)
+    endif()
 endif()
 
 # Use the conanfile.py version number
@@ -20,7 +25,7 @@ endif()
 # For clangd lsp
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Require C++23
+# Require C++20
 add_library(compiler_flags INTERFACE)
 target_compile_features(compiler_flags INTERFACE cxx_std_20)
 
@@ -40,18 +45,31 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
         set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
 endif()
 
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -flto -funroll-loops -pipe -DNDEBUG")
-set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto")
-
-target_compile_options(compiler_flags INTERFACE
-    $<$<CONFIG:Release>:-O3;-march=native;-flto;-funroll-loops;-pipe>
-)
+if(MSVC)
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /GL /DNDEBUG")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG")
+    target_compile_options(compiler_flags INTERFACE
+        $<$<CONFIG:Release>:/O2;/GL>
+    )
+else()
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -flto -funroll-loops -pipe -DNDEBUG")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto")
+    target_compile_options(compiler_flags INTERFACE
+        $<$<CONFIG:Release>:-O3;-march=native;-flto;-funroll-loops;-pipe>
+    )
+endif()
 target_compile_definitions(compiler_flags INTERFACE
     $<$<CONFIG:Release>:NDEBUG>
     $<$<CONFIG:Release>:GOOGLE_STRIP_LOG=2>
+    $<$<PLATFORM_ID:Windows>:_WIN32_WINNT=0x0A00>
+    $<$<PLATFORM_ID:Windows>:_CRT_SECURE_NO_WARNINGS>
 )
+if(WIN32)
+    target_compile_definitions(compiler_flags INTERFACE GLOG_NO_ABBREVIATED_SEVERITIES)
+endif()
 target_link_options(compiler_flags INTERFACE
-    $<$<CONFIG:Release>:-flto>
+    $<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:MSVC>>:/LTCG>
+    $<$<AND:$<CONFIG:Release>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-flto>
 )
 
 # Build shared libraries
@@ -80,15 +98,8 @@ add_subdirectory(gui)
 add_subdirectory(test)
 
 if(WIN32)
-    # set(Boost_DIR "${CMAKE_BINARY_DIR}/build/generators")
-    # Target Windows 11 (_WIN32_WINNT = 0x0A00 for Windows 10 and later)
-    add_definitions(-D_WIN32_WINNT=0x0A00)
-
-    # Optionally define _CRT_SECURE_NO_WARNINGS to suppress MSVC warnings
-    # add_definitions(-D_CRT_SECURE_NO_WARNINGS)
-
-    # If you're using C++17 or newer, set the standard explicitly
-    set(CMAKE_CXX_STANDARD 23)
+    # Keep the project standard aligned with the Conan profile.
+    set(CMAKE_CXX_STANDARD 20)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_CXX_EXTENSIONS OFF)
 

@@ -1,3 +1,14 @@
 {
-    "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json"
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
+    "terminal.integrated.profiles.windows": {
+    "Developer PowerShell": {
+        "source": "PowerShell",
+        "args": [
+            "-NoExit",
+            "-Command",
+            "& 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Launch-VsDevShell.ps1'"
+        ]
+    }
+},
+"terminal.integrated.defaultProfile.windows": "Developer PowerShell"
 }

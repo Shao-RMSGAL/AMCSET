@@ -79,12 +79,12 @@ TEST(TalliesIntegration, EnergyLossHistogramsRecordNonZeroData) {
   const auto &t = sim.get_tallies();
   EXPECT_GT(t.energy_loss_stats.n, 0u);
   EXPECT_GT(std::accumulate(t.electronic_energy_loss_histogram.bins.begin(),
-                           t.electronic_energy_loss_histogram.bins.end(), 0ULL),
-            0u);
+                           t.electronic_energy_loss_histogram.bins.end(), 0.0),
+            0.0);
   EXPECT_GT(std::accumulate(t.nuclear_energy_loss_histogram.bins.begin(),
-                           t.nuclear_energy_loss_histogram.bins.end(), 0ULL),
-            0u);
+                           t.nuclear_energy_loss_histogram.bins.end(), 0.0),
+            0.0);
   EXPECT_GT(std::accumulate(t.total_energy_loss_histogram.bins.begin(),
-                           t.total_energy_loss_histogram.bins.end(), 0ULL),
-            0u);
+                           t.total_energy_loss_histogram.bins.end(), 0.0),
+            0.0);
 }

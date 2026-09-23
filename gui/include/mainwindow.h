@@ -89,8 +89,8 @@ private slots:
   void setParagraphSpacing();
   void about();
   void aboutQt();
-  void openLayerWindow(size_t row);
-  void handleLayerButtonClicked(size_t row);
+  void openLayerWindow(int row);
+  void handleLayerButtonClicked(int row);
   void toggleIncidentIonFormVisibility(int state);
   void createLayerRow();
   void runSimulation();
@@ -154,8 +154,8 @@ private:
   QSpinBox *incidentCharge = nullptr;
   QDoubleSpinBox *incidentAngle = nullptr;
   QFormLayout *incidentFormLayout = nullptr;
-  size_t incidentChargeFormIndex;
-  size_t incidentMassFormIndex;
+  int incidentChargeFormIndex;
+  int incidentMassFormIndex;
   QSpinBox *bombardmentCountSpinBox = nullptr;
   QSpinBox *threadCountSpinBox = nullptr;
   QDoubleSpinBox *rangeSpinBox = nullptr;
