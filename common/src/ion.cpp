@@ -360,8 +360,23 @@ void Ion::fire() try {
       } catch (...) {
         vx = vy = vz = 0.0;
       }
+      // compute delta time since previous collision: use path_length and speed
+      double delta_time_seconds = 0.0;
+      try {
+        auto speed_q = speed_from_energy(velocity_.energy_, properties_.mass_);
+        double sp = speed_q.value();
+        // path_length is a length_quantity; convert to meters then to double
+        const double path_m = (path_length / si::meter).value();
+        if (sp > 0.0) delta_time_seconds = path_m / sp;
+      } catch (...) {
+        delta_time_seconds = 0.0;
+      }
       CollisionPoint cp{coordinate_, vx, vy, vz, generation_};
-      bombardment_.add_collision_point(cp);
+      cp.z_number = static_cast<size_t>(properties_.charge_.value());
+      cp.atomic_mass_number = properties_.mass_number_.value();
+      cp.energy_eV = (velocity_.energy_ / electron_volt).value();
+      // Pass delta time to Bombardment which will accumulate and set cumulative time
+      bombardment_.add_collision_point(cp, delta_time_seconds);
     }
     bombardment_.record_energy_loss((long double)(e_energy_loss + nuclear_e_loss).value(), coordinate_.z_.value(), Bombardment::EnergyLossType::total);
 

@@ -126,6 +126,10 @@ struct CollisionPoint {
   double vy = 0.0;         //!< Velocity y-component
   double vz = 0.0;         //!< Velocity z-component
   size_t generation = 0;   //!< Generation number: 0 = incident, 1 = primary knock-on, ...
+  size_t z_number = 0;     //!< Atomic number (Z) of the particle that generated this point
+  double atomic_mass_number = 0.0; //!< Mass number of the particle (dimensionless)
+  double time = 0.0;       //!< Time since incident particle first hit (seconds)
+  double energy_eV = 0.0;  //!< Particle energy at collision (eV)
 };
 
 struct Quaternion {
@@ -1238,8 +1242,22 @@ public:
    */
   size_t get_id() const noexcept { return id_; }
 
-  /*! Add a collision point to this bombardment's internal list. */
-  void add_collision_point(const CollisionPoint &pt) { collision_points_.push_back(pt); }
+  /*! Add a collision point to this bombardment's internal list.
+   *  
+   *  
+   *  
+   *  The optional `delta_time_seconds` parameter is the simulated time
+   *  elapsed since the previous collision (in seconds). The Bombardment
+   *  will accumulate this into an internal clock and store the cumulative
+   *  time into the CollisionPoint::time field before pushing it into the
+   *  internal vector.
+   */
+  void add_collision_point(const CollisionPoint &pt, double delta_time_seconds = 0.0) {
+    CollisionPoint c = pt;
+    cumulative_time_seconds_ += delta_time_seconds;
+    c.time = cumulative_time_seconds_;
+    collision_points_.push_back(std::move(c));
+  }
 
   /*! Move-out full collision vector and clear internal storage. */
   std::vector<CollisionPoint> take_collision_points() { std::vector<CollisionPoint> tmp = std::move(collision_points_); collision_points_.clear(); return tmp; }
@@ -1261,6 +1279,7 @@ public:
 private:
   Simulation &simulation_;
   std::vector<CollisionPoint> collision_points_;
+  double cumulative_time_seconds_ = 0.0; //!< Cumulative simulated time for this bombardment (seconds)
   amcset::common::Tallies local_tallies_;
   std::unique_ptr<Particle> incident_particle_;
   boost::random::mt19937 random_number_generator_;
@@ -1322,6 +1341,8 @@ public:
     const std::string total_energy_loss_histogram_output_file_;
     const bool log_particle_tree_;
     const std::string particle_tree_output_file_;
+    const bool save_per_bombardment_info_;
+    const std::string per_bombardment_output_dir_;
     const std::string electron_screening_parameters_path_;
     const std::string mott_scattering_parameters_path_;
     const bool log_end_of_flying_distance_only_;
@@ -1343,18 +1364,37 @@ public:
          size_t electronic_energy_loss_bin_count = 100,
          size_t nuclear_energy_loss_bin_count = 100,
          size_t total_energy_loss_bin_count = 100,
-         std::string displacement_histogram_output_file =
-           "output/displacement_histogram.csv",
-         std::string electronic_energy_loss_histogram_output_file =
-           "output/electronic_loss_histogram.csv",
-         std::string nuclear_energy_loss_histogram_output_file =
-           "output/nuclear_loss_histogram.csv",
-         std::string total_energy_loss_histogram_output_file =
-           "output/total_loss_histogram.csv",
+         std::string displacement_histogram_output_file = "output/displacement_histogram.csv",
+         std::string electronic_energy_loss_histogram_output_file = "output/electronic_loss_histogram.csv",
+         std::string nuclear_energy_loss_histogram_output_file = "output/nuclear_loss_histogram.csv",
+         std::string total_energy_loss_histogram_output_file = "output/total_loss_histogram.csv",
          bool log_particle_tree = false,
-         std::string particle_tree_output_file =
-           "output/particle_tree.json",
+        std::string particle_tree_output_file = "output/particle_tree.json",
+        bool save_per_bombardment_info = false,
+        std::string per_bombardment_output_dir = "output/bombardments/",
          ScreeningModel screening_model = ScreeningModel::ThomasFermi,
+         bool log_end_of_flying_distance_only = false,
+         bool log_stopping_point_only = false);
+      Settings(energy_quantity electron_stopping_energy, size_t z_number,
+         size_t mass_number, bool enable_damage_cascade,
+         energy_quantity ion_stopping_energy,
+         energy_quantity ion_displacement_energy,
+         bool log_single_displacement, size_t divisor_angle_number,
+         size_t flying_distance_number, length_quantity range,
+         size_t bombardment_count, bool is_electron,
+         energy_quantity incident_energy, size_t thread_count,
+         angle_quantity incident_angle,
+         size_t displacement_bin_count,
+         size_t electronic_energy_loss_bin_count,
+         size_t nuclear_energy_loss_bin_count,
+         size_t total_energy_loss_bin_count,
+         std::string displacement_histogram_output_file,
+         std::string electronic_energy_loss_histogram_output_file,
+         std::string nuclear_energy_loss_histogram_output_file,
+         std::string total_energy_loss_histogram_output_file,
+         bool log_particle_tree,
+         std::string particle_tree_output_file,
+         ScreeningModel screening_model,
          bool log_end_of_flying_distance_only = false,
          bool log_stopping_point_only = false);
 
@@ -1377,6 +1417,8 @@ public:
          std::string total_energy_loss_histogram_output_file,
          bool log_particle_tree,
          std::string particle_tree_output_file,
+        bool save_per_bombardment_info,
+        std::string per_bombardment_output_dir,
          std::string electron_screening_parameters_path,
          std::string mott_scattering_parameters_path,
          ScreeningModel screening_model = ScreeningModel::ThomasFermi,

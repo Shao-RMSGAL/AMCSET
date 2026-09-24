@@ -543,6 +543,33 @@ void MainWindow::createSettingsDialog() {
       {&particleTreeEdit, "Particle tree output"},
   };
 
+  // Per-bombardment CSV output
+  auto *perBombardmentRow = new QWidget(settingsTab);
+  auto *perBombardmentLayout = new QHBoxLayout(perBombardmentRow);
+  perBombardmentLayout->setContentsMargins(0,0,0,0);
+  perBombardmentOutputDirEdit = new QLineEdit("output/bombardments/", perBombardmentRow);
+  auto *perBombardmentBrowse = new QPushButton("Browse", perBombardmentRow);
+  connect(perBombardmentBrowse, &QPushButton::clicked, this, [this]() {
+    browseOutputDirectory(perBombardmentOutputDirEdit, "Select per-bombardment output directory");
+  });
+  perBombardmentLayout->addWidget(perBombardmentOutputDirEdit);
+  perBombardmentLayout->addWidget(perBombardmentBrowse);
+  formLayout->addRow("Per-bombardment output dir", perBombardmentRow);
+
+  savePerBombardmentCheck = new QCheckBox(settingsTab);
+  savePerBombardmentCheck->setChecked(false);
+  formLayout->addRow("Save per-bombardment CSVs", savePerBombardmentCheck);
+
+  // Show a warning when the user enables the option from the settings UI.
+  // Use "clicked" so programmatic changes (loading settings at startup)
+  // do not trigger the warning — only user clicks do.
+  connect(savePerBombardmentCheck, &QCheckBox::clicked, this, [this](bool checked) {
+    if (!checked) return;
+    QMessageBox::warning(this, "Large Output Warning",
+      "Saving per-bombardment CSVs can generate very large files. It is not recommended for more than 100 bombardments.",
+      QMessageBox::Ok);
+  });
+
   for (const auto &entry : fileFields) {
     auto **field = entry.first;
     const char *label = entry.second;
@@ -564,6 +591,8 @@ void MainWindow::createSettingsDialog() {
   nuclearOutputEdit->setText("nuclear_loss_histogram.csv");
   totalOutputEdit->setText("total_loss_histogram.csv");
   particleTreeEdit->setText("particle_tree.json");
+  if (perBombardmentOutputDirEdit) perBombardmentOutputDirEdit->setText("output/bombardments/");
+  if (savePerBombardmentCheck) savePerBombardmentCheck->setChecked(false);
 
   auto *logFileRow = new QWidget(settingsTab);
   auto *logFileLayout = new QHBoxLayout(logFileRow);

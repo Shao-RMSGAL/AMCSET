@@ -115,6 +115,7 @@ void MainWindow::runSimulation() {
   const auto nuclearOutput = buildOutputPath(nuclearOutputEdit->text().trimmed());
   const auto totalOutput = buildOutputPath(totalOutputEdit->text().trimmed());
   const auto particleTreeOutput = buildOutputPath(particleTreeEdit->text().trimmed());
+  const auto perBombardmentOutputDir = perBombardmentOutputDirEdit ? perBombardmentOutputDirEdit->text().trimmed().toStdString() : std::string("output/bombardments/");
 
   common::energy_quantity electron_stopping_energy = 40.0 * common::electron_volt;
   common::energy_quantity ion_stopping_energy = 40.0 * common::electron_volt;
@@ -160,8 +161,40 @@ void MainWindow::runSimulation() {
       100, displacementOutput.toStdString(), electronicOutput.toStdString(),
       nuclearOutput.toStdString(), totalOutput.toStdString(),
       enableLoggingCheck->isChecked(), particleTreeOutput.toStdString(),
+      savePerBombardmentCheck && savePerBombardmentCheck->isChecked(),
+      perBombardmentOutputDir,
       electron_screening_path, mott_path, selected_model,
       log_end_of_flying_distance_only, log_stopping_point_only);
+
+  // Perform safety confirmations BEFORE constructing or launching the simulation.
+  if (savePerBombardmentCheck && savePerBombardmentCheck->isChecked()) {
+    // Warn only when bombardment count is large
+    if (bombardment_count > 100) {
+      const auto ret = QMessageBox::warning(this, "Large Output Warning",
+        "Saving per-bombardment CSVs can generate very large files. It is not recommended for more than 100 bombardments. Continue?",
+        QMessageBox::Ok | QMessageBox::Cancel);
+      if (ret == QMessageBox::Cancel) {
+        return;
+      }
+    }
+
+    // Check whether the per-bombardment output directory already contains files.
+    const QString perDir = QString::fromStdString(perBombardmentOutputDir);
+    if (!perDir.trimmed().isEmpty()) {
+      const QDir dir(perDir);
+      if (dir.exists()) {
+        const auto entries = dir.entryList(QDir::AllEntries | QDir::NoDotAndDotDot);
+        if (!entries.isEmpty()) {
+          const auto overwriteRet = QMessageBox::warning(this, "Output Directory Not Empty",
+            QStringLiteral("The per-bombardment output directory '%1' is not empty. Running another simulation may overwrite existing files. Continue?").arg(perDir),
+            QMessageBox::Ok | QMessageBox::Cancel);
+          if (overwriteRet == QMessageBox::Cancel) {
+            return;
+          }
+        }
+      }
+    }
+  }
 
   try {
     const int layerCount = layerModel->rowCount();
@@ -242,6 +275,46 @@ void MainWindow::runSimulation() {
 
     activeSimulation = simulation.get();
     launchSimulationThread(std::move(simulation));
+    // If user enabled per-bombardment saving, warn them about large files
+    // Only show the confirmation when the bombardment count exceeds 100.
+    if (savePerBombardmentCheck && savePerBombardmentCheck->isChecked() && bombardment_count > 100) {
+      const auto ret = QMessageBox::warning(this, "Large Output Warning",
+        "Saving per-bombardment CSVs can generate very large files. It is not recommended for more than 100 bombardments. Continue?",
+        QMessageBox::Ok | QMessageBox::Cancel);
+      if (ret == QMessageBox::Cancel) {
+        // stop simulation start
+        if (simulationThread) {
+          simulationThread->deleteLater();
+          simulationThread = nullptr;
+        }
+        activeSimulation = nullptr;
+        return;
+      }
+    }
+
+    // Check whether the per-bombardment output directory already contains files.
+    if (savePerBombardmentCheck && savePerBombardmentCheck->isChecked()) {
+      const QString perDir = QString::fromStdString(perBombardmentOutputDir);
+      if (!perDir.trimmed().isEmpty()) {
+        const QDir dir(perDir);
+        if (dir.exists()) {
+          const auto entries = dir.entryList(QDir::AllEntries | QDir::NoDotAndDotDot);
+          if (!entries.isEmpty()) {
+            const auto overwriteRet = QMessageBox::warning(this, "Output Directory Not Empty",
+              QStringLiteral("The per-bombardment output directory '%1' is not empty. Running another simulation may overwrite existing files. Continue?").arg(perDir),
+              QMessageBox::Ok | QMessageBox::Cancel);
+            if (overwriteRet == QMessageBox::Cancel) {
+              if (simulationThread) {
+                simulationThread->deleteLater();
+                simulationThread = nullptr;
+              }
+              activeSimulation = nullptr;
+              return;
+            }
+          }
+        }
+      }
+    }
     if (!bombardmentPollTimer) {
       bombardmentPollTimer = new QTimer(this);
       connect(bombardmentPollTimer, &QTimer::timeout, this,

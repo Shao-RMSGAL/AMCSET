@@ -188,7 +188,9 @@ private:
   QLineEdit *nuclearOutputEdit = nullptr;
   QLineEdit *totalOutputEdit = nullptr;
   QLineEdit *particleTreeEdit = nullptr;
+  QLineEdit *perBombardmentOutputDirEdit = nullptr;
   QCheckBox *enableLoggingCheck = nullptr;
+  QCheckBox *savePerBombardmentCheck = nullptr;
   QCheckBox *logSingleDisplacementCheck = nullptr;
   QCheckBox *logEndOfFlyingDistanceOnlyCheck = nullptr;
   QCheckBox *logStoppingPointOnlyCheck = nullptr;

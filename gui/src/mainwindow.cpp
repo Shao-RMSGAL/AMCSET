@@ -130,6 +130,8 @@ void MainWindow::saveState() {
   if (nuclearOutputEdit) state["nuclearOutput"] = nuclearOutputEdit->text();
   if (totalOutputEdit) state["totalOutput"] = totalOutputEdit->text();
   if (particleTreeEdit) state["particleTreeOutput"] = particleTreeEdit->text();
+  if (perBombardmentOutputDirEdit) state["perBombardmentOutputDir"] = perBombardmentOutputDirEdit->text();
+  if (savePerBombardmentCheck) state["savePerBombardment"] = savePerBombardmentCheck->isChecked();
   if (enableLoggingCheck) state["enableLogging"] = enableLoggingCheck->isChecked();
   if (logSingleDisplacementCheck) state["logSingleDisplacement"] = logSingleDisplacementCheck->isChecked();
   if (logEndOfFlyingDistanceOnlyCheck) state["logEndOfFlyingDistanceOnly"] = logEndOfFlyingDistanceOnlyCheck->isChecked();
@@ -171,6 +173,8 @@ void MainWindow::restoreState() {
   if (nuclearOutputEdit) nuclearOutputEdit->setText(state.value("nuclearOutput", "nuclear_loss_histogram.csv").toString());
   if (totalOutputEdit) totalOutputEdit->setText(state.value("totalOutput", "total_loss_histogram.csv").toString());
   if (particleTreeEdit) particleTreeEdit->setText(state.value("particleTreeOutput", "particle_tree.json").toString());
+  if (perBombardmentOutputDirEdit) perBombardmentOutputDirEdit->setText(state.value("perBombardmentOutputDir", "output/bombardments/").toString());
+  if (savePerBombardmentCheck) savePerBombardmentCheck->setChecked(state.value("savePerBombardment", false).toBool());
   if (enableLoggingCheck) enableLoggingCheck->setChecked(state.value("enableLogging", false).toBool());
   if (logSingleDisplacementCheck) logSingleDisplacementCheck->setChecked(state.value("logSingleDisplacement", false).toBool());
   if (logEndOfFlyingDistanceOnlyCheck) logEndOfFlyingDistanceOnlyCheck->setChecked(state.value("logEndOfFlyingDistanceOnly", false).toBool());

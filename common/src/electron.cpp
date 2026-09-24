@@ -347,7 +347,22 @@ void Electron::fire() try {
     const double vx = q.x_ * speed.value();
     const double vy = q.y_ * speed.value();
     const double vz = q.z_ * speed.value();
-    bombardment_.add_collision_point(CollisionPoint{coordinate_, vx, vy, vz, generation_});
+    // Compute delta time for this step using `step` length and particle speed
+    double delta_time_seconds = 0.0;
+    try {
+      const double step_m = (step / si::meter).value();
+      const auto speed_q = speed_from_energy(velocity_.energy_, properties_.mass_);
+      const double sp = speed_q.value();
+      if (sp > 0.0) delta_time_seconds = step_m / sp;
+    } catch (...) {
+      delta_time_seconds = 0.0;
+    }
+
+    CollisionPoint cp{coordinate_, vx, vy, vz, generation_};
+    cp.z_number = static_cast<size_t>(properties_.charge_.value());
+    cp.atomic_mass_number = properties_.mass_number_.value();
+    cp.energy_eV = (velocity_.energy_ / electron_volt).value();
+    bombardment_.add_collision_point(cp, delta_time_seconds);
 
     data_leaf_.add_coordinate(coordinate_);
     coordinates_.emplace_back(coordinate_);

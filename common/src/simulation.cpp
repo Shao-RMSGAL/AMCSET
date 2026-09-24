@@ -37,58 +37,63 @@
 namespace amcset {
 namespace common {
 
+// Full constructor (matches header second declaration) including electron/mott paths
 Simulation::Settings::Settings(
-    energy_quantity electron_stopping_energy, size_t z_number,
-    size_t mass_number, bool enable_damage_cascade,
-    energy_quantity ion_stopping_energy,
-    energy_quantity ion_displacement_energy, bool log_single_displacement,
-    size_t divisor_angle_number, size_t flying_distance_number,
-    length_quantity range, size_t bombardment_count, bool is_electron,
-    energy_quantity incident_energy, size_t thread_count,
-    angle_quantity incident_angle, size_t displacement_bin_count,
-    size_t electronic_energy_loss_bin_count,
-    size_t nuclear_energy_loss_bin_count,
-    size_t total_energy_loss_bin_count,
-    std::string displacement_histogram_output_file,
-    std::string electronic_energy_loss_histogram_output_file,
-    std::string nuclear_energy_loss_histogram_output_file,
-    std::string total_energy_loss_histogram_output_file,
-    bool log_particle_tree, std::string particle_tree_output_file,
-    std::string electron_screening_parameters_path,
-    std::string mott_scattering_parameters_path,
-    Simulation::Settings::ScreeningModel screening_model,
-    bool log_end_of_flying_distance_only,
-    bool log_stopping_point_only) try
-    : electron_stopping_energy_(electron_stopping_energy), z_number_(z_number),
-      mass_number_(mass_number),
-      incident_particle_properties_(Particle::Properties(z_number, mass_number)),
-      enable_damage_cascade_(enable_damage_cascade),
-      ion_stopping_energy_(ion_stopping_energy),
-      ion_displacement_energy_(ion_displacement_energy),
-      log_single_displacement_(log_single_displacement),
-      divisor_angle_number_(divisor_angle_number),
-      flying_distance_number_(flying_distance_number), range_(range),
-      bombardment_count_(bombardment_count), is_electron_(is_electron),
-      incident_energy_(incident_energy), thread_count_(thread_count),
-      incident_angle_(incident_angle),
-      displacement_bin_count_(displacement_bin_count),
-      electronic_energy_loss_bin_count_(electronic_energy_loss_bin_count),
-      nuclear_energy_loss_bin_count_(nuclear_energy_loss_bin_count),
-      total_energy_loss_bin_count_(total_energy_loss_bin_count),
-      displacement_histogram_output_file_(std::move(displacement_histogram_output_file)),
-      electronic_energy_loss_histogram_output_file_(
-          std::move(electronic_energy_loss_histogram_output_file)),
-      nuclear_energy_loss_histogram_output_file_(
-          std::move(nuclear_energy_loss_histogram_output_file)),
-      total_energy_loss_histogram_output_file_(
-          std::move(total_energy_loss_histogram_output_file)),
-      log_particle_tree_(log_particle_tree),
-      particle_tree_output_file_(std::move(particle_tree_output_file)),
-      electron_screening_parameters_path_(std::move(electron_screening_parameters_path)),
-      mott_scattering_parameters_path_(std::move(mott_scattering_parameters_path)),
-      log_end_of_flying_distance_only_(log_end_of_flying_distance_only),
-      log_stopping_point_only_(log_stopping_point_only),
-      screening_model_(screening_model) {
+  energy_quantity electron_stopping_energy, size_t z_number,
+  size_t mass_number, bool enable_damage_cascade,
+  energy_quantity ion_stopping_energy,
+  energy_quantity ion_displacement_energy, bool log_single_displacement,
+  size_t divisor_angle_number, size_t flying_distance_number,
+  length_quantity range, size_t bombardment_count, bool is_electron,
+  energy_quantity incident_energy, size_t thread_count,
+  angle_quantity incident_angle, size_t displacement_bin_count,
+  size_t electronic_energy_loss_bin_count,
+  size_t nuclear_energy_loss_bin_count,
+  size_t total_energy_loss_bin_count,
+  std::string displacement_histogram_output_file,
+  std::string electronic_energy_loss_histogram_output_file,
+  std::string nuclear_energy_loss_histogram_output_file,
+  std::string total_energy_loss_histogram_output_file,
+  bool log_particle_tree, std::string particle_tree_output_file,
+  bool save_per_bombardment_info,
+  std::string per_bombardment_output_dir,
+  std::string electron_screening_parameters_path,
+  std::string mott_scattering_parameters_path,
+  Simulation::Settings::ScreeningModel screening_model,
+  bool log_end_of_flying_distance_only,
+  bool log_stopping_point_only) try
+  : electron_stopping_energy_(electron_stopping_energy), z_number_(z_number),
+    mass_number_(mass_number),
+    incident_particle_properties_(Particle::Properties(z_number, mass_number)),
+    enable_damage_cascade_(enable_damage_cascade),
+    ion_stopping_energy_(ion_stopping_energy),
+    ion_displacement_energy_(ion_displacement_energy),
+    log_single_displacement_(log_single_displacement),
+    divisor_angle_number_(divisor_angle_number),
+    flying_distance_number_(flying_distance_number), range_(range),
+    bombardment_count_(bombardment_count), is_electron_(is_electron),
+    incident_energy_(incident_energy), thread_count_(thread_count),
+    incident_angle_(incident_angle),
+    displacement_bin_count_(displacement_bin_count),
+    electronic_energy_loss_bin_count_(electronic_energy_loss_bin_count),
+    nuclear_energy_loss_bin_count_(nuclear_energy_loss_bin_count),
+    total_energy_loss_bin_count_(total_energy_loss_bin_count),
+    displacement_histogram_output_file_(std::move(displacement_histogram_output_file)),
+    electronic_energy_loss_histogram_output_file_(
+      std::move(electronic_energy_loss_histogram_output_file)),
+    nuclear_energy_loss_histogram_output_file_(
+      std::move(nuclear_energy_loss_histogram_output_file)),
+    total_energy_loss_histogram_output_file_(
+      std::move(total_energy_loss_histogram_output_file)),
+    log_particle_tree_(log_particle_tree),
+    particle_tree_output_file_(std::move(particle_tree_output_file)),
+    save_per_bombardment_info_(save_per_bombardment_info),
+    per_bombardment_output_dir_((per_bombardment_output_dir.empty()) ? std::string("output/bombardments/") : std::move(per_bombardment_output_dir)),
+    electron_screening_parameters_path_(std::move(electron_screening_parameters_path)),
+    mott_scattering_parameters_path_(std::move(mott_scattering_parameters_path)),
+    log_end_of_flying_distance_only_(log_end_of_flying_distance_only),
+    log_stopping_point_only_(log_stopping_point_only),
+    screening_model_(screening_model) {
   if (incident_energy <= energy_quantity(0.0 * kilo_electron_volt)) {
     throw std::invalid_argument(
         EXCEPTION_MESSAGE("Incident energy should be greater than 0. Value: " +
@@ -129,49 +134,96 @@ Simulation::Settings::Settings(
     throw std::invalid_argument(
         EXCEPTION_MESSAGE("Histogram bin counts must be greater than 0"));
   }
+  (void)save_per_bombardment_info_; // silence unused warnings for const
 } catch (...) {
   rethrow();
 }
 
 Simulation::Settings::Settings(
-    energy_quantity electron_stopping_energy, size_t z_number,
-    size_t mass_number, bool enable_damage_cascade,
-    energy_quantity ion_stopping_energy,
-    energy_quantity ion_displacement_energy, bool log_single_displacement,
-    size_t divisor_angle_number, size_t flying_distance_number,
-    length_quantity range, size_t bombardment_count, bool is_electron,
-    energy_quantity incident_energy, size_t thread_count,
-    angle_quantity incident_angle,
-    size_t displacement_bin_count,
-    size_t electronic_energy_loss_bin_count,
-    size_t nuclear_energy_loss_bin_count,
-    size_t total_energy_loss_bin_count,
-    std::string displacement_histogram_output_file,
-    std::string electronic_energy_loss_histogram_output_file,
-    std::string nuclear_energy_loss_histogram_output_file,
-    std::string total_energy_loss_histogram_output_file,
-    bool log_particle_tree, std::string particle_tree_output_file,
-    Simulation::Settings::ScreeningModel screening_model,
-    bool log_end_of_flying_distance_only,
-    bool log_stopping_point_only)
-    : Settings(electron_stopping_energy, z_number, mass_number,
-               enable_damage_cascade, ion_stopping_energy,
-               ion_displacement_energy, log_single_displacement,
-               divisor_angle_number, flying_distance_number, range,
-               bombardment_count, is_electron, incident_energy, thread_count,
-               incident_angle, displacement_bin_count,
-               electronic_energy_loss_bin_count,
-               nuclear_energy_loss_bin_count,
-               total_energy_loss_bin_count,
-               std::move(displacement_histogram_output_file),
-               std::move(electronic_energy_loss_histogram_output_file),
-               std::move(nuclear_energy_loss_histogram_output_file),
-               std::move(total_energy_loss_histogram_output_file),
-               log_particle_tree, std::move(particle_tree_output_file),
-               "common/assets/electron_screening_parameters.csv",
-               "common/assets/mott_scattering_parameters.csv",
-               screening_model, log_end_of_flying_distance_only,
-               log_stopping_point_only) {}
+  energy_quantity electron_stopping_energy, size_t z_number,
+  size_t mass_number, bool enable_damage_cascade,
+  energy_quantity ion_stopping_energy,
+  energy_quantity ion_displacement_energy, bool log_single_displacement,
+  size_t divisor_angle_number, size_t flying_distance_number,
+  length_quantity range, size_t bombardment_count, bool is_electron,
+  energy_quantity incident_energy, size_t thread_count,
+  angle_quantity incident_angle,
+  size_t displacement_bin_count,
+  size_t electronic_energy_loss_bin_count,
+  size_t nuclear_energy_loss_bin_count,
+  size_t total_energy_loss_bin_count,
+  std::string displacement_histogram_output_file,
+  std::string electronic_energy_loss_histogram_output_file,
+  std::string nuclear_energy_loss_histogram_output_file,
+  std::string total_energy_loss_histogram_output_file,
+  bool log_particle_tree, std::string particle_tree_output_file,
+  bool save_per_bombardment_info,
+  std::string per_bombardment_output_dir,
+  Simulation::Settings::ScreeningModel screening_model,
+  bool log_end_of_flying_distance_only,
+  bool log_stopping_point_only)
+  : Settings(electron_stopping_energy, z_number, mass_number,
+         enable_damage_cascade, ion_stopping_energy,
+         ion_displacement_energy, log_single_displacement,
+         divisor_angle_number, flying_distance_number, range,
+         bombardment_count, is_electron, incident_energy, thread_count,
+         incident_angle, displacement_bin_count,
+         electronic_energy_loss_bin_count,
+         nuclear_energy_loss_bin_count,
+         total_energy_loss_bin_count,
+         std::move(displacement_histogram_output_file),
+         std::move(electronic_energy_loss_histogram_output_file),
+         std::move(nuclear_energy_loss_histogram_output_file),
+         std::move(total_energy_loss_histogram_output_file),
+         log_particle_tree, std::move(particle_tree_output_file),
+         save_per_bombardment_info,
+         std::move(per_bombardment_output_dir),
+         std::string("common/assets/electron_screening_parameters.csv"),
+         std::string("common/assets/mott_scattering_parameters.csv"),
+         screening_model, log_end_of_flying_distance_only,
+         log_stopping_point_only) {}
+
+// Delegating constructor matching the shorter overload used by tests
+Simulation::Settings::Settings(
+  energy_quantity electron_stopping_energy, size_t z_number,
+  size_t mass_number, bool enable_damage_cascade,
+  energy_quantity ion_stopping_energy,
+  energy_quantity ion_displacement_energy, bool log_single_displacement,
+  size_t divisor_angle_number, size_t flying_distance_number,
+  length_quantity range, size_t bombardment_count, bool is_electron,
+  energy_quantity incident_energy, size_t thread_count,
+  angle_quantity incident_angle,
+  size_t displacement_bin_count,
+  size_t electronic_energy_loss_bin_count,
+  size_t nuclear_energy_loss_bin_count,
+  size_t total_energy_loss_bin_count,
+  std::string displacement_histogram_output_file,
+  std::string electronic_energy_loss_histogram_output_file,
+  std::string nuclear_energy_loss_histogram_output_file,
+  std::string total_energy_loss_histogram_output_file,
+  bool log_particle_tree, std::string particle_tree_output_file,
+  Simulation::Settings::ScreeningModel screening_model,
+  bool log_end_of_flying_distance_only,
+  bool log_stopping_point_only)
+  : Settings(electron_stopping_energy, z_number, mass_number,
+         enable_damage_cascade, ion_stopping_energy,
+         ion_displacement_energy, log_single_displacement,
+         divisor_angle_number, flying_distance_number, range,
+         bombardment_count, is_electron, incident_energy, thread_count,
+         incident_angle, displacement_bin_count,
+         electronic_energy_loss_bin_count,
+         nuclear_energy_loss_bin_count,
+         total_energy_loss_bin_count,
+         std::move(displacement_histogram_output_file),
+         std::move(electronic_energy_loss_histogram_output_file),
+         std::move(nuclear_energy_loss_histogram_output_file),
+         std::move(total_energy_loss_histogram_output_file),
+         log_particle_tree, std::move(particle_tree_output_file),
+         false, std::string("output/bombardments/"),
+         std::string("common/assets/electron_screening_parameters.csv"),
+         std::string("common/assets/mott_scattering_parameters.csv"),
+         screening_model, log_end_of_flying_distance_only,
+         log_stopping_point_only) {}
 
 Simulation::Simulation(const Settings settings, Volume &&volume,
                        DrawFunction draw_function) try
@@ -468,7 +520,29 @@ void Bombardment::run_bombardment() try {
   simulation_.merge_tallies(local_tallies_);
 
   try {
-    simulation_.push_bombardment_results(take_collision_points());
+    // Before publishing collision points, if enabled write per-bombardment CSV
+    auto pts = take_collision_points();
+    if (simulation_.get_settings(&Simulation::Settings::save_per_bombardment_info_)) {
+      try {
+        const auto outdir = simulation_.get_settings(&Simulation::Settings::per_bombardment_output_dir_);
+        std::filesystem::create_directories(outdir);
+        const auto filename = std::filesystem::path(outdir) / ("bombardment_" + std::to_string(id_) + ".csv");
+        std::ofstream ofs(filename);
+        if (ofs.is_open()) {
+          ofs << "energy (eV),x position (A),y position (A),z position (A),x velocity component,y velocity component,z velocity component,z number,atomic mass (amu),generation,time (s)\n";
+          for (const auto &p : pts) {
+            const auto x = (p.coordinate.x_ / angstrom).value();
+            const auto y = (p.coordinate.y_ / angstrom).value();
+            const auto z = (p.coordinate.z_ / angstrom).value();
+            ofs << p.energy_eV << "," << x << "," << y << "," << z << "," << p.vx << "," << p.vy << "," << p.vz << "," << p.z_number << "," << p.atomic_mass_number << "," << p.generation << "," << p.time << "\n";
+          }
+          ofs.flush();
+        }
+      } catch (...) {
+        VLOG(1) << "Failed to write per-bombardment CSV for id " << id_;
+      }
+    }
+    simulation_.push_bombardment_results(std::move(pts));
   } catch (...) {
     VLOG(1) << "Failed to publish bombardment collision points to queue";
   }
