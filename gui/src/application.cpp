@@ -115,6 +115,11 @@ void Application::saveFullscreenState(bool isFullscreen) {
   settings_.setValue("fullscreen", isFullscreen);
 }
 
+void Application::saveMainWindowState(const QVariantMap &state) {
+  settings_.setValue("mainWindowState", state);
+  settings_.sync();
+}
+
 QSize Application::loadWindowSize() const {
   return settings_.value("size", QSize(1920, 1080)).toSize();
 }
@@ -125,6 +130,10 @@ QByteArray Application::loadWindowGeometry() const {
 
 bool Application::loadFullscreenState() const {
   return settings_.value("fullscreen", false).toBool();
+}
+
+QVariantMap Application::loadMainWindowState() const {
+  return settings_.value("mainWindowState", QVariantMap()).toMap();
 }
 } // namespace gui
 } // namespace amcset

@@ -19,6 +19,7 @@ public slots:
 
 signals:
   void resultReady(int result);
+  void errorReady(QString errorMessage);
 
 private:
   std::unique_ptr<amcset::common::Simulation> simulation_;

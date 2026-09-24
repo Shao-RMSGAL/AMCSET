@@ -28,10 +28,12 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMainWindow>
+#include <QMenuBar>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStandardItemModel>
+#include <QStatusBar>
 #include <QTabWidget>
 #include <QComboBox>
 #include <QTableView>
@@ -40,10 +42,12 @@
 #include <QVBoxLayout>
 #include <QtGraphs/QLineSeries>
 #include <boost/lockfree/spsc_queue.hpp>
+#include <exception>
 #include <qnamespace.h>
 #include <qpainter.h>
 #include <qthread.h>
 #include <QTimer>
+#include <sstream>
 
 // Local includes
 #include "3dview.h"
@@ -68,6 +72,7 @@ protected:
 #ifndef QT_NO_CONTEXTMENU
   void contextMenuEvent(QContextMenuEvent *event) override;
 #endif // QT_NO_CONTEXTMENU
+  void closeEvent(QCloseEvent *event) override;
 
 private slots:
   void newFile();
@@ -115,7 +120,13 @@ private:
   void update3DViewMode(Qt::CheckState state);
   void launchSimulationThread(std::unique_ptr<common::Simulation> simulation);
   void handleSimulationResult(int result);
+  void handleSimulationError(const QString &errorMessage);
 
+public:
+  static QString formatSimulationError(const std::exception &e,
+                                      std::size_t depth = 0);
+
+private:
   Application *app_;
   QMenu *fileMenu;
   QMenu *editMenu;
@@ -150,12 +161,18 @@ private:
   QCheckBox *incidentElectron = nullptr;
   QCheckBox *damageCascade = nullptr;
   QDoubleSpinBox *incidentEnergy = nullptr;
+  QLineEdit *incidentElement = nullptr;
   QSpinBox *incidentMass = nullptr;
   QSpinBox *incidentCharge = nullptr;
+  QLabel *incidentAbundanceLabel = nullptr;
+  QLabel *incidentAtomicMassLabel = nullptr;
   QDoubleSpinBox *incidentAngle = nullptr;
   QFormLayout *incidentFormLayout = nullptr;
-  int incidentChargeFormIndex;
-  int incidentMassFormIndex;
+  int incidentElementFormIndex = -1;
+  int incidentChargeFormIndex = -1;
+  int incidentMassFormIndex = -1;
+  int incidentAbundanceFormIndex = -1;
+  int incidentAtomicMassFormIndex = -1;
   QSpinBox *bombardmentCountSpinBox = nullptr;
   QSpinBox *threadCountSpinBox = nullptr;
   QDoubleSpinBox *rangeSpinBox = nullptr;
@@ -210,6 +227,9 @@ private:
 
 public slots:
   void updateLayerDepths();
+  void saveState();
+  void restoreState();
+  void updateIncidentIonSelection();
 
 private slots:
 

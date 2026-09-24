@@ -23,6 +23,7 @@
 #include <QPersistentModelIndex>
 #include <QPushButton>
 #include <QStandardItemModel>
+#include <QStylePainter>
 #include <QTableView>
 
 #include <iostream>
@@ -40,30 +41,11 @@ QWidget *LayerWidgetDelegate::createEditor(QWidget *parent,
       static_cast<LayerWidgetType>(index.data(Qt::UserRole).toInt());
 
   switch (type) {
-  // case DepthSpinBox: {
-  //   auto *depthSpinBox = new QDoubleSpinBox(parent);
-  //   const auto minDepth = index.data(Qt::DisplayRole).toString().toDouble();
-  //   const auto maxDepth = 1e10;
-  //   depthSpinBox->setRange(minDepth, maxDepth);
-  //   depthSpinBox->setSingleStep(0.01);
-  //   depthSpinBox->setValue(minDepth);
-  //   connect(depthSpinBox, &QDoubleSpinBox::valueChanged, this,
-  //           [this]() { emit updateLayerDepths(); });
-  //   return depthSpinBox;
-  // }
   case LayerLineEdit: {
     auto *layerLineEdit = new QLineEdit(parent);
     layerLineEdit->setText(index.data(Qt::DisplayRole).toString());
     return layerLineEdit;
   }
-  // case DensitySpinBox: {
-  //   auto *densityField = new QDoubleSpinBox(parent);
-  //   const auto minDensity = index.data(Qt::DisplayRole).toDouble();
-  //   const auto maxDensity = 1e10;
-  //   densityField->setRange(minDensity, maxDensity);
-  //   densityField->setSingleStep(0.01);
-  //   return densityField;
-  // }
   case ElementLineEdit: {
     auto *elementLineEntry = new QLineEdit(parent);
     elementLineEntry->setText(index.data(Qt::DisplayRole).toString());
@@ -71,8 +53,9 @@ QWidget *LayerWidgetDelegate::createEditor(QWidget *parent,
   }
   case FractionSpinBox: {
     auto *fractionSpinBox = new QDoubleSpinBox(parent);
-    // fractionSpinBox->setValue(
-    //     index.data(Qt::DisplayRole).toString().toDouble());
+    fractionSpinBox->setDecimals(6);
+    fractionSpinBox->setRange(0.0, 1.0e9);
+    fractionSpinBox->setValue(index.data(Qt::DisplayRole).toDouble());
     return fractionSpinBox;
   }
   case PercentLabel: {
@@ -82,8 +65,11 @@ QWidget *LayerWidgetDelegate::createEditor(QWidget *parent,
   }
   case ElementDeleteButton: {
     auto *elementDeleteButton = new QPushButton(parent);
+    elementDeleteButton->setText(QString());
+    elementDeleteButton->setToolTip("Remove element");
     elementDeleteButton->setIcon(
-        QApplication::style()->standardIcon(QStyle::SP_DialogCloseButton));
+        QApplication::style()->standardIcon(QStyle::SP_TitleBarCloseButton));
+    elementDeleteButton->setIconSize(QSize(12, 12));
     connect(elementDeleteButton, &QPushButton::clicked, this,
             [this, index]() { emit deleteElement(index); });
     return elementDeleteButton;
@@ -93,9 +79,55 @@ QWidget *LayerWidgetDelegate::createEditor(QWidget *parent,
     auto minValue = 0.01;
     auto maxValue = 1e6;
     displacementEnergySpinBox->setRange(minValue, maxValue);
+    displacementEnergySpinBox->setValue(index.data(Qt::DisplayRole).toDouble());
     return displacementEnergySpinBox;
   }
   default:
     return nullptr;
   }
+}
+
+void LayerWidgetDelegate::paint(QPainter *painter,
+                               const QStyleOptionViewItem &option,
+                               const QModelIndex &index) const {
+  if (index.data(Qt::UserRole).toInt() == ElementDeleteButton) {
+    QStyleOptionButton buttonOption;
+    buttonOption.rect = option.rect;
+    buttonOption.text.clear();
+    buttonOption.icon = QApplication::style()->standardIcon(
+        QStyle::SP_TitleBarCloseButton);
+    buttonOption.iconSize = QSize(12, 12);
+    buttonOption.state = option.state;
+    buttonOption.features = QStyleOptionButton::Flat;
+    if (option.state & QStyle::State_Selected) {
+      buttonOption.state |= QStyle::State_Sunken;
+    }
+    QApplication::style()->drawControl(QStyle::CE_PushButton, &buttonOption,
+                                       painter, option.widget);
+    return;
+  }
+
+  QStyledItemDelegate::paint(painter, option, index);
+}
+
+bool LayerWidgetDelegate::editorEvent(QEvent *event,
+                                     QAbstractItemModel *model,
+                                     const QStyleOptionViewItem &option,
+                                     const QModelIndex &index) {
+  if (!index.isValid()) {
+    return false;
+  }
+
+  if (index.data(Qt::UserRole).toInt() == ElementDeleteButton &&
+      (event->type() == QEvent::MouseButtonPress ||
+       event->type() == QEvent::MouseButtonRelease)) {
+    auto *mouseEvent = static_cast<QMouseEvent *>(event);
+    if (mouseEvent && mouseEvent->button() == Qt::LeftButton &&
+        option.rect.contains(mouseEvent->pos())) {
+      emit deleteElement(index);
+      return true;
+    }
+  }
+
+  return QStyledItemDelegate::editorEvent(event, model, option, index);
 }

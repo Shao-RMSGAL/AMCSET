@@ -21,6 +21,7 @@
 #include <QObject>
 #include <QSettings>
 #include <QSize>
+#include <QVariant>
 
 // Local includes
 #include "amcset_common.h"
@@ -45,10 +46,12 @@ public:
   void saveWindowSize(const QSize &size);
   void saveWindowGeometry(const QByteArray &geometry);
   void saveFullscreenState(bool isFullscreen);
+  void saveMainWindowState(const QVariantMap &state);
 
   QSize loadWindowSize() const;
   QByteArray loadWindowGeometry() const;
   bool loadFullscreenState() const;
+  QVariantMap loadMainWindowState() const;
 
 private:
   bool darkMode_;

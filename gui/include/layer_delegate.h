@@ -16,6 +16,9 @@
 
 #pragma once
 
+#include <QAbstractItemModel>
+#include <QMouseEvent>
+#include <QPainter>
 #include <QStyledItemDelegate>
 #include <qcoreevent.h>
 
@@ -35,6 +38,11 @@ class LayerWidgetDelegate : public QStyledItemDelegate {
 public:
   QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &,
                         const QModelIndex &index) const override;
+  void paint(QPainter *painter, const QStyleOptionViewItem &option,
+             const QModelIndex &index) const override;
+  bool editorEvent(QEvent *event, QAbstractItemModel *model,
+                   const QStyleOptionViewItem &option,
+                   const QModelIndex &index) override;
 
 signals:
 
