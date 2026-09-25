@@ -175,6 +175,38 @@ TEST_F(CommonTest, simulation_tracks_completed_bombardments) try {
   FAIL();
 }
 
+TEST_F(CommonTest, electron_bombardment_runs) try {
+  auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
+  size_t z_number = 26;
+  size_t mass_number = 56;
+  bool enable_damage_cascade = true;
+  auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
+  auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
+  bool log_single_displacement = true;
+  size_t divisor_angle_number = 64;
+  size_t flying_distance_number = 64;
+  auto range = length_quantity(80000000.0 * angstrom);
+  size_t bombardment_count = 1;
+  bool is_electron = true;
+  auto incident_energy = energy_quantity(50.0 * kilo_electron_volt);
+  size_t thread_count = 1;
+  angle_quantity incident_angle = angle_quantity(0.0 * si::radian);
+
+  auto volume = Volume({create_iron_layer(range)});
+  Simulation::Settings settings(
+      electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
+      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      divisor_angle_number, flying_distance_number, range, bombardment_count,
+      is_electron, incident_energy, thread_count, incident_angle);
+
+  Simulation simulation(settings, std::move(volume));
+  EXPECT_EQ(simulation.run_simulation(), 0);
+  EXPECT_EQ(simulation.get_completed_bombardment_count(), bombardment_count);
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
 //! Coordinate struct test.
 TEST_F(CommonTest, coordinate_constructor_test) try {
   constexpr Coordinate coordinate(length_quantity(-1.0 * angstrom),

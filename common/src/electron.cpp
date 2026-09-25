@@ -38,11 +38,6 @@ std::mutex g_electron_tables_mutex;
 
 } // namespace
 
-void Electron::initialize_tables() {
-  initialize_tables("common/assets/electron_screening_parameters.csv",
-                    "common/assets/mott_scattering_parameters.csv");
-}
-
 void Electron::initialize_tables(const std::string &screening_path,
                                const std::string &mott_path) {
   const std::filesystem::path screening_file =
@@ -212,9 +207,16 @@ double Electron::generate_flying_distance(double total_cross_section,
   if (total_cross_section <= 0.0 || number_density_m3_inv <= 0.0) {
     return 0.0;
   }
-  const double mean_free_path = 1.0 / (number_density_m3_inv * total_cross_section);
+
+  // The layer stores number density in mol/m^3, while the Mott cross-section
+  // formulas use atoms/m^3. The legacy implementation converted density to an
+  // atom count before computing the free path and also added the interatomic
+  // spacing offset to every flight segment.
+  const double atoms_per_m3 = (number_density_m3_inv * constants::N_A).value();
+  const double mean_free_path = 1.0 / (atoms_per_m3 * total_cross_section);
+  const double atomic_spacing_m = std::pow(atoms_per_m3, -1.0 / 3.0);
   const double sample = -std::log(std::max(uniform_distribution_(random_number_generator_), 1e-12));
-  return mean_free_path * sample;
+  return mean_free_path * sample + atomic_spacing_m;
 }
 
 double Electron::sample_scattering_angle(double total_cross_section, double substrate_charge,
@@ -299,12 +301,13 @@ void Electron::fire() try {
     const auto &target = layer.get_property(atom_index);
     const double substrate_charge = target.charge_.value();
     const double substrate_mass = target.mass_number_.value();
-    const double number_density = layer.get_number_density().value();
+    const double number_density_mol_per_m3 = layer.get_number_density().value();
     const double energy_keV = (velocity_.energy_ / kilo_electron_volt).value();
     const double total_cross_section = mott_total_cross_section(
         energy_keV, substrate_charge,
         simulation_.get_settings(&Simulation::Settings::divisor_angle_number_));
-    const double step_m = generate_flying_distance(total_cross_section, number_density);
+    const double step_m = generate_flying_distance(total_cross_section,
+                                                  number_density_mol_per_m3);
     const double scattering_angle = sample_scattering_angle(
         total_cross_section, substrate_charge, energy_keV,
         simulation_.get_settings(&Simulation::Settings::divisor_angle_number_));
@@ -312,9 +315,9 @@ void Electron::fire() try {
     const double elastic_loss_keV = elastic_energy_loss(
         scattering_angle, energy_keV, substrate_mass);
     const double ionization_loss_keV = ionization_energy_loss(
-        energy_keV, substrate_charge, layer.get_mass_density().value());
+        energy_keV, substrate_charge, layer.get_mass_density().value())*step_m;
     const double brems_loss_keV = bremsstrahlung_loss(
-        energy_keV, substrate_charge, layer.get_mass_density().value());
+        energy_keV, substrate_charge, layer.get_mass_density().value())*step_m;
     const double total_loss_keV = elastic_loss_keV + ionization_loss_keV + brems_loss_keV;
     const double next_energy_keV = std::max(0.0, energy_keV - total_loss_keV);
 
@@ -350,10 +353,10 @@ void Electron::fire() try {
     // Compute delta time for this step using `step` length and particle speed
     double delta_time_seconds = 0.0;
     try {
-      const double step_m = (step / si::meter).value();
+      const double step_in_meters = (step / si::meter).value();
       const auto speed_q = speed_from_energy(velocity_.energy_, properties_.mass_);
       const double sp = speed_q.value();
-      if (sp > 0.0) delta_time_seconds = step_m / sp;
+      if (sp > 0.0) delta_time_seconds = step_in_meters / sp;
     } catch (...) {
       delta_time_seconds = 0.0;
     }
