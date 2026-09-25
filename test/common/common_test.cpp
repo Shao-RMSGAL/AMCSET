@@ -131,10 +131,60 @@ protected:
   }
 };
 
+class ClockTestParticle : public Particle {
+public:
+  ClockTestParticle(const Simulation &simulation,
+                    boost::random::uniform_01<double> &uniform_distribution,
+                    boost::random::mt19937 &random_number_generator,
+                    ParticleDataLeaf &data_leaf, Bombardment &bombardment,
+                    size_t generation = 0, double birth_time_seconds = 0.0)
+      : Particle(14, 28, simulation, uniform_distribution,
+                 random_number_generator, data_leaf, bombardment, generation,
+                 birth_time_seconds) {}
+
+  void fire() override {}
+
+  void record(double delta_time_seconds) {
+    CollisionPoint point{Coordinate(0.0 * angstrom, 0.0 * angstrom,
+                                    0.0 * angstrom),
+                         0.0, 0.0, 0.0, generation_};
+    record_collision_point(point, delta_time_seconds);
+  }
+
+  double current_time() const { return current_time_seconds(); }
+};
+
 //! Template test. Does not test the library, just a simple demonstration.
 TEST_F(CommonTest, common_assertions) try {
   EXPECT_STRNE("hello", "world");
   EXPECT_EQ(7 * 6, 42);
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
+TEST_F(CommonTest, knock_on_collision_time_does_not_advance_parent_clock) try {
+  auto simulation = create_simulation();
+  boost::random::uniform_01<double> uniform_distribution;
+  boost::random::mt19937 random_number_generator(1);
+  ParticleDataLeaf parent_data;
+  ParticleDataLeaf child_data;
+  Bombardment bombardment(simulation, 0);
+  ClockTestParticle parent(simulation, uniform_distribution,
+                           random_number_generator, parent_data, bombardment);
+
+  parent.record(2.0);
+  ClockTestParticle child(simulation, uniform_distribution,
+                          random_number_generator, child_data, bombardment, 1,
+                          parent.current_time());
+  child.record(10.0);
+  parent.record(1.0);
+
+  const auto points = bombardment.take_collision_points();
+  ASSERT_EQ(points.size(), 3u);
+  EXPECT_DOUBLE_EQ(points[0].time, 2.0);
+  EXPECT_DOUBLE_EQ(points[1].time, 12.0);
+  EXPECT_DOUBLE_EQ(points[2].time, 3.0);
 } catch (const std::exception &e) {
   print_exception(e);
   FAIL();

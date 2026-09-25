@@ -25,4 +25,5 @@ test_output.txt
 log.txt
 */info.log
 .vscode/.conan_tools
+out.mp4
 

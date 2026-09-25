@@ -38,7 +38,7 @@ Particle::Particle(size_t z_number, size_t mass_number,
                    boost::random::uniform_01<double> &uniform_distribution,
                    boost::random::mt19937 &random_number_generator,
                    ParticleDataLeaf &data_leaf, Bombardment &bombardment,
-                   size_t generation) try
+                   size_t generation, double birth_time_seconds) try
     : properties_(Particle::Properties(z_number, mass_number)),
       coordinates_(std::vector<Coordinate>()), simulation_(simulation),
       velocity_(Velocity(
@@ -50,7 +50,7 @@ Particle::Particle(size_t z_number, size_t mass_number,
                                &Simulation::Settings::incident_angle_))),
           simulation.get_settings(&Simulation::Settings::incident_energy_))),
       coordinate_(Coordinate(angstrom * 0.0, angstrom * 0.0, angstrom * 0.0)),
-      generation_(generation),
+      generation_(generation), birth_time_seconds_(birth_time_seconds),
       uniform_distribution_(uniform_distribution),
       random_number_generator_(random_number_generator), data_leaf_(data_leaf),
       bombardment_(bombardment) {
@@ -60,6 +60,13 @@ Particle::Particle(size_t z_number, size_t mass_number,
           << ").";
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
+}
+
+void Particle::record_collision_point(CollisionPoint point,
+                                      double delta_time_seconds) {
+  elapsed_time_seconds_ += delta_time_seconds;
+  point.time = current_time_seconds();
+  bombardment_.add_collision_point(point);
 }
 
 velocity_quantity Particle::speed_from_energy(energy_quantity energy,

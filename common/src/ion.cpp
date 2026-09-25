@@ -376,7 +376,7 @@ void Ion::fire() try {
       cp.atomic_mass_number = properties_.mass_number_.value();
       cp.energy_eV = (velocity_.energy_ / electron_volt).value();
       // Pass delta time to Bombardment which will accumulate and set cumulative time
-      bombardment_.add_collision_point(cp, delta_time_seconds);
+      record_collision_point(cp, delta_time_seconds);
     }
     bombardment_.record_energy_loss((long double)(e_energy_loss + nuclear_e_loss).value(), coordinate_.z_.value(), Bombardment::EnergyLossType::total);
 
@@ -389,7 +389,8 @@ void Ion::fire() try {
           Ion(z_2,
             static_cast<size_t>(std::round((m_2 / atomic_mass_unit).value())),
             simulation_, uniform_distribution_, random_number_generator_,
-            data_leaf_.get_children().back(), bombardment_, generation_ + 1);
+            data_leaf_.get_children().back(), bombardment_, generation_ + 1,
+            current_time_seconds());
       auto scattering_angle_2 = asin(sin(laboratory_scatter_angle) *
                                      sqrt(energy * m_1 / nuclear_e_loss / m_2));
       auto velocity = Velocity(velocity_.quaternion_, nuclear_e_loss);

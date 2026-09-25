@@ -621,7 +621,7 @@ public:
            boost::random::uniform_01<double> &uniform_distribution,
            boost::random::mt19937 &random_number_generator,
            ParticleDataLeaf &data_leaf, Bombardment &bomardment,
-           size_t generation = 0);
+           size_t generation = 0, double birth_time_seconds = 0.0);
 
   /*!
    * \brief A pure virtual firing function for Particle.
@@ -737,6 +737,8 @@ protected:
   Velocity velocity_;            //!< Current velocity of the particle
   Coordinate coordinate_;        //!< Current coordinate of the particle
   size_t generation_ = 0;        //!< Generation (0 incident, >0 knock-ons)
+  double birth_time_seconds_ = 0.0;
+  double elapsed_time_seconds_ = 0.0;
   boost::random::uniform_01<double>
       &uniform_distribution_; //!< Reference to uniform distribution between 0
                               //!< and 1 for various uses.
@@ -744,6 +746,11 @@ protected:
       &random_number_generator_; //!< Reference to random number generator
   ParticleDataLeaf &data_leaf_;  //!< Reference to a ParticleDataLeaf
   Bombardment &bombardment_;     //!< Particle bombardment_
+
+  void record_collision_point(CollisionPoint point, double delta_time_seconds);
+  double current_time_seconds() const noexcept {
+    return birth_time_seconds_ + elapsed_time_seconds_;
+  }
 
 }; // }}}
 
@@ -768,9 +775,10 @@ public:
            boost::random::uniform_01<double> &uniform_distribution,
            boost::random::mt19937 &random_number_generator,
        ParticleDataLeaf &data_leaf, Bombardment &bombardment,
-       size_t generation = 0)
+       size_t generation = 0, double birth_time_seconds = 0.0)
      : Particle(z_number, mass_number, simulation, uniform_distribution,
-          random_number_generator, data_leaf, bombardment, generation) {};
+          random_number_generator, data_leaf, bombardment, generation,
+          birth_time_seconds) {};
 
   /*!
    * \brief Fire an electron
@@ -827,9 +835,10 @@ public:
       boost::random::uniform_01<double> &uniform_distribution,
       boost::random::mt19937 &random_number_generator,
       ParticleDataLeaf &data_leaf, Bombardment &bombardment,
-      size_t generation = 0)
+       size_t generation = 0, double birth_time_seconds = 0.0)
       : Particle(z_number, mass_number, simulation, uniform_distribution,
-           random_number_generator, data_leaf, bombardment, generation) {};
+         random_number_generator, data_leaf, bombardment, generation,
+         birth_time_seconds) {};
 
   /*!
    * \brief Fire an ion
@@ -1242,21 +1251,9 @@ public:
    */
   size_t get_id() const noexcept { return id_; }
 
-  /*! Add a collision point to this bombardment's internal list.
-   *  
-   *  
-   *  
-   *  The optional `delta_time_seconds` parameter is the simulated time
-   *  elapsed since the previous collision (in seconds). The Bombardment
-   *  will accumulate this into an internal clock and store the cumulative
-   *  time into the CollisionPoint::time field before pushing it into the
-   *  internal vector.
-   */
-  void add_collision_point(const CollisionPoint &pt, double delta_time_seconds = 0.0) {
-    CollisionPoint c = pt;
-    cumulative_time_seconds_ += delta_time_seconds;
-    c.time = cumulative_time_seconds_;
-    collision_points_.push_back(std::move(c));
+  /*! Add a collision point with its particle-specific timestamp. */
+  void add_collision_point(const CollisionPoint &pt) {
+    collision_points_.push_back(pt);
   }
 
   /*! Move-out full collision vector and clear internal storage. */
@@ -1279,7 +1276,6 @@ public:
 private:
   Simulation &simulation_;
   std::vector<CollisionPoint> collision_points_;
-  double cumulative_time_seconds_ = 0.0; //!< Cumulative simulated time for this bombardment (seconds)
   amcset::common::Tallies local_tallies_;
   std::unique_ptr<Particle> incident_particle_;
   boost::random::mt19937 random_number_generator_;

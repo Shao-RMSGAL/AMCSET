@@ -38,6 +38,10 @@ std::mutex g_electron_tables_mutex;
 
 } // namespace
 
+void Electron::initialize_tables(){
+                                initialize_tables("temp.csv","temp.csv");
+                               }
+
 void Electron::initialize_tables(const std::string &screening_path,
                                const std::string &mott_path) {
   const std::filesystem::path screening_file =
@@ -365,7 +369,7 @@ void Electron::fire() try {
     cp.z_number = static_cast<size_t>(properties_.charge_.value());
     cp.atomic_mass_number = properties_.mass_number_.value();
     cp.energy_eV = (velocity_.energy_ / electron_volt).value();
-    bombardment_.add_collision_point(cp, delta_time_seconds);
+    record_collision_point(cp, delta_time_seconds);
 
     data_leaf_.add_coordinate(coordinate_);
     coordinates_.emplace_back(coordinate_);

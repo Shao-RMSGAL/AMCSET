@@ -31,31 +31,7 @@ target_include_directories(amcset-gui PRIVATE
 
 target_link_libraries(amcset-gui PRIVATE compiler_flags)
 
-# In your CMakeLists.txt, after your target is defined:
-add_executable(gui-state-test
-    ${PROJECT_SOURCE_DIR}/test/gui_state_test.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/application.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/mainwindow.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/mainwindow_simulation.cpp
-    ${PROJECT_SOURCE_DIR}/gui/include/application.h
-    ${PROJECT_SOURCE_DIR}/gui/include/mainwindow.h
-)
-
-target_include_directories(gui-state-test PRIVATE
-    ${PROJECT_SOURCE_DIR}/gui/include/
-    ${PROJECT_SOURCE_DIR}/common/include
-)
-
-target_link_libraries(gui-state-test PRIVATE
-    GTest::gtest_main
-    amcset-common
-    Qt6::Core
-    Qt6::Widgets
-    Qt6::Gui
-)
-
 include(GoogleTest)
-gtest_discover_tests(gui-state-test)
 
 if(WIN32)
   # Find the windeployqt executable

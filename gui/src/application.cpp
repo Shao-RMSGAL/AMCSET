@@ -116,7 +116,42 @@ void Application::saveFullscreenState(bool isFullscreen) {
 }
 
 void Application::saveMainWindowState(const QVariantMap &state) {
-  settings_.setValue("mainWindowState", state);
+  settings_.beginGroup("mainWindowStateData");
+  settings_.remove("");
+
+  for (auto it = state.cbegin(); it != state.cend(); ++it) {
+    if (it.key() != "layers") {
+      settings_.setValue("fields/" + it.key(), it.value());
+    }
+  }
+
+  const auto layers = state.value("layers").toList();
+  settings_.beginWriteArray("layers", layers.size());
+  for (qsizetype layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {
+    settings_.setArrayIndex(static_cast<int>(layerIndex));
+    const auto layer = layers.at(layerIndex).toMap();
+    for (auto it = layer.cbegin(); it != layer.cend(); ++it) {
+      if (it.key() != "composition") {
+        settings_.setValue(it.key(), it.value());
+      }
+    }
+
+    const auto composition = layer.value("composition").toList();
+    settings_.beginWriteArray("composition", composition.size());
+        for (qsizetype elementIndex = 0; elementIndex < composition.size();
+          ++elementIndex) {
+      settings_.setArrayIndex(static_cast<int>(elementIndex));
+      const auto element = composition.at(elementIndex).toMap();
+      for (auto it = element.cbegin(); it != element.cend(); ++it) {
+        settings_.setValue(it.key(), it.value());
+      }
+    }
+    settings_.endArray();
+  }
+  settings_.endArray();
+  settings_.endGroup();
+
+  settings_.remove("mainWindowState");
   settings_.sync();
 }
 
@@ -133,7 +168,50 @@ bool Application::loadFullscreenState() const {
 }
 
 QVariantMap Application::loadMainWindowState() const {
-  return settings_.value("mainWindowState", QVariantMap()).toMap();
+  auto &settings = settings_;
+  settings.beginGroup("mainWindowStateData");
+  const auto hasStructuredState = settings.childGroups().contains("layers") ||
+                                  settings.childGroups().contains("fields");
+  if (!hasStructuredState) {
+    settings.endGroup();
+    return settings_.value("mainWindowState", QVariantMap()).toMap();
+  }
+
+  QVariantMap state;
+  settings.beginGroup("fields");
+  for (const auto &key : settings.childKeys()) {
+    state.insert(key, settings.value(key));
+  }
+  settings.endGroup();
+
+  QVariantList layers;
+  const auto layerCount = settings.beginReadArray("layers");
+  for (int layerIndex = 0; layerIndex < layerCount; ++layerIndex) {
+    settings.setArrayIndex(layerIndex);
+    QVariantMap layer;
+    for (const auto &key : settings.childKeys()) {
+      layer.insert(key, settings.value(key));
+    }
+
+    QVariantList composition;
+    const auto elementCount = settings.beginReadArray("composition");
+    for (int elementIndex = 0; elementIndex < elementCount; ++elementIndex) {
+      settings.setArrayIndex(elementIndex);
+      QVariantMap element;
+      for (const auto &key : settings.childKeys()) {
+        element.insert(key, settings.value(key));
+      }
+      composition.append(element);
+    }
+    settings.endArray();
+    layer.insert("composition", composition);
+    layers.append(layer);
+  }
+  settings.endArray();
+  settings.endGroup();
+
+  state.insert("layers", layers);
+  return state;
 }
 } // namespace gui
 } // namespace amcset

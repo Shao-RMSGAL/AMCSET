@@ -97,6 +97,8 @@ int main(int argc, char *argv[]) {
     if (FLAGS_gui) {
       LOG(INFO) << "Starting AMCSET GUI...";
       QApplication app(argc, argv);
+      QCoreApplication::setOrganizationName("AMCSET");
+      QCoreApplication::setApplicationName("AMCSET");
       amcset::gui::Application application;
       VLOG(1) << "Initializing window";
       amcset::gui::MainWindow mainWindow(&application);

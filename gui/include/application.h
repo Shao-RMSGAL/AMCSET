@@ -56,7 +56,7 @@ public:
 private:
   bool darkMode_;
   amcset::common::Simulation *simulation_;
-  QSettings settings_;
+  mutable QSettings settings_;
 };
 } // namespace gui
 } // namespace amcset
