@@ -24,6 +24,7 @@
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
@@ -40,11 +41,11 @@
 #include <QTextBrowser>
 #include <QUndoStack>
 #include <QVBoxLayout>
+#include <QVector>
 #include <QtGraphs/QLineSeries>
 #include <boost/lockfree/spsc_queue.hpp>
 #include <exception>
 #include <qnamespace.h>
-#include <qpainter.h>
 #include <qthread.h>
 #include <QTimer>
 #include <sstream>
@@ -73,6 +74,7 @@ protected:
   void contextMenuEvent(QContextMenuEvent *event) override;
 #endif // QT_NO_CONTEXTMENU
   void closeEvent(QCloseEvent *event) override;
+  void changeEvent(QEvent *event) override;
 
 private slots:
   void newFile();
@@ -120,6 +122,8 @@ private:
   void update2DViewMode(Qt::CheckState state);
   void update3DViewMode(Qt::CheckState state);
   void updateProjectionVisibility();
+  void updateGenerationFilter();
+  void updateStatusBarColors();
   void launchSimulationThread(std::unique_ptr<common::Simulation> simulation);
   void handleSimulationResult(int result);
   void handleSimulationError(const QString &errorMessage);
@@ -160,7 +164,6 @@ private:
   QAction *setParagraphSpacingAct;
   QAction *aboutAct;
   QAction *aboutQtAct;
-  QLabel *infoLabel = nullptr;
   QPushButton *runSimulationButton = nullptr;
   QPushButton *cancelSimulationButton = nullptr;
 
@@ -193,6 +196,7 @@ private:
   QLineEdit *electronicOutputEdit = nullptr;
   QLineEdit *nuclearOutputEdit = nullptr;
   QLineEdit *totalOutputEdit = nullptr;
+  QLineEdit *rangeOutputEdit = nullptr;
   QLineEdit *particleTreeEdit = nullptr;
   QLineEdit *perBombardmentOutputDirEdit = nullptr;
   QCheckBox *enableLoggingCheck = nullptr;
@@ -205,7 +209,14 @@ private:
   QLineEdit *electronScreeningParametersEdit = nullptr;
   QLineEdit *mottScatteringParametersEdit = nullptr;
   QComboBox *screeningModelCombo = nullptr;
+  QComboBox *generationFilterCombo = nullptr;
+  QLineEdit *customGenerationEdit = nullptr;
   QComboBox *themeModeCombo = nullptr;
+  QSpinBox *displacementBinCountSpinBox = nullptr;
+  QSpinBox *electronicLossBinCountSpinBox = nullptr;
+  QSpinBox *nuclearLossBinCountSpinBox = nullptr;
+  QSpinBox *totalLossBinCountSpinBox = nullptr;
+  QSpinBox *rangeBinCountSpinBox = nullptr;
   QPlainTextEdit *resultPane = nullptr;
 
   // View controls
@@ -213,10 +224,11 @@ private:
   QCheckBox *use2DView = nullptr;
   QCheckBox *viewModeToggle = nullptr;
   QGroupBox *canvasBox = nullptr;
+  QGridLayout *projectionGrid = nullptr;
   QGroupBox *view3DBox = nullptr;
   Counter *counter = nullptr;
   QLabel *counterLabel = nullptr;
-  QLabel *liveStatisticsLabel = nullptr;
+  QVector<QLabel *> liveStatisticValues;
 
   // Layer forms
   QStandardItemModel *layerModel = nullptr;
@@ -224,7 +236,6 @@ private:
   QStringList layerHeaders;
 
   // For particle track painting
-  Canvas *canvas = nullptr;
   Canvas *xyCanvas = nullptr;
   Canvas *yzCanvas = nullptr;
   Canvas *xzCanvas = nullptr;
@@ -232,7 +243,6 @@ private:
   QCheckBox *yzProjectionCheck = nullptr;
   QCheckBox *xzProjectionCheck = nullptr;
   Widget3DView *view3D = nullptr;
-  QPainter *painter = nullptr;
   // boost::lockfree::spsc_queue<common::Simulation::DataVariant *> &queue;
 
   common::Simulation *activeSimulation = nullptr;
@@ -240,6 +250,7 @@ private:
   QTimer *bombardmentPollTimer = nullptr;
   int simulationResult = 0;
   bool simulationCancelled = false;
+  bool restoringState = false;
   std::size_t simulationCompletedBombardments = 0;
   std::size_t lastLiveTallyBombardments = 0;
   // For Undo/Redo

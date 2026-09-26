@@ -314,11 +314,6 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   auto *topWidget = new QWidget(this);
   setCentralWidget(topWidget);
 
-  infoLabel = new QLabel(topWidget);
-  infoLabel->hide();
-  infoLabel->setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
-  infoLabel->setAlignment(Qt::AlignCenter);
-
   auto *runCancelButtonLayoutWidget = new QWidget(this);
   auto *runCancelButtonLayout = new QHBoxLayout(runCancelButtonLayoutWidget);
   runSimulationButton = new QPushButton("Run Simulation");
@@ -350,7 +345,6 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   yzCanvas->setProjection(Canvas::Projection::YZ);
   xzCanvas = new Canvas;
   xzCanvas->setProjection(Canvas::Projection::XZ);
-  canvas = xzCanvas;
   for (auto *view : {xyCanvas, yzCanvas, xzCanvas}) {
     view->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
   }
@@ -370,36 +364,36 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   projectionLayout->addWidget(xyProjectionCheck);
   projectionLayout->addWidget(yzProjectionCheck);
   projectionLayout->addWidget(xzProjectionCheck);
-    generationFilterCombo = new QComboBox(projectionSidebar);
-    generationFilterCombo->addItems(
-        {tr("Incident particle only"), tr("Primary knock-ons only"),
-         tr("Incident and primary knock-ons"), tr("All"), tr("Custom")});
-    generationFilterCombo->setCurrentIndex(3);
-    projectionLayout->addWidget(new QLabel(tr("Generations"), projectionSidebar));
-    projectionLayout->addWidget(generationFilterCombo);
-    customGenerationEdit = new QLineEdit(projectionSidebar);
-    customGenerationEdit->setPlaceholderText(tr("e.g. 0-3,5,6"));
-    customGenerationEdit->hide();
-    projectionLayout->addWidget(customGenerationEdit);
-    connect(generationFilterCombo, qOverload<int>(&QComboBox::currentIndexChanged),
-      this, [this](int index) {
-        customGenerationEdit->setVisible(index == 4);
-        updateGenerationFilter();
-      });
-    connect(customGenerationEdit, &QLineEdit::textChanged, this,
-      &MainWindow::updateGenerationFilter);
-      connect(customGenerationEdit, &QLineEdit::textChanged, this,
-        [this](const QString &) { saveState(); });
+  generationFilterCombo = new QComboBox(projectionSidebar);
+  generationFilterCombo->addItems(
+      {tr("Incident particle only"), tr("Primary knock-ons only"),
+       tr("Incident and primary knock-ons"), tr("All"), tr("Custom")});
+  generationFilterCombo->setCurrentIndex(3);
+  projectionLayout->addWidget(new QLabel(tr("Generations"), projectionSidebar));
+  projectionLayout->addWidget(generationFilterCombo);
+  customGenerationEdit = new QLineEdit(projectionSidebar);
+  customGenerationEdit->setPlaceholderText(tr("e.g. 0-3,5,6"));
+  customGenerationEdit->hide();
+  projectionLayout->addWidget(customGenerationEdit);
+  connect(generationFilterCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+          this, [this](int index) {
+            customGenerationEdit->setVisible(index == 4);
+            updateGenerationFilter();
+          });
+  connect(customGenerationEdit, &QLineEdit::textChanged, this,
+          &MainWindow::updateGenerationFilter);
+  connect(customGenerationEdit, &QLineEdit::textChanged, this,
+          [this](const QString &) { saveState(); });
   projectionLayout->addStretch();
   for (auto *check : {xyProjectionCheck, yzProjectionCheck, xzProjectionCheck}) {
     connect(check, &QCheckBox::toggled, this,
             &MainWindow::updateProjectionVisibility);
-      connect(check, &QCheckBox::toggled, this, &MainWindow::saveState);
+    connect(check, &QCheckBox::toggled, this, &MainWindow::saveState);
   }
-    connect(generationFilterCombo, qOverload<int>(&QComboBox::currentIndexChanged),
-      this, &MainWindow::saveState);
-    connect(customGenerationEdit, &QLineEdit::editingFinished, this,
-      &MainWindow::saveState);
+  connect(generationFilterCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+          this, &MainWindow::saveState);
+  connect(customGenerationEdit, &QLineEdit::editingFinished, this,
+          &MainWindow::saveState);
 
   view3D = new Widget3DView(this);
   view3DBox = new QGroupBox("3D View");

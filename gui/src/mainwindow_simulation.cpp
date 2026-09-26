@@ -16,6 +16,8 @@
 
 #include "mainwindow.h"
 
+#include <QSet>
+
 #include <QDir>
 #include <QMessageBox>
 #include <QThread>
@@ -60,6 +62,18 @@ void MainWindow::handleSimulationResult(int result) {
   simulationCancelled = activeSimulation && activeSimulation->is_cancelled();
   simulationCompletedBombardments =
       activeSimulation ? activeSimulation->get_completed_bombardment_count() : 0;
+  if (activeSimulation) {
+    updateLiveStatistics(activeSimulation->snapshot_tallies());
+  }
+  if (counter) {
+    counter->setValue(static_cast<int>(simulationCompletedBombardments));
+  }
+  if (counterLabel) {
+    counterLabel->setText(
+        tr("Bombardment %1 out of %2")
+            .arg(simulationCompletedBombardments)
+            .arg(bombardmentCountSpinBox ? bombardmentCountSpinBox->value() : 0));
+  }
   if (cancelSimulationButton) cancelSimulationButton->setEnabled(false);
   if (simulationThread) {
     simulationThread->wait();
@@ -141,6 +155,12 @@ void MainWindow::runSimulation() {
   }
 
   counter->reset();
+  if (counterLabel) {
+    counterLabel->setText(tr("Bombardment %1 out of %2")
+                              .arg(0)
+                              .arg(bombardmentCountSpinBox->value()));
+  }
+  updateLiveStatistics(common::Tallies{});
 
   if (use2DView->isChecked()) {
     for (auto *view : {xyCanvas, yzCanvas, xzCanvas}) {
@@ -158,7 +178,9 @@ void MainWindow::runSimulation() {
   const auto electronicOutput = buildOutputPath(electronicOutputEdit->text().trimmed());
   const auto nuclearOutput = buildOutputPath(nuclearOutputEdit->text().trimmed());
   const auto totalOutput = buildOutputPath(totalOutputEdit->text().trimmed());
-  const auto particleTreeOutput = buildOutputPath(particleTreeEdit->text().trimmed());
+  const auto rangeOutput =
+      buildOutputPath(rangeOutputEdit ? rangeOutputEdit->text().trimmed()
+                                      : QStringLiteral("range_histogram.csv"));
   const auto perBombardmentOutputDir = buildOutputPath(
       perBombardmentOutputDirEdit ? perBombardmentOutputDirEdit->text().trimmed()
                                   : QStringLiteral("bombardments/"))
@@ -198,13 +220,18 @@ void MainWindow::runSimulation() {
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
       ion_stopping_energy, ion_displacement_energy,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
-      is_electron, incident_energy, thread_count, incident_angle, 100, 100, 100,
-      100, displacementOutput.toStdString(), electronicOutput.toStdString(),
+      is_electron, incident_energy, thread_count, incident_angle,
+      displacementBinCountSpinBox ? static_cast<size_t>(displacementBinCountSpinBox->value()) : 100,
+      electronicLossBinCountSpinBox ? static_cast<size_t>(electronicLossBinCountSpinBox->value()) : 100,
+      nuclearLossBinCountSpinBox ? static_cast<size_t>(nuclearLossBinCountSpinBox->value()) : 100,
+      totalLossBinCountSpinBox ? static_cast<size_t>(totalLossBinCountSpinBox->value()) : 100,
+      rangeBinCountSpinBox ? static_cast<size_t>(rangeBinCountSpinBox->value()) : 100,
+      displacementOutput.toStdString(), electronicOutput.toStdString(),
       nuclearOutput.toStdString(), totalOutput.toStdString(),
-      enableLoggingCheck->isChecked(), particleTreeOutput.toStdString(),
       savePerBombardmentCheck && savePerBombardmentCheck->isChecked(),
       perBombardmentOutputDir,
-      electron_screening_path, mott_path, selected_model);
+      electron_screening_path, mott_path, selected_model,
+      rangeOutput.toStdString());
 
   // Perform safety confirmations BEFORE constructing or launching the simulation.
   if (savePerBombardmentCheck && savePerBombardmentCheck->isChecked()) {
@@ -357,15 +384,104 @@ void MainWindow::update3DViewMode(Qt::CheckState state) {
 }
 
 void MainWindow::updateProjectionVisibility() {
-  if (xyCanvas) xyCanvas->setVisible(xyProjectionCheck && xyProjectionCheck->isChecked());
-  if (yzCanvas) yzCanvas->setVisible(yzProjectionCheck && yzProjectionCheck->isChecked());
-  if (xzCanvas) xzCanvas->setVisible(xzProjectionCheck && xzProjectionCheck->isChecked());
+  if (!projectionGrid) {
+    return;
+  }
+
+  while (auto *item = projectionGrid->takeAt(0)) {
+    delete item;
+  }
+
+  const bool showXY = xyCanvas && xyProjectionCheck && xyProjectionCheck->isChecked();
+  const bool showYZ = yzCanvas && yzProjectionCheck && yzProjectionCheck->isChecked();
+  const bool showXZ = xzCanvas && xzProjectionCheck && xzProjectionCheck->isChecked();
+  if (xyCanvas) xyCanvas->setVisible(showXY);
+  if (yzCanvas) yzCanvas->setVisible(showYZ);
+  if (xzCanvas) xzCanvas->setVisible(showXZ);
+  const int visibleCount = static_cast<int>(showXY) + static_cast<int>(showYZ) +
+                           static_cast<int>(showXZ);
+
+  projectionGrid->setRowStretch(0, 0);
+  projectionGrid->setRowStretch(1, 0);
+  projectionGrid->setColumnStretch(0, 0);
+  projectionGrid->setColumnStretch(1, 0);
+
+  if (visibleCount == 1) {
+    auto *visibleView = showXY ? xyCanvas : showYZ ? yzCanvas : xzCanvas;
+    projectionGrid->addWidget(visibleView, 0, 0);
+    projectionGrid->setRowStretch(0, 1);
+    projectionGrid->setColumnStretch(0, 1);
+  } else if (visibleCount == 2) {
+    int column = 0;
+    for (auto *view : {xzCanvas, yzCanvas, xyCanvas}) {
+      if (view == xyCanvas ? showXY : view == yzCanvas ? showYZ : showXZ) {
+        projectionGrid->addWidget(view, 0, column++);
+      }
+    }
+    projectionGrid->setColumnStretch(0, 1);
+    projectionGrid->setColumnStretch(1, 1);
+    projectionGrid->setRowStretch(0, 1);
+  } else if (visibleCount == 3) {
+    projectionGrid->addWidget(xzCanvas, 0, 0);
+    projectionGrid->addWidget(yzCanvas, 1, 0);
+    projectionGrid->addWidget(xyCanvas, 0, 1, 2, 1);
+    projectionGrid->setRowStretch(0, 1);
+    projectionGrid->setRowStretch(1, 1);
+    projectionGrid->setColumnStretch(0, 1);
+    projectionGrid->setColumnStretch(1, 1);
+  }
+}
+
+void MainWindow::updateGenerationFilter() {
+  if (!generationFilterCombo) {
+    return;
+  }
+
+  const auto index = generationFilterCombo->currentIndex();
+  QSet<std::size_t> generations;
+  bool showAllGenerations = false;
+  if (index == 0) {
+    generations.insert(0);
+  } else if (index == 1) {
+    generations.insert(1);
+  } else if (index == 2) {
+    generations.insert(0);
+    generations.insert(1);
+  } else if (index == 3) {
+    showAllGenerations = true;
+  } else if (customGenerationEdit) {
+    for (const auto &part : customGenerationEdit->text().split(',', Qt::SkipEmptyParts)) {
+      const auto bounds = part.trimmed().split('-', Qt::SkipEmptyParts);
+      bool firstOk = false;
+      const auto first = bounds.value(0).toULongLong(&firstOk);
+      if (!firstOk) {
+        continue;
+      }
+      if (bounds.size() == 1) {
+        generations.insert(static_cast<std::size_t>(first));
+        continue;
+      }
+      bool secondOk = false;
+      const auto second = bounds.value(1).toULongLong(&secondOk);
+      if (!secondOk || second < first) {
+        continue;
+      }
+      for (auto generation = first; generation <= second; ++generation) {
+        generations.insert(static_cast<std::size_t>(generation));
+      }
+    }
+  }
+
+  for (auto *view : {xyCanvas, yzCanvas, xzCanvas}) {
+    if (view) {
+      view->setGenerationFilter(generations, showAllGenerations);
+    }
+  }
 }
 
 void MainWindow::pollBombardmentQueue() {
   if (!activeSimulation) return;
 
-  const auto canvasPtr = QPointer<Canvas>(canvas);
   const auto viewPtr = QPointer<Widget3DView>(view3D);
   const auto counterPtr = QPointer<Counter>(counter);
 
@@ -373,7 +489,7 @@ void MainWindow::pollBombardmentQueue() {
   QVector<Canvas::Point> canvasPoints;
   std::vector<common::CollisionPoint> vec;
   if (activeSimulation->try_pop_bombardment_results(vec)) {
-    if (canvasPtr && use2DView && use2DView->checkState() == Qt::Checked) {
+    if (use2DView && use2DView->checkState() == Qt::Checked) {
       for (const auto &point : vec) {
         canvasPoints.append({
             (point.coordinate.x_ / common::angstrom).value(),
@@ -398,15 +514,27 @@ void MainWindow::pollBombardmentQueue() {
     }
   }
 
-  if (!vec.empty() && canvasPtr && use2DView && use2DView->checkState() == Qt::Checked) {
+  if (!vec.empty() && use2DView && use2DView->checkState() == Qt::Checked) {
     const auto rangeAngstrom = (range / common::angstrom).value();
-    canvasPtr->setRangeAngstrom(rangeAngstrom);
-    canvasPtr->addPoints(canvasPoints);
+    for (auto *view : {xyCanvas, yzCanvas, xzCanvas}) {
+      if (view) {
+        view->setRangeAngstrom(rangeAngstrom);
+        view->addPoints(canvasPoints);
+      }
+    }
   }
 
   if (counterPtr && activeSimulation != nullptr) {
     const auto completed = activeSimulation->get_completed_bombardment_count();
-    counterPtr->setValue(static_cast<int>(completed));
+    if (static_cast<std::size_t>(counterPtr->getValue()) != completed) {
+      counterPtr->setValue(static_cast<int>(completed));
+    }
+    if (counterPtr->hasChanged() && counterLabel) {
+      counterLabel->setText(
+          tr("Bombardment %1 out of %2")
+              .arg(completed)
+              .arg(bombardmentCountSpinBox ? bombardmentCountSpinBox->value() : 0));
+    }
     if (completed != lastLiveTallyBombardments) {
       updateLiveStatistics(activeSimulation->snapshot_tallies());
       lastLiveTallyBombardments = completed;
@@ -417,9 +545,6 @@ void MainWindow::pollBombardmentQueue() {
 
 void MainWindow::updateLiveStatistics(const common::Tallies &tallies) {
   refreshLiveHistograms(tallies);
-  if (!liveStatisticsLabel) {
-    return;
-  }
   const auto rangeAngstrom =
       (common::length_quantity(static_cast<double>(tallies.range_stats.mean) *
                    common::si::meter) /
@@ -431,33 +556,34 @@ void MainWindow::updateLiveStatistics(const common::Tallies &tallies) {
          common::si::meter) /
        common::angstrom)
         .value();
-      const auto energyLossEv =
+  const auto energyLossEv =
         (common::energy_quantity(static_cast<double>(tallies.energy_loss_stats.mean) *
                      common::si::joule) /
          common::electron_volt)
           .value();
-      const auto energyLossStragglingEv =
+  const auto energyLossStragglingEv =
         (common::energy_quantity(
            std::sqrt(static_cast<double>(tallies.energy_loss_stats.variance())) *
            common::si::joule) /
          common::electron_volt)
           .value();
-  liveStatisticsLabel->setText(
-        tr("Incidents %1 | Displacements %2 | Sputtered %3 | Mean range %4 A | Straggling %5 A | Mean loss %6 eV | Loss straggling %7 eV")
-          .arg(tallies.incidents)
-          .arg(tallies.total_displacements)
-          .arg(tallies.sputtered)
-          .arg(tallies.range_stats.n == 0 ? QStringLiteral("--")
-                                           : QString::number(rangeAngstrom, 'f', 2))
-          .arg(tallies.range_stats.n < 2
-                   ? QStringLiteral("--")
-                   : QString::number(stragglingAngstrom, 'f', 2))
-          .arg(tallies.energy_loss_stats.n == 0
-                   ? QStringLiteral("--")
-                   : QString::number(energyLossEv, 'f', 2))
-          .arg(tallies.energy_loss_stats.n < 2
-                   ? QStringLiteral("--")
-                   : QString::number(energyLossStragglingEv, 'f', 2)));
+  const QStringList values{
+      QString::number(tallies.total_displacements),
+      QString::number(tallies.sputtered),
+      tallies.range_stats.n == 0 ? QStringLiteral("--")
+                                 : QString::number(rangeAngstrom, 'f', 2),
+      tallies.range_stats.n < 2 ? QStringLiteral("--")
+                                : QString::number(stragglingAngstrom, 'f', 2),
+      tallies.energy_loss_stats.n == 0 ? QStringLiteral("--")
+                                       : QString::number(energyLossEv, 'f', 2),
+      tallies.energy_loss_stats.n < 2 ? QStringLiteral("--")
+                                      : QString::number(energyLossStragglingEv, 'f', 2)};
+  const auto count = std::min(liveStatisticValues.size(), values.size());
+  for (qsizetype i = 0; i < count; ++i) {
+    if (liveStatisticValues.at(i)) {
+      liveStatisticValues.at(i)->setText(values.at(i));
+    }
+  }
 }
 
 } // namespace gui

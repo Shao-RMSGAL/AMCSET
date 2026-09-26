@@ -556,7 +556,8 @@ void MainWindow::populateResultCharts() {
         electronicOutputEdit ? electronicOutputEdit->text().trimmed() : QString(),
         nuclearOutputEdit ? nuclearOutputEdit->text().trimmed() : QString(),
         totalOutputEdit ? totalOutputEdit->text().trimmed() : QString(),
-        QDir(outputDirPath).filePath(QStringLiteral("range_histogram.csv")),
+        buildOutputPath(rangeOutputEdit ? rangeOutputEdit->text()
+                                        : QStringLiteral("range_histogram.csv")),
         QStringLiteral("output/collisions.csv"),
     };
 
@@ -588,7 +589,8 @@ void MainWindow::populateResultCharts() {
         electronicOutputEdit ? electronicOutputEdit->text().trimmed() : QString(),
         nuclearOutputEdit ? nuclearOutputEdit->text().trimmed() : QString(),
         totalOutputEdit ? totalOutputEdit->text().trimmed() : QString(),
-        QDir(outputDirPath).filePath(QStringLiteral("range_histogram.csv"))};
+        buildOutputPath(rangeOutputEdit ? rangeOutputEdit->text()
+                                        : QStringLiteral("range_histogram.csv"))};
     for (const auto &path : livePaths) {
       const auto title = QFileInfo(path).baseName();
       bool exists = false;
@@ -659,9 +661,8 @@ void MainWindow::refreshSummaryView() {
                << (electronicOutputEdit ? electronicOutputEdit->text().trimmed() : QString())
                << (nuclearOutputEdit ? nuclearOutputEdit->text().trimmed() : QString())
                << (totalOutputEdit ? totalOutputEdit->text().trimmed() : QString());
-  summaryPaths << QDir(outputDirectoryEdit ? outputDirectoryEdit->text().trimmed()
-                                           : QStringLiteral("output"))
-                       .filePath(QStringLiteral("range_histogram.csv"));
+  summaryPaths << buildOutputPath(rangeOutputEdit ? rangeOutputEdit->text()
+                                                  : QStringLiteral("range_histogram.csv"));
   const auto outputDir = outputDirectoryEdit ? outputDirectoryEdit->text().trimmed() : QStringLiteral("output");
   const auto summaryPalette = simulationSummaryView->palette();
   simulationSummaryView->setHtml(buildSimulationSummaryHtml(
@@ -717,18 +718,24 @@ void MainWindow::createSettingsDialog() {
   auto *dialogLayout = new QVBoxLayout(settingsDialog);
 
   auto *settingsTabs = new QTabWidget(settingsDialog);
-  auto *settingsTab = new QWidget(settingsTabs);
-  auto *settingsLayout = new QVBoxLayout(settingsTab);
+  auto *generalTab = new QWidget(settingsTabs);
+  auto *histogramsTab = new QWidget(settingsTabs);
+  auto *electronTab = new QWidget(settingsTabs);
+  auto *preferencesTab = new QWidget(settingsTabs);
+  auto *settingsLayout = new QVBoxLayout(generalTab);
   auto *formLayout = new QFormLayout();
   formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   formLayout->setLabelAlignment(Qt::AlignLeft);
+  auto *histogramLayout = new QFormLayout(histogramsTab);
+  histogramLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+  histogramLayout->setLabelAlignment(Qt::AlignLeft);
 
-  auto *electronSettingsGroup = new QGroupBox("Electron transport", settingsTab);
+  auto *electronSettingsGroup = new QGroupBox("Electron transport", electronTab);
   auto *electronSettingsLayout = new QFormLayout(electronSettingsGroup);
   electronSettingsLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   electronSettingsLayout->setLabelAlignment(Qt::AlignLeft);
 
-  auto *outputDirRow = new QWidget(settingsTab);
+  auto *outputDirRow = new QWidget(generalTab);
   auto *outputDirLayout = new QHBoxLayout(outputDirRow);
   outputDirLayout->setContentsMargins(0, 0, 0, 0);
   outputDirectoryEdit = new QLineEdit("output", outputDirRow);
@@ -745,11 +752,11 @@ void MainWindow::createSettingsDialog() {
       {&electronicOutputEdit, "Electronic loss output file"},
       {&nuclearOutputEdit, "Nuclear loss output file"},
       {&totalOutputEdit, "Total loss output file"},
-      {&particleTreeEdit, "Particle tree output file"},
+      {&rangeOutputEdit, "Range output file"},
   };
 
   // Per-bombardment CSV output
-  auto *perBombardmentRow = new QWidget(settingsTab);
+  auto *perBombardmentRow = new QWidget(generalTab);
   auto *perBombardmentLayout = new QHBoxLayout(perBombardmentRow);
   perBombardmentLayout->setContentsMargins(0,0,0,0);
   perBombardmentOutputDirEdit = new QLineEdit("bombardments/", perBombardmentRow);
@@ -761,7 +768,7 @@ void MainWindow::createSettingsDialog() {
   perBombardmentLayout->addWidget(perBombardmentBrowse);
   formLayout->addRow("Per-bombardment output directory", perBombardmentRow);
 
-  savePerBombardmentCheck = new QCheckBox(settingsTab);
+  savePerBombardmentCheck = new QCheckBox(generalTab);
   savePerBombardmentCheck->setChecked(false);
   formLayout->addRow("Save per-bombardment CSVs", savePerBombardmentCheck);
 
@@ -785,7 +792,7 @@ void MainWindow::createSettingsDialog() {
   for (const auto &entry : fileFields) {
     auto **field = entry.first;
     const char *label = entry.second;
-    auto *row = new QWidget(settingsTab);
+    auto *row = new QWidget(histogramsTab);
     auto *layout = new QHBoxLayout(row);
     layout->setContentsMargins(0, 0, 0, 0);
     *field = new QLineEdit(QString(QString(label).toLower().replace(" ", "_")) + ".csv", row);
@@ -795,18 +802,43 @@ void MainWindow::createSettingsDialog() {
     });
     layout->addWidget(*field);
     layout->addWidget(browseButton);
-    formLayout->addRow(label, row);
+    histogramLayout->addRow(label, row);
   }
 
   displacementOutputEdit->setText("displacement_histogram.csv");
   electronicOutputEdit->setText("electronic_loss_histogram.csv");
   nuclearOutputEdit->setText("nuclear_loss_histogram.csv");
   totalOutputEdit->setText("total_loss_histogram.csv");
-  particleTreeEdit->setText("particle_tree.json");
+  rangeOutputEdit->setText("range_histogram.csv");
   if (perBombardmentOutputDirEdit) perBombardmentOutputDirEdit->setText("bombardments/");
   if (savePerBombardmentCheck) savePerBombardmentCheck->setChecked(false);
 
-  auto *logFileRow = new QWidget(settingsTab);
+  auto *particleTreeRow = new QWidget(generalTab);
+  auto *particleTreeLayout = new QHBoxLayout(particleTreeRow);
+  particleTreeLayout->setContentsMargins(0, 0, 0, 0);
+  particleTreeEdit = new QLineEdit("particle_tree.json", particleTreeRow);
+  auto *particleTreeBrowse = new QPushButton("Browse", particleTreeRow);
+  connect(particleTreeBrowse, &QPushButton::clicked, this, [this]() {
+    browseOutputFile(particleTreeEdit, "Select particle tree output file", "json");
+  });
+  particleTreeLayout->addWidget(particleTreeEdit);
+  particleTreeLayout->addWidget(particleTreeBrowse);
+  formLayout->addRow("Particle tree output file", particleTreeRow);
+
+  auto addBinCount = [histogramsTab, histogramLayout](QSpinBox **field,
+                                                       const QString &label) {
+    *field = new QSpinBox(histogramsTab);
+    (*field)->setRange(1, 1000000);
+    (*field)->setValue(100);
+    histogramLayout->addRow(label, *field);
+  };
+  addBinCount(&displacementBinCountSpinBox, tr("Displacement bins"));
+  addBinCount(&electronicLossBinCountSpinBox, tr("Electronic loss bins"));
+  addBinCount(&nuclearLossBinCountSpinBox, tr("Nuclear loss bins"));
+  addBinCount(&totalLossBinCountSpinBox, tr("Total loss bins"));
+  addBinCount(&rangeBinCountSpinBox, tr("Range bins"));
+
+  auto *logFileRow = new QWidget(generalTab);
   auto *logFileLayout = new QHBoxLayout(logFileRow);
   logFileLayout->setContentsMargins(0, 0, 0, 0);
   logFileEdit = new QLineEdit("amcset.log", logFileRow);
@@ -818,25 +850,25 @@ void MainWindow::createSettingsDialog() {
   logFileLayout->addWidget(logBrowse);
   formLayout->addRow("Log file", logFileRow);
 
-  enableLoggingCheck = new QCheckBox(settingsTab);
+  enableLoggingCheck = new QCheckBox(generalTab);
   enableLoggingCheck->setChecked(false);
   formLayout->addRow("Enable logging", enableLoggingCheck);
 
-  angleDivisorSpinBox = new QSpinBox(settingsTab);
+  angleDivisorSpinBox = new QSpinBox(electronTab);
   angleDivisorSpinBox->setRange(1, 1000000);
   angleDivisorSpinBox->setValue(1000);
   electronSettingsLayout->addRow("Angle divisors", angleDivisorSpinBox);
 
-  flyingDistanceSpinBox = new QSpinBox(settingsTab);
+  flyingDistanceSpinBox = new QSpinBox(electronTab);
   flyingDistanceSpinBox->setRange(1, 1000000);
   flyingDistanceSpinBox->setValue(1000);
   electronSettingsLayout->addRow("Flying distances", flyingDistanceSpinBox);
 
-  auto *electronScreeningRow = new QWidget(settingsTab);
+  auto *electronScreeningRow = new QWidget(electronTab);
   auto *electronScreeningLayout = new QHBoxLayout(electronScreeningRow);
   electronScreeningLayout->setContentsMargins(0, 0, 0, 0);
-  electronScreeningParametersEdit = new QLineEdit("common/assets/electron_screening_parameters.csv", settingsTab);
-  auto *electronScreeningBrowse = new QPushButton("Browse", settingsTab);
+  electronScreeningParametersEdit = new QLineEdit("common/assets/electron_screening_parameters.csv", electronTab);
+  auto *electronScreeningBrowse = new QPushButton("Browse", electronTab);
   connect(electronScreeningBrowse, &QPushButton::clicked, this, [this]() {
     browseOutputFile(electronScreeningParametersEdit, "Select electron screening parameter file", "csv");
   });
@@ -844,11 +876,11 @@ void MainWindow::createSettingsDialog() {
   electronScreeningLayout->addWidget(electronScreeningBrowse);
   electronSettingsLayout->addRow("Electron screening parameters", electronScreeningRow);
 
-  auto *mottRow = new QWidget(settingsTab);
+  auto *mottRow = new QWidget(electronTab);
   auto *mottLayout = new QHBoxLayout(mottRow);
   mottLayout->setContentsMargins(0, 0, 0, 0);
-  mottScatteringParametersEdit = new QLineEdit("common/assets/mott_scattering_parameters.csv", settingsTab);
-  auto *mottBrowse = new QPushButton("Browse", settingsTab);
+  mottScatteringParametersEdit = new QLineEdit("common/assets/mott_scattering_parameters.csv", electronTab);
+  auto *mottBrowse = new QPushButton("Browse", electronTab);
   connect(mottBrowse, &QPushButton::clicked, this, [this]() {
     browseOutputFile(mottScatteringParametersEdit, "Select Mott scattering parameter file", "csv");
   });
@@ -856,16 +888,16 @@ void MainWindow::createSettingsDialog() {
   mottLayout->addWidget(mottBrowse);
   electronSettingsLayout->addRow("Mott scattering parameters", mottRow);
 
-  auto *screeningRow = new QWidget(settingsTab);
+  auto *screeningRow = new QWidget(electronTab);
   auto *screeningLayout = new QHBoxLayout(screeningRow);
   screeningLayout->setContentsMargins(0, 0, 0, 0);
-  screeningModelCombo = new QComboBox(settingsTab);
+  screeningModelCombo = new QComboBox(electronTab);
   screeningModelCombo->addItem("Thomas-Fermi (default)");
   screeningModelCombo->addItem("QuickBasic (ion.bas)");
   screeningLayout->addWidget(screeningModelCombo);
   electronSettingsLayout->addRow("Screening model", screeningRow);
 
-  auto *preferencesGroup = new QGroupBox("Preferences", settingsTab);
+  auto *preferencesGroup = new QGroupBox("Preferences", preferencesTab);
   auto *preferencesLayout = new QFormLayout(preferencesGroup);
   themeModeCombo = new QComboBox(preferencesGroup);
   themeModeCombo->addItem(tr("System"), static_cast<int>(Application::ThemeMode::System));
@@ -905,9 +937,17 @@ void MainWindow::createSettingsDialog() {
                             showOutputOverwriteWarningCheck);
 
   settingsLayout->addLayout(formLayout);
-  settingsLayout->addWidget(electronSettingsGroup);
-  settingsLayout->addWidget(preferencesGroup);
-  settingsTabs->addTab(settingsTab, "Settings");
+  settingsLayout->addStretch();
+  auto *electronTabLayout = new QVBoxLayout(electronTab);
+  electronTabLayout->addWidget(electronSettingsGroup);
+  electronTabLayout->addStretch();
+  auto *preferencesTabLayout = new QVBoxLayout(preferencesTab);
+  preferencesTabLayout->addWidget(preferencesGroup);
+  preferencesTabLayout->addStretch();
+  settingsTabs->addTab(generalTab, tr("General"));
+  settingsTabs->addTab(histogramsTab, tr("Histograms"));
+  settingsTabs->addTab(electronTab, tr("Electron transport"));
+  settingsTabs->addTab(preferencesTab, tr("Preferences"));
 
   dialogLayout->addWidget(settingsTabs);
 

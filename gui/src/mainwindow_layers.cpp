@@ -173,25 +173,6 @@ QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
   counterLabel->setText(
       QString("Bombardment %1 out of %2").arg(0).arg(defaultBombardments));
   counter = new Counter(this);
-  QTimer *timer = new QTimer(this);
-  connect(timer, &QTimer::timeout, this, [this]() {
-    if (activeSimulation != nullptr) {
-      const auto completed = static_cast<int>(
-          activeSimulation->get_completed_bombardment_count());
-      if (completed != counter->getValue()) {
-        counter->setValue(completed);
-      }
-    }
-
-    if (counter->hasChanged()) {
-      int value = counter->getValue();
-      auto totalBombardments = bombardmentCountSpinBox->value();
-      counterLabel->setText(QString("Bombardment %1 out of %2")
-                                .arg(value)
-                                .arg(totalBombardments));
-    }
-  });
-  timer->start(10);
 
   return formGroupBox;
 }

@@ -37,70 +37,70 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *event) {
 #endif // QT_NO_CONTEXTMENU
 
 void MainWindow::newFile() {
-  infoLabel->setText(tr("Invoked <b>File|New</b>"));
+  statusBar()->showMessage(tr("Invoked File|New"), 3000);
 }
 
-void MainWindow::open() { infoLabel->setText(tr("Invoked <b>File|Open</b>")); }
+void MainWindow::open() { statusBar()->showMessage(tr("Invoked File|Open"), 3000); }
 
-void MainWindow::save() { infoLabel->setText(tr("Invoked <b>File|Save</b>")); }
+void MainWindow::save() { statusBar()->showMessage(tr("Invoked File|Save"), 3000); }
 
 void MainWindow::print() {
-  infoLabel->setText(tr("Invoked <b>File|Print</b>"));
+  statusBar()->showMessage(tr("Invoked File|Print"), 3000);
 }
 
-void MainWindow::undo() { infoLabel->setText(tr("Invoked <b>Edit|Undo</b>")); }
+void MainWindow::undo() { statusBar()->showMessage(tr("Invoked Edit|Undo"), 3000); }
 
-void MainWindow::redo() { infoLabel->setText(tr("Invoked <b>Edit|Redo</b>")); }
+void MainWindow::redo() { statusBar()->showMessage(tr("Invoked Edit|Redo"), 3000); }
 
-void MainWindow::cut() { infoLabel->setText(tr("Invoked <b>Edit|Cut</b>")); }
+void MainWindow::cut() { statusBar()->showMessage(tr("Invoked Edit|Cut"), 3000); }
 
-void MainWindow::copy() { infoLabel->setText(tr("Invoked <b>Edit|Copy</b>")); }
+void MainWindow::copy() { statusBar()->showMessage(tr("Invoked Edit|Copy"), 3000); }
 
 void MainWindow::paste() {
-  infoLabel->setText(tr("Invoked <b>Edit|Paste</b>"));
+  statusBar()->showMessage(tr("Invoked Edit|Paste"), 3000);
 }
 
 void MainWindow::bold() {
-  infoLabel->setText(tr("Invoked <b>Edit|Format|Bold</b>"));
+  statusBar()->showMessage(tr("Invoked Edit|Format|Bold"), 3000);
 }
 
 void MainWindow::italic() {
-  infoLabel->setText(tr("Invoked <b>Edit|Format|Italic</b>"));
+  statusBar()->showMessage(tr("Invoked Edit|Format|Italic"), 3000);
 }
 
 void MainWindow::leftAlign() {
-  infoLabel->setText(tr("Invoked <b>Edit|Format|Left Align</b>"));
+  statusBar()->showMessage(tr("Invoked Edit|Format|Left Align"), 3000);
 }
 
 void MainWindow::rightAlign() {
-  infoLabel->setText(tr("Invoked <b>Edit|Format|Right Align</b>"));
+  statusBar()->showMessage(tr("Invoked Edit|Format|Right Align"), 3000);
 }
 
 void MainWindow::justify() {
-  infoLabel->setText(tr("Invoked <b>Edit|Format|Justify</b>"));
+  statusBar()->showMessage(tr("Invoked Edit|Format|Justify"), 3000);
 }
 
 void MainWindow::center() {
-  infoLabel->setText(tr("Invoked <b>Edit|Format|Center</b>"));
+  statusBar()->showMessage(tr("Invoked Edit|Format|Center"), 3000);
 }
 
 void MainWindow::setLineSpacing() {
-  infoLabel->setText(tr("Invoked <b>Edit|Format|Set Line Spacing</b>"));
+  statusBar()->showMessage(tr("Invoked Edit|Format|Set Line Spacing"), 3000);
 }
 
 void MainWindow::setParagraphSpacing() {
-  infoLabel->setText(tr("Invoked <b>Edit|Format|Set Paragraph Spacing</b>"));
+  statusBar()->showMessage(tr("Invoked Edit|Format|Set Paragraph Spacing"), 3000);
 }
 
 void MainWindow::about() {
-  infoLabel->setText(tr("Invoked <b>Help|About</b>"));
+  statusBar()->showMessage(tr("Invoked Help|About"), 3000);
   QMessageBox::about(this, tr("About Menu"),
                      tr("The <b>Menu</b> example shows how to create "
                         "menu-bar menus and context menus."));
 }
 
 void MainWindow::aboutQt() {
-  infoLabel->setText(tr("Invoked <b>Help|About Qt</b>"));
+  statusBar()->showMessage(tr("Invoked Help|About Qt"), 3000);
 }
 
 void MainWindow::createActions() {
