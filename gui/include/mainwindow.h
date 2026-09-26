@@ -128,8 +128,10 @@ private:
   void handleSimulationResult(int result);
   void handleSimulationError(const QString &errorMessage);
   void finishSimulation();
-  void updateLiveStatistics(const common::Tallies &tallies);
-  void refreshLiveHistograms(const common::Tallies &tallies);
+  void updateLiveStatistics(const common::Tallies &tallies,
+                            std::size_t bombardmentCount);
+  void refreshLiveHistograms(const common::Tallies &tallies,
+                             std::size_t bombardmentCount);
 
 public:
   static QString formatSimulationError(const std::exception &e,
@@ -251,6 +253,8 @@ private:
   int simulationResult = 0;
   bool simulationCancelled = false;
   bool restoringState = false;
+  common::Tallies latestLiveTallies;
+  std::size_t latestLiveTalliesBombardmentCount = 0;
   std::size_t simulationCompletedBombardments = 0;
   std::size_t lastLiveTallyBombardments = 0;
   // For Undo/Redo

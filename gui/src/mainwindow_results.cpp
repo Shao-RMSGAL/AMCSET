@@ -274,6 +274,25 @@ public:
         points.append(QPointF(x, histogram.bins[i]));
       }
     }
+    normalizedPerBombardment_ = false;
+    series_->replace(points);
+    update();
+  }
+
+  void setNormalizedHistogram(const common::Histogram &histogram,
+                              std::size_t bombardmentCount) {
+    QVector<QPointF> points;
+    if (!histogram.bins.empty() && bombardmentCount > 0) {
+      const auto width = histogram.max - histogram.min;
+      points.reserve(static_cast<int>(histogram.bins.size()));
+      for (size_t i = 0; i < histogram.bins.size(); ++i) {
+        const auto x = histogram.min + width * (static_cast<double>(i) + 0.5) /
+                                      static_cast<double>(histogram.bins.size());
+        points.append(QPointF(
+            x, histogram.bins[i] / static_cast<double>(bombardmentCount)));
+      }
+    }
+    normalizedPerBombardment_ = true;
     series_->replace(points);
     update();
   }
@@ -400,7 +419,10 @@ private:
 
     painter.setPen(colors.color(QPalette::Text));
     const auto xLabel = histogramAxisLabel(kind_, true);
-    const auto yLabel = histogramAxisLabel(kind_, false);
+    const auto yLabel = normalizedPerBombardment_
+                            ? histogramAxisLabel(kind_, false) +
+                                  tr(" per bombardment")
+                            : histogramAxisLabel(kind_, false);
     painter.drawText(QRectF(leftMargin, canvasSize.height() - 24.0,
                             canvasSize.width() - leftMargin - rightMargin, 20.0),
                      Qt::AlignCenter, xLabel);
@@ -416,6 +438,7 @@ private:
   QString title_;
   HistogramDataKind kind_;
   QLineSeries *series_;
+  bool normalizedPerBombardment_ = false;
 };
 
 QString MainWindow::buildOutputPath(const QString &filename) const {
@@ -619,10 +642,15 @@ void MainWindow::populateResultCharts() {
 
   if (histogramTabs) {
     populateTabWidget(histogramTabs);
+    if (latestLiveTalliesBombardmentCount > 0) {
+      refreshLiveHistograms(latestLiveTallies,
+                            latestLiveTalliesBombardmentCount);
+    }
   }
 }
 
-void MainWindow::refreshLiveHistograms(const common::Tallies &tallies) {
+void MainWindow::refreshLiveHistograms(const common::Tallies &tallies,
+                                      std::size_t bombardmentCount) {
   if (!histogramTabs) {
     return;
   }
@@ -631,19 +659,24 @@ void MainWindow::refreshLiveHistograms(const common::Tallies &tallies) {
         plot->property("histogramKind").toInt());
     switch (kind) {
       case HistogramDataKind::Displacement:
-        plot->setHistogram(tallies.displacement_histogram);
+        plot->setNormalizedHistogram(tallies.displacement_histogram,
+                                     bombardmentCount);
         break;
       case HistogramDataKind::ElectronicLoss:
-        plot->setHistogram(tallies.electronic_energy_loss_histogram);
+        plot->setNormalizedHistogram(
+            tallies.electronic_energy_loss_histogram, bombardmentCount);
         break;
       case HistogramDataKind::NuclearLoss:
-        plot->setHistogram(tallies.nuclear_energy_loss_histogram);
+        plot->setNormalizedHistogram(tallies.nuclear_energy_loss_histogram,
+                                     bombardmentCount);
         break;
       case HistogramDataKind::TotalLoss:
-        plot->setHistogram(tallies.total_energy_loss_histogram);
+        plot->setNormalizedHistogram(tallies.total_energy_loss_histogram,
+                                     bombardmentCount);
         break;
       case HistogramDataKind::Range:
-        plot->setHistogram(tallies.range_histogram);
+        plot->setNormalizedHistogram(tallies.range_histogram,
+                                     bombardmentCount);
         break;
       case HistogramDataKind::Generic:
         break;

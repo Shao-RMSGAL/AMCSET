@@ -63,7 +63,8 @@ void MainWindow::handleSimulationResult(int result) {
   simulationCompletedBombardments =
       activeSimulation ? activeSimulation->get_completed_bombardment_count() : 0;
   if (activeSimulation) {
-    updateLiveStatistics(activeSimulation->snapshot_tallies());
+    updateLiveStatistics(activeSimulation->snapshot_tallies(),
+                         simulationCompletedBombardments);
   }
   if (counter) {
     counter->setValue(static_cast<int>(simulationCompletedBombardments));
@@ -160,7 +161,7 @@ void MainWindow::runSimulation() {
                               .arg(0)
                               .arg(bombardmentCountSpinBox->value()));
   }
-  updateLiveStatistics(common::Tallies{});
+  updateLiveStatistics(common::Tallies{}, 0);
 
   if (use2DView->isChecked()) {
     for (auto *view : {xyCanvas, yzCanvas, xzCanvas}) {
@@ -412,15 +413,23 @@ void MainWindow::updateProjectionVisibility() {
     projectionGrid->setRowStretch(0, 1);
     projectionGrid->setColumnStretch(0, 1);
   } else if (visibleCount == 2) {
-    int column = 0;
-    for (auto *view : {xzCanvas, yzCanvas, xyCanvas}) {
-      if (view == xyCanvas ? showXY : view == yzCanvas ? showYZ : showXZ) {
-        projectionGrid->addWidget(view, 0, column++);
+    if (showXY) {
+      int column = 0;
+      for (auto *view : {xzCanvas, yzCanvas, xyCanvas}) {
+        if (view == xyCanvas ? showXY : view == yzCanvas ? showYZ : showXZ) {
+          projectionGrid->addWidget(view, 0, column++);
+        }
       }
+      projectionGrid->setRowStretch(0, 1);
+      projectionGrid->setColumnStretch(0, 1);
+      projectionGrid->setColumnStretch(1, 1);
+    } else {
+      projectionGrid->addWidget(xzCanvas, 0, 0);
+      projectionGrid->addWidget(yzCanvas, 1, 0);
+      projectionGrid->setRowStretch(0, 1);
+      projectionGrid->setRowStretch(1, 1);
+      projectionGrid->setColumnStretch(0, 1);
     }
-    projectionGrid->setColumnStretch(0, 1);
-    projectionGrid->setColumnStretch(1, 1);
-    projectionGrid->setRowStretch(0, 1);
   } else if (visibleCount == 3) {
     projectionGrid->addWidget(xzCanvas, 0, 0);
     projectionGrid->addWidget(yzCanvas, 1, 0);
@@ -536,15 +545,18 @@ void MainWindow::pollBombardmentQueue() {
               .arg(bombardmentCountSpinBox ? bombardmentCountSpinBox->value() : 0));
     }
     if (completed != lastLiveTallyBombardments) {
-      updateLiveStatistics(activeSimulation->snapshot_tallies());
+      updateLiveStatistics(activeSimulation->snapshot_tallies(), completed);
       lastLiveTallyBombardments = completed;
     }
   }
 
 }
 
-void MainWindow::updateLiveStatistics(const common::Tallies &tallies) {
-  refreshLiveHistograms(tallies);
+void MainWindow::updateLiveStatistics(const common::Tallies &tallies,
+                                      std::size_t bombardmentCount) {
+  latestLiveTallies = tallies;
+  latestLiveTalliesBombardmentCount = bombardmentCount;
+  refreshLiveHistograms(tallies, bombardmentCount);
   const auto rangeAngstrom =
       (common::length_quantity(static_cast<double>(tallies.range_stats.mean) *
                    common::si::meter) /
