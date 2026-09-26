@@ -364,11 +364,10 @@ TEST_F(CommonTest, screening_length_quickbasic_equivalence) try {
       ion_stopping_energy, ion_displacement_energy,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
       is_electron, incident_energy, thread_count, incident_angle,
-      100, 100, 100, 100, std::string("output/displacement_histogram.csv"),
+      100, 100, 100, 100, 100, std::string("output/displacement_histogram.csv"),
       std::string("output/electronic_loss_histogram.csv"),
       std::string("output/nuclear_loss_histogram.csv"),
-      std::string("output/total_loss_histogram.csv"), false,
-      std::string("output/particle_tree.json"),
+      std::string("output/total_loss_histogram.csv"),
       Simulation::Settings::ScreeningModel::QuickBasic);
 
   Simulation simulation(settings, std::move(volume));
@@ -546,12 +545,11 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
       ion_stopping_energy, ion_displacement_energy,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
       is_electron, incident_energy, thread_count,
-      0.0 * amcset::common::radian, 64, 128, 256, 512,
+      0.0 * amcset::common::radian, 64, 128, 256, 512, 100,
       "output/displacement_histogram.csv",
       "output/electronic_loss_histogram.csv",
       "output/nuclear_loss_histogram.csv",
-      "output/total_loss_histogram.csv", false,
-      "output/particle_tree.json");
+      "output/total_loss_histogram.csv");
 
   ASSERT_EQ(settings.electron_stopping_energy_, electron_stopping_energy);
   ASSERT_EQ(settings.incident_particle_properties_.mass_,
@@ -571,11 +569,9 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
   ASSERT_EQ(settings.electronic_energy_loss_bin_count_, 128u);
   ASSERT_EQ(settings.nuclear_energy_loss_bin_count_, 256u);
   ASSERT_EQ(settings.total_energy_loss_bin_count_, 512u);
+  ASSERT_EQ(settings.range_bin_count_, 100u);
   ASSERT_EQ(settings.displacement_histogram_output_file_,
             std::string("output/displacement_histogram.csv"));
-  ASSERT_FALSE(settings.log_particle_tree_);
-  ASSERT_EQ(settings.particle_tree_output_file_,
-            std::string("output/particle_tree.json"));
 
   Simulation simulation(settings, std::move(volume));
 
@@ -611,6 +607,15 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
             thread_count);
 
   EXPECT_NO_THROW(simulation.run_simulation());
+  const auto tallies = simulation.snapshot_tallies();
+  EXPECT_EQ(tallies.range_histogram.bins.size(), settings.range_bin_count_);
+  EXPECT_EQ(tallies.displacement_histogram.bins.size(), settings.displacement_bin_count_);
+  EXPECT_EQ(tallies.electronic_energy_loss_histogram.bins.size(),
+            settings.electronic_energy_loss_bin_count_);
+  EXPECT_EQ(tallies.nuclear_energy_loss_histogram.bins.size(),
+            settings.nuclear_energy_loss_bin_count_);
+  EXPECT_EQ(tallies.total_energy_loss_histogram.bins.size(),
+            settings.total_energy_loss_bin_count_);
 } catch (const std::exception &e) {
   print_exception(e);
   FAIL();
@@ -643,16 +648,18 @@ TEST_F(CommonTest, simulation_writes_all_output_files) try {
       ion_stopping_energy, ion_displacement_energy,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
       is_electron, incident_energy, thread_count, incident_angle, 64, 64, 64,
-      64, "output/test_regression/displacement_histogram.csv",
+      64, 64, "output/test_regression/displacement_histogram.csv",
       "output/test_regression/electronic_loss_histogram.csv",
       "output/test_regression/nuclear_loss_histogram.csv",
-      "output/test_regression/total_loss_histogram.csv", false,
-      "output/test_regression/particle_tree.json");
+      "output/test_regression/total_loss_histogram.csv",
+      Simulation::Settings::ScreeningModel::ThomasFermi,
+      "output/test_regression/range_depth.csv");
 
   Simulation simulation(settings, std::move(volume));
   EXPECT_NO_THROW(simulation.run_simulation());
 
   EXPECT_TRUE(std::filesystem::exists("output/test_regression/displacement_histogram.csv"));
+  EXPECT_TRUE(std::filesystem::exists("output/test_regression/range_depth.csv"));
   EXPECT_TRUE(std::filesystem::exists("output/test_regression/electronic_loss_histogram.csv"));
   EXPECT_TRUE(std::filesystem::exists("output/test_regression/nuclear_loss_histogram.csv"));
   EXPECT_TRUE(std::filesystem::exists("output/test_regression/total_loss_histogram.csv"));

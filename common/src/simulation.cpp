@@ -50,16 +50,17 @@ Simulation::Settings::Settings(
   size_t electronic_energy_loss_bin_count,
   size_t nuclear_energy_loss_bin_count,
   size_t total_energy_loss_bin_count,
+  size_t range_bin_count,
   std::string displacement_histogram_output_file,
   std::string electronic_energy_loss_histogram_output_file,
   std::string nuclear_energy_loss_histogram_output_file,
   std::string total_energy_loss_histogram_output_file,
-  bool log_particle_tree, std::string particle_tree_output_file,
   bool save_per_bombardment_info,
   std::string per_bombardment_output_dir,
   std::string electron_screening_parameters_path,
   std::string mott_scattering_parameters_path,
-  Simulation::Settings::ScreeningModel screening_model) try
+  Simulation::Settings::ScreeningModel screening_model,
+  std::string range_histogram_output_file) try
   : electron_stopping_energy_(electron_stopping_energy), z_number_(z_number),
     mass_number_(mass_number),
     incident_particle_properties_(Particle::Properties(z_number, mass_number)),
@@ -75,6 +76,7 @@ Simulation::Settings::Settings(
     electronic_energy_loss_bin_count_(electronic_energy_loss_bin_count),
     nuclear_energy_loss_bin_count_(nuclear_energy_loss_bin_count),
     total_energy_loss_bin_count_(total_energy_loss_bin_count),
+    range_bin_count_(range_bin_count),
     displacement_histogram_output_file_(std::move(displacement_histogram_output_file)),
     electronic_energy_loss_histogram_output_file_(
       std::move(electronic_energy_loss_histogram_output_file)),
@@ -82,8 +84,13 @@ Simulation::Settings::Settings(
       std::move(nuclear_energy_loss_histogram_output_file)),
     total_energy_loss_histogram_output_file_(
       std::move(total_energy_loss_histogram_output_file)),
-    log_particle_tree_(log_particle_tree),
-    particle_tree_output_file_(std::move(particle_tree_output_file)),
+    range_histogram_output_file_(
+      range_histogram_output_file.empty()
+        ? (std::filesystem::path(displacement_histogram_output_file_)
+             .parent_path() /
+           "range_histogram.csv")
+            .string()
+        : std::move(range_histogram_output_file)),
     save_per_bombardment_info_(save_per_bombardment_info),
     per_bombardment_output_dir_((per_bombardment_output_dir.empty()) ? std::string("output/bombardments/") : std::move(per_bombardment_output_dir)),
     electron_screening_parameters_path_(std::move(electron_screening_parameters_path)),
@@ -124,8 +131,9 @@ Simulation::Settings::Settings(
     throw std::invalid_argument(
         EXCEPTION_MESSAGE("Thread count must be greater than 0"));
   }
-  if (displacement_bin_count == 0 || electronic_energy_loss_bin_count == 0 ||
-      nuclear_energy_loss_bin_count == 0 || total_energy_loss_bin_count == 0) {
+    if (displacement_bin_count == 0 || electronic_energy_loss_bin_count == 0 ||
+      nuclear_energy_loss_bin_count == 0 || total_energy_loss_bin_count == 0 ||
+      range_bin_count == 0) {
     throw std::invalid_argument(
         EXCEPTION_MESSAGE("Histogram bin counts must be greater than 0"));
   }
@@ -147,14 +155,15 @@ Simulation::Settings::Settings(
   size_t electronic_energy_loss_bin_count,
   size_t nuclear_energy_loss_bin_count,
   size_t total_energy_loss_bin_count,
+  size_t range_bin_count,
   std::string displacement_histogram_output_file,
   std::string electronic_energy_loss_histogram_output_file,
   std::string nuclear_energy_loss_histogram_output_file,
   std::string total_energy_loss_histogram_output_file,
-  bool log_particle_tree, std::string particle_tree_output_file,
   bool save_per_bombardment_info,
   std::string per_bombardment_output_dir,
-  Simulation::Settings::ScreeningModel screening_model)
+  Simulation::Settings::ScreeningModel screening_model,
+  std::string range_histogram_output_file)
   : Settings(electron_stopping_energy, z_number, mass_number,
          enable_damage_cascade, ion_stopping_energy,
          ion_displacement_energy,
@@ -164,18 +173,16 @@ Simulation::Settings::Settings(
          electronic_energy_loss_bin_count,
          nuclear_energy_loss_bin_count,
          total_energy_loss_bin_count,
+         range_bin_count,
          std::move(displacement_histogram_output_file),
          std::move(electronic_energy_loss_histogram_output_file),
          std::move(nuclear_energy_loss_histogram_output_file),
          std::move(total_energy_loss_histogram_output_file),
-         log_particle_tree, std::move(particle_tree_output_file),
-         save_per_bombardment_info,
-         std::move(per_bombardment_output_dir),
+         save_per_bombardment_info, std::move(per_bombardment_output_dir),
          std::string("common/assets/electron_screening_parameters.csv"),
          std::string("common/assets/mott_scattering_parameters.csv"),
-         screening_model) {}
+         screening_model, std::move(range_histogram_output_file)) {}
 
-// Delegating constructor matching the shorter overload used by tests
 Simulation::Settings::Settings(
   energy_quantity electron_stopping_energy, size_t z_number,
   size_t mass_number, bool enable_damage_cascade,
@@ -189,12 +196,13 @@ Simulation::Settings::Settings(
   size_t electronic_energy_loss_bin_count,
   size_t nuclear_energy_loss_bin_count,
   size_t total_energy_loss_bin_count,
+  size_t range_bin_count,
   std::string displacement_histogram_output_file,
   std::string electronic_energy_loss_histogram_output_file,
   std::string nuclear_energy_loss_histogram_output_file,
   std::string total_energy_loss_histogram_output_file,
-  bool log_particle_tree, std::string particle_tree_output_file,
-  Simulation::Settings::ScreeningModel screening_model)
+  Simulation::Settings::ScreeningModel screening_model,
+  std::string range_histogram_output_file)
   : Settings(electron_stopping_energy, z_number, mass_number,
          enable_damage_cascade, ion_stopping_energy,
          ion_displacement_energy,
@@ -204,20 +212,20 @@ Simulation::Settings::Settings(
          electronic_energy_loss_bin_count,
          nuclear_energy_loss_bin_count,
          total_energy_loss_bin_count,
+         range_bin_count,
          std::move(displacement_histogram_output_file),
          std::move(electronic_energy_loss_histogram_output_file),
          std::move(nuclear_energy_loss_histogram_output_file),
          std::move(total_energy_loss_histogram_output_file),
-         log_particle_tree, std::move(particle_tree_output_file),
          false, std::string("output/bombardments/"),
          std::string("common/assets/electron_screening_parameters.csv"),
          std::string("common/assets/mott_scattering_parameters.csv"),
-         screening_model) {}
+         screening_model, std::move(range_histogram_output_file)) {}
 
 Simulation::Simulation(const Settings settings, Volume &&volume,
                        DrawFunction draw_function) try
     : settings_(settings), volume_(std::move(volume)),
-      tallies_(100, settings.range_.value(), settings.displacement_bin_count_,
+      tallies_(settings.range_bin_count_, settings.range_.value(), settings.displacement_bin_count_,
                settings.electronic_energy_loss_bin_count_,
                settings.nuclear_energy_loss_bin_count_,
                settings.total_energy_loss_bin_count_),
@@ -282,6 +290,8 @@ int Simulation::run_simulation() try {
     write_histogram_with_log("displacement",
                              settings_.displacement_histogram_output_file_,
                              get_tallies().displacement_histogram, "count");
+    write_histogram_with_log("range", settings_.range_histogram_output_file_,
+                 get_tallies().range_histogram, "count");
     write_histogram_with_log("electronic loss",
                              settings_.electronic_energy_loss_histogram_output_file_,
                              get_tallies().electronic_energy_loss_histogram,
@@ -295,9 +305,6 @@ int Simulation::run_simulation() try {
                              get_tallies().total_energy_loss_histogram,
                              "energy_loss_eV");
 
-    if (settings_.log_particle_tree_) {
-      write_particle_tree_log();
-    }
 
     const std::filesystem::path tallies_path = output_root / "tallies.json";
     LOG(INFO) << "Writing tallies summary to: " << tallies_path.string();
@@ -367,10 +374,9 @@ std::string Simulation::print_settings() const try {
      << settings_.electronic_energy_loss_bin_count_ << std::endl;
   ss << "Nuclear loss histogram bins: "
      << settings_.nuclear_energy_loss_bin_count_ << std::endl;
-  ss << "Total loss histogram bins: "
+    ss << "Total loss histogram bins: "
      << settings_.total_energy_loss_bin_count_ << std::endl;
-  ss << "Log particle tree? "
-     << (settings_.log_particle_tree_ ? "Yes" : "No") << std::endl;
+    ss << "Range histogram bins: " << settings_.range_bin_count_ << std::endl;
   ss << "Screening model: "
      << (settings_.screening_model_ == Simulation::Settings::ScreeningModel::QuickBasic ? "QuickBasic" : "ThomasFermi")
      << std::endl;
@@ -382,6 +388,11 @@ std::string Simulation::print_settings() const try {
 void Simulation::merge_tallies(const Tallies &tallies) {
   std::lock_guard<std::mutex> lk(tallies_mutex_);
   tallies_.merge(tallies);
+}
+
+Tallies Simulation::snapshot_tallies() const {
+  std::lock_guard<std::mutex> lk(tallies_mutex_);
+  return tallies_;
 }
 
 const Tallies &Simulation::get_tallies() const noexcept { return tallies_; }
@@ -424,25 +435,10 @@ void Simulation::write_histogram_csv(const std::string &output_file,
             << histogram.bins.size() << " bins";
 }
 
-void Simulation::write_particle_tree_log() const {
-  if (!settings_.log_particle_tree_) return;
-  std::filesystem::create_directories(
-      std::filesystem::path(settings_.particle_tree_output_file_).parent_path());
-  std::ofstream output(settings_.particle_tree_output_file_);
-  output << "{\n  \"bombardments\": [\n";
-  for (size_t i = 0; i < bombardments_.size(); ++i) {
-    if (i != 0) output << ",\n";
-    output << "    {\n";
-    output << "      \"bombardment_id\": " << i << ",\n";
-    output << "      \"tree\": " << bombardments_[i].get_data_leaf().to_json(8)
-           << "\n    }";
-  }
-  output << "\n  ]\n}\n";
-}
-
 void Bombardment::record_incident(double range_meters) {
   local_tallies_.incidents += 1;
   local_tallies_.range_stats.add((long double)range_meters);
+  local_tallies_.range_histogram.add(range_meters);
   local_tallies_.depth_histogram.add(range_meters);
 }
 
@@ -469,7 +465,12 @@ void Bombardment::record_energy_loss(long double energy_joules, double depth_met
 
 Bombardment::Bombardment(Simulation &simulation, size_t id) try
     : simulation_(simulation),
-      local_tallies_(100, simulation.get_settings(&Simulation::Settings::range_).value()),
+      local_tallies_(simulation.get_settings(&Simulation::Settings::range_bin_count_),
+              simulation.get_settings(&Simulation::Settings::range_).value(),
+              simulation.get_settings(&Simulation::Settings::displacement_bin_count_),
+              simulation.get_settings(&Simulation::Settings::electronic_energy_loss_bin_count_),
+              simulation.get_settings(&Simulation::Settings::nuclear_energy_loss_bin_count_),
+              simulation.get_settings(&Simulation::Settings::total_energy_loss_bin_count_)),
       random_number_generator_(EntropySeeder::generate()),
       uniform_distribution_(), id_(id), data_leaf_() {
   VLOG(1) << "Attempting random number: "

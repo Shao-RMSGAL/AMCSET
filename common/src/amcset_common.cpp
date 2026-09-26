@@ -54,7 +54,7 @@ namespace common {
 Simulation::Simulation(const Settings settings, Volume &&volume,
                        DrawFunction draw_function) try
     : settings_(settings), volume_(std::move(volume)),
-      tallies_(100, settings.range_.value(), settings.displacement_bin_count_,
+      tallies_(settings.range_bin_count_, settings.range_.value(), settings.displacement_bin_count_,
                settings.electronic_energy_loss_bin_count_,
                settings.nuclear_energy_loss_bin_count_,
                settings.total_energy_loss_bin_count_),
@@ -130,9 +130,6 @@ int Simulation::run_simulation() try {
                              get_tallies().total_energy_loss_histogram,
                              "energy_loss_eV");
 
-    if (settings_.log_particle_tree_) {
-      write_particle_tree_log();
-    }
 
     const std::filesystem::path tallies_path = output_root / "tallies.json";
     LOG(INFO) << "Writing tallies summary to: " << tallies_path.string();
@@ -199,8 +196,6 @@ std::string Simulation::print_settings() const try {
      << settings_.nuclear_energy_loss_bin_count_ << std::endl;
   ss << "Total loss histogram bins: "
      << settings_.total_energy_loss_bin_count_ << std::endl;
-  ss << "Log particle tree? "
-     << (settings_.log_particle_tree_ ? "Yes" : "No") << std::endl;
   ss << "Screening model: "
       << (settings_.screening_model_ == Simulation::Settings::ScreeningModel::QuickBasic ? "QuickBasic" : "ThomasFermi")
       << std::endl;
@@ -253,22 +248,6 @@ void Simulation::write_histogram_csv(const std::string &output_file,
   output.flush();
   LOG(INFO) << "Histogram written to " << output_path.string() << " with "
             << histogram.bins.size() << " bins";
-}
-
-void Simulation::write_particle_tree_log() const {
-  if (!settings_.log_particle_tree_) return;
-  std::filesystem::create_directories(
-      std::filesystem::path(settings_.particle_tree_output_file_).parent_path());
-  std::ofstream output(settings_.particle_tree_output_file_);
-  output << "{\n  \"bombardments\": [\n";
-  for (size_t i = 0; i < bombardments_.size(); ++i) {
-    if (i != 0) output << ",\n";
-    output << "    {\n";
-    output << "      \"bombardment_id\": " << i << ",\n";
-    output << "      \"tree\": " << bombardments_[i].get_data_leaf().to_json(8)
-           << "\n    }";
-  }
-  output << "\n  ]\n}\n";
 }
 
 // Bombardment tally helpers

@@ -42,6 +42,7 @@ enum class HistogramDataKind {
   ElectronicLoss,
   NuclearLoss,
   TotalLoss
+  , Range
 };
 
 namespace {
@@ -121,6 +122,7 @@ HistogramDataKind detectHistogramKind(const QString &filePath) {
   if (name.contains("electronic")) return HistogramDataKind::ElectronicLoss;
   if (name.contains("nuclear")) return HistogramDataKind::NuclearLoss;
   if (name.contains("total")) return HistogramDataKind::TotalLoss;
+  if (name.contains("range")) return HistogramDataKind::Range;
   return HistogramDataKind::Generic;
 }
 
@@ -172,6 +174,8 @@ QString histogramAxisLabel(HistogramDataKind kind, bool xAxis) {
       return xAxis ? QStringLiteral("Depth (Å)") : QStringLiteral("Nuclear loss (eV)");
     case HistogramDataKind::TotalLoss:
       return xAxis ? QStringLiteral("Depth (Å)") : QStringLiteral("Total loss (eV)");
+    case HistogramDataKind::Range:
+      return xAxis ? QStringLiteral("Range (Å)") : QStringLiteral("Count");
     case HistogramDataKind::Generic:
     default:
       return xAxis ? QStringLiteral("Depth") : QStringLiteral("Value");
@@ -215,6 +219,7 @@ QString buildSimulationSummaryHtml(const QString &outputDir,
        << QStringLiteral("<tr><td><b>Electronic loss histogram</b></td><td>%1</td></tr>").arg(filePaths.value(1, QStringLiteral("(not set)")))
        << QStringLiteral("<tr><td><b>Nuclear loss histogram</b></td><td>%1</td></tr>").arg(filePaths.value(2, QStringLiteral("(not set)")))
        << QStringLiteral("<tr><td><b>Total loss histogram</b></td><td>%1</td></tr>").arg(filePaths.value(3, QStringLiteral("(not set)")))
+      << QStringLiteral("<tr><td><b>Range histogram</b></td><td>%1</td></tr>").arg(filePaths.value(4, QStringLiteral("(not set)")))
        << QStringLiteral("<tr><td><b>Log file</b></td><td>%1</td></tr>").arg(logFile)
        << QStringLiteral("<tr><td><b>Logging enabled</b></td><td>%1</td></tr>").arg(loggingEnabled ? "Yes" : "No")
        << QStringLiteral("</table>");
@@ -233,6 +238,7 @@ QString buildSimulationSummaryHtml(const QString &outputDir,
            << QStringLiteral("<tr><td><b>Total displacements</b></td><td>%1</td></tr>").arg(obj.value("total_displacements").toVariant().toString())
            << QStringLiteral("<tr><td><b>Sputtered</b></td><td>%1</td></tr>").arg(obj.value("sputtered").toVariant().toString())
            << QStringLiteral("<tr><td><b>Mean range</b></td><td>%1</td></tr>").arg(QString::number(obj.value("range_mean").toDouble(), 'g', 6))
+               << QStringLiteral("<tr><td><b>Range straggling</b></td><td>%1</td></tr>").arg(QString::number(obj.value("range_straggling").toDouble(), 'g', 6))
            << QStringLiteral("<tr><td><b>Mean energy loss</b></td><td>%1</td></tr>").arg(QString::number(obj.value("energy_loss_mean").toDouble(), 'g', 6))
            << QStringLiteral("</table>");
     }
@@ -255,6 +261,21 @@ public:
     for (const auto &point : points) {
       series_->append(point);
     }
+  }
+
+  void setHistogram(const common::Histogram &histogram) {
+    QVector<QPointF> points;
+    if (!histogram.bins.empty()) {
+      const auto width = histogram.max - histogram.min;
+      points.reserve(static_cast<int>(histogram.bins.size()));
+      for (size_t i = 0; i < histogram.bins.size(); ++i) {
+        const auto x = histogram.min + width * (static_cast<double>(i) + 0.5) /
+                                      static_cast<double>(histogram.bins.size());
+        points.append(QPointF(x, histogram.bins[i]));
+      }
+    }
+    series_->replace(points);
+    update();
   }
 
   bool savePng(const QString &filePath) const {
@@ -477,12 +498,13 @@ void MainWindow::populateResultCharts() {
 
     auto addFileChart = [&](const QString &title, const QString &filePath) {
       const QFileInfo fileInfo(filePath);
-      if (!fileInfo.exists() || !fileInfo.isFile()) {
-        return;
-      }
       const auto kind = detectHistogramKind(filePath);
       const auto csvBaseName = fileInfo.completeBaseName();
       auto *plotWidget = new HistogramPlotWidget(filePath, title, kind, target);
+      if (!fileInfo.exists() || !fileInfo.isFile()) {
+        plotWidget->setHistogram(common::Histogram());
+      }
+      plotWidget->setProperty("histogramKind", static_cast<int>(kind));
       auto *chartPage = new QWidget(target);
       auto *chartLayout = new QVBoxLayout(chartPage);
       auto *chartActions = new QHBoxLayout();
@@ -534,6 +556,7 @@ void MainWindow::populateResultCharts() {
         electronicOutputEdit ? electronicOutputEdit->text().trimmed() : QString(),
         nuclearOutputEdit ? nuclearOutputEdit->text().trimmed() : QString(),
         totalOutputEdit ? totalOutputEdit->text().trimmed() : QString(),
+        QDir(outputDirPath).filePath(QStringLiteral("range_histogram.csv")),
         QStringLiteral("output/collisions.csv"),
     };
 
@@ -558,6 +581,28 @@ void MainWindow::populateResultCharts() {
         const auto title = QFileInfo(csvPath).baseName();
         addFileChart(title, csvPath);
       }
+    }
+
+    const auto livePaths = QStringList{
+        displacementOutputEdit ? displacementOutputEdit->text().trimmed() : QString(),
+        electronicOutputEdit ? electronicOutputEdit->text().trimmed() : QString(),
+        nuclearOutputEdit ? nuclearOutputEdit->text().trimmed() : QString(),
+        totalOutputEdit ? totalOutputEdit->text().trimmed() : QString(),
+        QDir(outputDirPath).filePath(QStringLiteral("range_histogram.csv"))};
+    for (const auto &path : livePaths) {
+      const auto title = QFileInfo(path).baseName();
+      bool exists = false;
+      for (int i = 0; i < target->count(); ++i) {
+        if (target->tabText(i) == title) {
+          exists = true;
+          break;
+        }
+      }
+      if (!exists && !title.isEmpty()) {
+        addFileChart(title, path);
+      }
+    }
+    if (target->count() > 0) {
       return;
     }
 
@@ -575,6 +620,35 @@ void MainWindow::populateResultCharts() {
   }
 }
 
+void MainWindow::refreshLiveHistograms(const common::Tallies &tallies) {
+  if (!histogramTabs) {
+    return;
+  }
+  for (auto *plot : histogramTabs->findChildren<HistogramPlotWidget *>()) {
+    const auto kind = static_cast<HistogramDataKind>(
+        plot->property("histogramKind").toInt());
+    switch (kind) {
+      case HistogramDataKind::Displacement:
+        plot->setHistogram(tallies.displacement_histogram);
+        break;
+      case HistogramDataKind::ElectronicLoss:
+        plot->setHistogram(tallies.electronic_energy_loss_histogram);
+        break;
+      case HistogramDataKind::NuclearLoss:
+        plot->setHistogram(tallies.nuclear_energy_loss_histogram);
+        break;
+      case HistogramDataKind::TotalLoss:
+        plot->setHistogram(tallies.total_energy_loss_histogram);
+        break;
+      case HistogramDataKind::Range:
+        plot->setHistogram(tallies.range_histogram);
+        break;
+      case HistogramDataKind::Generic:
+        break;
+    }
+  }
+}
+
 void MainWindow::refreshSummaryView() {
   if (!simulationSummaryView) {
     return;
@@ -585,6 +659,9 @@ void MainWindow::refreshSummaryView() {
                << (electronicOutputEdit ? electronicOutputEdit->text().trimmed() : QString())
                << (nuclearOutputEdit ? nuclearOutputEdit->text().trimmed() : QString())
                << (totalOutputEdit ? totalOutputEdit->text().trimmed() : QString());
+  summaryPaths << QDir(outputDirectoryEdit ? outputDirectoryEdit->text().trimmed()
+                                           : QStringLiteral("output"))
+                       .filePath(QStringLiteral("range_histogram.csv"));
   const auto outputDir = outputDirectoryEdit ? outputDirectoryEdit->text().trimmed() : QStringLiteral("output");
   const auto summaryPalette = simulationSummaryView->palette();
   simulationSummaryView->setHtml(buildSimulationSummaryHtml(

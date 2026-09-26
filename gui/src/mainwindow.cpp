@@ -17,6 +17,8 @@
 #include "mainwindow.h"
 
 #include <QHBoxLayout>
+#include <QEvent>
+#include <QGridLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QSplitter>
@@ -26,14 +28,48 @@
 
 #include "layer_delegate.h"
 
-#include "layer_delegate.h"
-
 namespace amcset {
 namespace gui {
 
 void MainWindow::closeEvent(QCloseEvent *event) {
   saveState();
   QMainWindow::closeEvent(event);
+}
+
+void MainWindow::changeEvent(QEvent *event) {
+  QMainWindow::changeEvent(event);
+  if (event->type() == QEvent::ApplicationPaletteChange ||
+      event->type() == QEvent::PaletteChange) {
+    updateStatusBarColors();
+  }
+}
+
+void MainWindow::updateStatusBarColors() {
+  if (!statusBar()) {
+    return;
+  }
+  auto statusPalette = statusBar()->palette();
+  const auto windowColor = qApp->palette().color(QPalette::Window);
+  const auto foreground = windowColor.lightness() > 128
+                              ? QColor(32, 32, 32)
+                              : QColor(238, 238, 238);
+  const auto foregroundCss = QStringLiteral("rgb(%1, %2, %3)")
+                                 .arg(foreground.red())
+                                 .arg(foreground.green())
+                                 .arg(foreground.blue());
+  statusBar()->setStyleSheet(
+      QStringLiteral("QStatusBar, QStatusBar QLabel { color: %1; }")
+          .arg(foregroundCss));
+  statusPalette.setColor(QPalette::WindowText, foreground);
+  statusPalette.setColor(QPalette::Text, foreground);
+  statusPalette.setColor(QPalette::ButtonText, foreground);
+  statusBar()->setPalette(statusPalette);
+  for (auto *label : statusBar()->findChildren<QLabel *>()) {
+    auto labelPalette = label->palette();
+    labelPalette.setColor(QPalette::WindowText, foreground);
+    labelPalette.setColor(QPalette::Text, foreground);
+    label->setPalette(labelPalette);
+  }
 }
 
 MainWindow::~MainWindow() {
@@ -59,7 +95,7 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::saveState() {
-  if (!app_) {
+  if (!app_ || restoringState) {
     return;
   }
 
@@ -74,6 +110,11 @@ void MainWindow::saveState() {
   state["bombardmentCount"] = bombardmentCountSpinBox ? bombardmentCountSpinBox->value() : 1;
   state["threadCount"] = threadCountSpinBox ? threadCountSpinBox->value() : 1;
   state["range"] = rangeSpinBox ? rangeSpinBox->value() : 1000.0;
+  state["showXYProjection"] = xyProjectionCheck ? xyProjectionCheck->isChecked() : true;
+  state["showYZProjection"] = yzProjectionCheck ? yzProjectionCheck->isChecked() : true;
+  state["showXZProjection"] = xzProjectionCheck ? xzProjectionCheck->isChecked() : true;
+  state["generationFilter"] = generationFilterCombo ? generationFilterCombo->currentIndex() : 3;
+  state["customGenerations"] = customGenerationEdit ? customGenerationEdit->text() : QString();
 
   QVariantList layers;
   if (layerModel && layerTable) {
@@ -129,7 +170,7 @@ void MainWindow::saveState() {
   if (electronicOutputEdit) state["electronicOutput"] = electronicOutputEdit->text();
   if (nuclearOutputEdit) state["nuclearOutput"] = nuclearOutputEdit->text();
   if (totalOutputEdit) state["totalOutput"] = totalOutputEdit->text();
-  if (particleTreeEdit) state["particleTreeOutput"] = particleTreeEdit->text();
+  if (rangeOutputEdit) state["rangeOutput"] = rangeOutputEdit->text();
   if (perBombardmentOutputDirEdit) state["perBombardmentOutputDir"] = perBombardmentOutputDirEdit->text();
   if (savePerBombardmentCheck) state["savePerBombardment"] = savePerBombardmentCheck->isChecked();
   if (saveAllGraphsCheck) state["saveAllGraphs"] = saveAllGraphsCheck->isChecked();
@@ -139,6 +180,11 @@ void MainWindow::saveState() {
   if (electronScreeningParametersEdit) state["electronScreeningParameters"] = electronScreeningParametersEdit->text();
   if (mottScatteringParametersEdit) state["mottScatteringParameters"] = mottScatteringParametersEdit->text();
   if (screeningModelCombo) state["screeningModel"] = screeningModelCombo->currentIndex();
+  if (displacementBinCountSpinBox) state["displacementBinCount"] = displacementBinCountSpinBox->value();
+  if (electronicLossBinCountSpinBox) state["electronicLossBinCount"] = electronicLossBinCountSpinBox->value();
+  if (nuclearLossBinCountSpinBox) state["nuclearLossBinCount"] = nuclearLossBinCountSpinBox->value();
+  if (totalLossBinCountSpinBox) state["totalLossBinCount"] = totalLossBinCountSpinBox->value();
+  if (rangeBinCountSpinBox) state["rangeBinCount"] = rangeBinCountSpinBox->value();
 
   app_->saveMainWindowState(state);
 }
@@ -147,9 +193,11 @@ void MainWindow::restoreState() {
   if (!app_) {
     return;
   }
+  restoringState = true;
 
   const auto state = app_->loadMainWindowState();
   if (state.isEmpty()) {
+    restoringState = false;
     return;
   }
 
@@ -162,7 +210,13 @@ void MainWindow::restoreState() {
   if (incidentAngle) incidentAngle->setValue(state.value("incidentAngle", 0.0).toDouble());
   if (bombardmentCountSpinBox) bombardmentCountSpinBox->setValue(state.value("bombardmentCount", 1).toInt());
   if (threadCountSpinBox) threadCountSpinBox->setValue(state.value("threadCount", 1).toInt());
-  if (rangeSpinBox) rangeSpinBox->setValue(state.value("range", 1000.0).toDouble());
+  if (xyProjectionCheck) xyProjectionCheck->setChecked(state.value("showXYProjection", true).toBool());
+  if (yzProjectionCheck) yzProjectionCheck->setChecked(state.value("showYZProjection", true).toBool());
+  if (xzProjectionCheck) xzProjectionCheck->setChecked(state.value("showXZProjection", true).toBool());
+  if (generationFilterCombo) generationFilterCombo->setCurrentIndex(state.value("generationFilter", 3).toInt());
+  if (customGenerationEdit) customGenerationEdit->setText(state.value("customGenerations").toString());
+  updateProjectionVisibility();
+  updateGenerationFilter();
 
   if (outputDirectoryEdit) outputDirectoryEdit->setText(state.value("outputDirectory", "output").toString());
   if (logFileEdit) logFileEdit->setText(state.value("logFile", "amcset.log").toString());
@@ -170,7 +224,7 @@ void MainWindow::restoreState() {
   if (electronicOutputEdit) electronicOutputEdit->setText(state.value("electronicOutput", "electronic_loss_histogram.csv").toString());
   if (nuclearOutputEdit) nuclearOutputEdit->setText(state.value("nuclearOutput", "nuclear_loss_histogram.csv").toString());
   if (totalOutputEdit) totalOutputEdit->setText(state.value("totalOutput", "total_loss_histogram.csv").toString());
-  if (particleTreeEdit) particleTreeEdit->setText(state.value("particleTreeOutput", "particle_tree.json").toString());
+  if (rangeOutputEdit) rangeOutputEdit->setText(state.value("rangeOutput", "range_histogram.csv").toString());
   if (perBombardmentOutputDirEdit) {
     auto perBombardmentDir =
         state.value("perBombardmentOutputDir", "bombardments/").toString();
@@ -188,6 +242,11 @@ void MainWindow::restoreState() {
   if (electronScreeningParametersEdit) electronScreeningParametersEdit->setText(state.value("electronScreeningParameters", "common/assets/electron_screening_parameters.csv").toString());
   if (mottScatteringParametersEdit) mottScatteringParametersEdit->setText(state.value("mottScatteringParameters", "common/assets/mott_scattering_parameters.csv").toString());
   if (screeningModelCombo) screeningModelCombo->setCurrentIndex(state.value("screeningModel", 0).toInt());
+  if (displacementBinCountSpinBox) displacementBinCountSpinBox->setValue(state.value("displacementBinCount", 100).toInt());
+  if (electronicLossBinCountSpinBox) electronicLossBinCountSpinBox->setValue(state.value("electronicLossBinCount", 100).toInt());
+  if (nuclearLossBinCountSpinBox) nuclearLossBinCountSpinBox->setValue(state.value("nuclearLossBinCount", 100).toInt());
+  if (totalLossBinCountSpinBox) totalLossBinCountSpinBox->setValue(state.value("totalLossBinCount", 100).toInt());
+  if (rangeBinCountSpinBox) rangeBinCountSpinBox->setValue(state.value("rangeBinCount", 100).toInt());
 
   const auto layers = state.value("layers", QVariantList()).toList();
   for (const auto &layerVariant : layers) {
@@ -245,6 +304,8 @@ void MainWindow::restoreState() {
   if (layerModel && layerModel->rowCount() > 0) {
     updateLayerDepths();
   }
+  if (rangeSpinBox) rangeSpinBox->setValue(state.value("range", 1000.0).toDouble());
+  restoringState = false;
 }
 
 MainWindow::MainWindow(Application *app) : app_(app) {
@@ -253,18 +314,18 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   auto *topWidget = new QWidget(this);
   setCentralWidget(topWidget);
 
-  infoLabel = new QLabel(tr("<i>Choose a menu option, or right-click to "
-                            "invoke a context menu</i>"));
+  infoLabel = new QLabel(topWidget);
+  infoLabel->hide();
   infoLabel->setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
   infoLabel->setAlignment(Qt::AlignCenter);
 
   auto *runCancelButtonLayoutWidget = new QWidget(this);
   auto *runCancelButtonLayout = new QHBoxLayout(runCancelButtonLayoutWidget);
   runSimulationButton = new QPushButton("Run Simulation");
-  runSimulationButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  runSimulationButton->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
   connect(runSimulationButton, &QPushButton::clicked, this, &MainWindow::runSimulation);
   cancelSimulationButton = new QPushButton("Cancel Run");
-  cancelSimulationButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  cancelSimulationButton->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
   cancelSimulationButton->setEnabled(false);
   connect(cancelSimulationButton, &QPushButton::clicked, this, [this]() {
     if (!activeSimulation) {
@@ -277,13 +338,68 @@ MainWindow::MainWindow(Application *app) : app_(app) {
 
   runCancelButtonLayout->addWidget(runSimulationButton);
   runCancelButtonLayout->addWidget(cancelSimulationButton);
+  const auto controlButtonHeight =
+      std::max(runSimulationButton->sizeHint().height(),
+               cancelSimulationButton->sizeHint().height()) + 8;
+  runSimulationButton->setFixedHeight(controlButtonHeight);
+  cancelSimulationButton->setFixedHeight(controlButtonHeight);
 
-  canvas = new Canvas;
-  canvas->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+  xyCanvas = new Canvas;
+  xyCanvas->setProjection(Canvas::Projection::XY);
+  yzCanvas = new Canvas;
+  yzCanvas->setProjection(Canvas::Projection::YZ);
+  xzCanvas = new Canvas;
+  xzCanvas->setProjection(Canvas::Projection::XZ);
+  canvas = xzCanvas;
+  for (auto *view : {xyCanvas, yzCanvas, xzCanvas}) {
+    view->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+  }
   canvasBox = new QGroupBox("2D View");
-  auto *canvasVBox = new QVBoxLayout();
-  canvasVBox->addWidget(canvas);
-  canvasBox->setLayout(canvasVBox);
+  projectionGrid = new QGridLayout();
+  canvasBox->setLayout(projectionGrid);
+
+  auto *projectionSidebar = new QWidget(this);
+  auto *projectionLayout = new QVBoxLayout(projectionSidebar);
+  projectionLayout->addWidget(new QLabel(tr("2D projections"), projectionSidebar));
+  xyProjectionCheck = new QCheckBox(tr("XY"), projectionSidebar);
+  yzProjectionCheck = new QCheckBox(tr("YZ"), projectionSidebar);
+  xzProjectionCheck = new QCheckBox(tr("XZ"), projectionSidebar);
+  xyProjectionCheck->setChecked(true);
+  yzProjectionCheck->setChecked(true);
+  xzProjectionCheck->setChecked(true);
+  projectionLayout->addWidget(xyProjectionCheck);
+  projectionLayout->addWidget(yzProjectionCheck);
+  projectionLayout->addWidget(xzProjectionCheck);
+    generationFilterCombo = new QComboBox(projectionSidebar);
+    generationFilterCombo->addItems(
+        {tr("Incident particle only"), tr("Primary knock-ons only"),
+         tr("Incident and primary knock-ons"), tr("All"), tr("Custom")});
+    generationFilterCombo->setCurrentIndex(3);
+    projectionLayout->addWidget(new QLabel(tr("Generations"), projectionSidebar));
+    projectionLayout->addWidget(generationFilterCombo);
+    customGenerationEdit = new QLineEdit(projectionSidebar);
+    customGenerationEdit->setPlaceholderText(tr("e.g. 0-3,5,6"));
+    customGenerationEdit->hide();
+    projectionLayout->addWidget(customGenerationEdit);
+    connect(generationFilterCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+      this, [this](int index) {
+        customGenerationEdit->setVisible(index == 4);
+        updateGenerationFilter();
+      });
+    connect(customGenerationEdit, &QLineEdit::textChanged, this,
+      &MainWindow::updateGenerationFilter);
+      connect(customGenerationEdit, &QLineEdit::textChanged, this,
+        [this](const QString &) { saveState(); });
+  projectionLayout->addStretch();
+  for (auto *check : {xyProjectionCheck, yzProjectionCheck, xzProjectionCheck}) {
+    connect(check, &QCheckBox::toggled, this,
+            &MainWindow::updateProjectionVisibility);
+      connect(check, &QCheckBox::toggled, this, &MainWindow::saveState);
+  }
+    connect(generationFilterCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+      this, &MainWindow::saveState);
+    connect(customGenerationEdit, &QLineEdit::editingFinished, this,
+      &MainWindow::saveState);
 
   view3D = new Widget3DView(this);
   view3DBox = new QGroupBox("3D View");
@@ -298,11 +414,9 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   auto *formBox = new QGroupBox(this);
   auto *formLayout = new QVBoxLayout(formBox);
 
-  formLayout->addWidget(infoLabel);
   auto layerSplitter = new QSplitter(Qt::Vertical);
   formLayout->addWidget(createIncidentParticleForms(formBox));
   layerSplitter->addWidget(createLayerForms());
-  layerSplitter->addWidget(runCancelButtonLayoutWidget);
   formLayout->addWidget(layerSplitter);
 
   auto *hPane = new QSplitter(Qt::Horizontal);
@@ -333,11 +447,17 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   visualizationLayout->addWidget(viewToggleContainer);
 
   auto *viewStack = new QWidget(this);
-  auto *viewStackLayout = new QVBoxLayout(viewStack);
+  auto *viewStackLayout = new QHBoxLayout(viewStack);
   viewStackLayout->setContentsMargins(0, 0, 0, 0);
-  viewStackLayout->addWidget(canvasBox);
-  viewStackLayout->addWidget(view3DBox);
+  viewStackLayout->addWidget(projectionSidebar);
+  auto *viewPages = new QWidget(viewStack);
+  auto *viewPagesLayout = new QVBoxLayout(viewPages);
+  viewPagesLayout->setContentsMargins(0, 0, 0, 0);
+  viewPagesLayout->addWidget(canvasBox);
+  viewPagesLayout->addWidget(view3DBox);
+  viewStackLayout->addWidget(viewPages, 1);
   visualizationLayout->addWidget(viewStack);
+  updateProjectionVisibility();
 
   hPane->addWidget(formBox);
   hPane->addWidget(visualizationContainer);
@@ -360,14 +480,53 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   simulationSummaryView->setReadOnly(true);
   mainTabs->addTab(simulationSummaryView, "Summary");
 
+  auto *statisticsBanner = new QFrame(this);
+  statisticsBanner->setFrameShape(QFrame::NoFrame);
+  auto *statisticsLayout = new QHBoxLayout(statisticsBanner);
+  statisticsLayout->setContentsMargins(8, 4, 8, 4);
+  auto addStatistic = [statisticsBanner, statisticsLayout](const QString &title,
+                                                           QLabel *value = nullptr) {
+    auto *tile = new QFrame(statisticsBanner);
+    tile->setFrameShape(QFrame::StyledPanel);
+    tile->setStyleSheet(QStringLiteral("QFrame { border: 1px solid palette(mid); border-radius: 4px; }"));
+    auto *tileLayout = new QVBoxLayout(tile);
+    tileLayout->setContentsMargins(8, 3, 8, 3);
+    auto *caption = new QLabel(title, tile);
+    caption->setForegroundRole(QPalette::WindowText);
+    caption->setStyleSheet(QStringLiteral("border: 0; font-size: 9pt;"));
+    tileLayout->addWidget(caption);
+    if (!value) value = new QLabel(QStringLiteral("0"), tile);
+    value->setParent(tile);
+    value->setForegroundRole(QPalette::Text);
+    value->setStyleSheet(QStringLiteral("border: 0; font-weight: 600;"));
+    tileLayout->addWidget(value);
+    statisticsLayout->addWidget(tile);
+    return value;
+  };
+  addStatistic(tr("Bombardments"), counterLabel);
+  for (const auto &title : {tr("Displacements"), tr("Sputtered"),
+                            tr("Mean range (Å)"), tr("Range straggling (Å)"),
+                            tr("Mean loss (eV)"), tr("Loss straggling (eV)")}) {
+    liveStatisticValues.append(addStatistic(title));
+  }
+
+  auto *controlBanner = new QFrame(this);
+  controlBanner->setFrameShape(QFrame::NoFrame);
+  auto *controlLayout = new QHBoxLayout(controlBanner);
+  controlLayout->setContentsMargins(8, 4, 8, 4);
+  controlLayout->addStretch();
+  controlLayout->addWidget(runCancelButtonLayoutWidget);
+  controlLayout->addStretch();
+
+  topLayout->insertWidget(0, statisticsBanner);
   topLayout->addWidget(mainTabs);
+  topLayout->addWidget(controlBanner);
   topWidget->setLayout(topLayout);
+  updateStatusBarColors();
   createActions();
   createMenus();
   createSettingsDialog();
 
-  auto message = tr("A context menu is available by right-clicking");
-  statusBar()->showMessage(message);
   setWindowTitle(tr("AMCSET"));
   setMinimumSize(480, 480);
 

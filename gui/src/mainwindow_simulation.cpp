@@ -103,6 +103,7 @@ void MainWindow::launchSimulationThread(
   simulationResult = 0;
   simulationCancelled = false;
   simulationCompletedBombardments = 0;
+  lastLiveTallyBombardments = 0;
   simulationThread = new SimulationThread(std::move(simulation));
   connect(simulationThread, &SimulationThread::resultReady, this,
           &MainWindow::handleSimulationResult);
@@ -142,8 +143,12 @@ void MainWindow::runSimulation() {
   counter->reset();
 
   if (use2DView->isChecked()) {
-    canvas->clear();
-    canvas->setRangeAngstrom(rangeSpinBox->value());
+    for (auto *view : {xyCanvas, yzCanvas, xzCanvas}) {
+      if (view) {
+        view->clear();
+        view->setRangeAngstrom(rangeSpinBox->value());
+      }
+    }
   }
   if (use3DView->isChecked()) {
     view3D->clearScene();
@@ -351,6 +356,12 @@ void MainWindow::update3DViewMode(Qt::CheckState state) {
   }
 }
 
+void MainWindow::updateProjectionVisibility() {
+  if (xyCanvas) xyCanvas->setVisible(xyProjectionCheck && xyProjectionCheck->isChecked());
+  if (yzCanvas) yzCanvas->setVisible(yzProjectionCheck && yzProjectionCheck->isChecked());
+  if (xzCanvas) xzCanvas->setVisible(xzProjectionCheck && xzProjectionCheck->isChecked());
+}
+
 void MainWindow::pollBombardmentQueue() {
   if (!activeSimulation) return;
 
@@ -365,8 +376,9 @@ void MainWindow::pollBombardmentQueue() {
     if (canvasPtr && use2DView && use2DView->checkState() == Qt::Checked) {
       for (const auto &point : vec) {
         canvasPoints.append({
-            (point.coordinate.z_ / common::angstrom).value(),
             (point.coordinate.x_ / common::angstrom).value(),
+          (point.coordinate.y_ / common::angstrom).value(),
+          (point.coordinate.z_ / common::angstrom).value(),
             point.generation});
       }
     }
@@ -393,9 +405,59 @@ void MainWindow::pollBombardmentQueue() {
   }
 
   if (counterPtr && activeSimulation != nullptr) {
-    counterPtr->setValue(static_cast<int>(activeSimulation->get_completed_bombardment_count()));
+    const auto completed = activeSimulation->get_completed_bombardment_count();
+    counterPtr->setValue(static_cast<int>(completed));
+    if (completed != lastLiveTallyBombardments) {
+      updateLiveStatistics(activeSimulation->snapshot_tallies());
+      lastLiveTallyBombardments = completed;
+    }
   }
 
+}
+
+void MainWindow::updateLiveStatistics(const common::Tallies &tallies) {
+  refreshLiveHistograms(tallies);
+  if (!liveStatisticsLabel) {
+    return;
+  }
+  const auto rangeAngstrom =
+      (common::length_quantity(static_cast<double>(tallies.range_stats.mean) *
+                   common::si::meter) /
+       common::angstrom)
+        .value();
+  const auto stragglingAngstrom =
+      (common::length_quantity(
+         std::sqrt(static_cast<double>(tallies.range_stats.variance())) *
+         common::si::meter) /
+       common::angstrom)
+        .value();
+      const auto energyLossEv =
+        (common::energy_quantity(static_cast<double>(tallies.energy_loss_stats.mean) *
+                     common::si::joule) /
+         common::electron_volt)
+          .value();
+      const auto energyLossStragglingEv =
+        (common::energy_quantity(
+           std::sqrt(static_cast<double>(tallies.energy_loss_stats.variance())) *
+           common::si::joule) /
+         common::electron_volt)
+          .value();
+  liveStatisticsLabel->setText(
+        tr("Incidents %1 | Displacements %2 | Sputtered %3 | Mean range %4 A | Straggling %5 A | Mean loss %6 eV | Loss straggling %7 eV")
+          .arg(tallies.incidents)
+          .arg(tallies.total_displacements)
+          .arg(tallies.sputtered)
+          .arg(tallies.range_stats.n == 0 ? QStringLiteral("--")
+                                           : QString::number(rangeAngstrom, 'f', 2))
+          .arg(tallies.range_stats.n < 2
+                   ? QStringLiteral("--")
+                   : QString::number(stragglingAngstrom, 'f', 2))
+          .arg(tallies.energy_loss_stats.n == 0
+                   ? QStringLiteral("--")
+                   : QString::number(energyLossEv, 'f', 2))
+          .arg(tallies.energy_loss_stats.n < 2
+                   ? QStringLiteral("--")
+                   : QString::number(energyLossStragglingEv, 'f', 2)));
 }
 
 } // namespace gui

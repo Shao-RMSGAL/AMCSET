@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <cmath>
 #include <cstddef>
 #include <mutex>
 #include <vector>
@@ -99,6 +100,7 @@ struct Tallies {
   Welford energy_loss_stats;
 
   // Depth histograms
+  Histogram range_histogram;
   Histogram depth_histogram;
   Histogram displacement_histogram;
   Histogram electronic_energy_loss_histogram;
@@ -116,6 +118,7 @@ struct Tallies {
           size_t total_loss_bins = 100)
       : incidents(0), total_displacements(0), sputtered(0),
         range_stats(), energy_loss_stats(),
+        range_histogram(bin_count, 0.0, max_depth),
         depth_histogram(bin_count, 0.0, max_depth),
         displacement_histogram(displacement_bins, 0.0, max_depth),
         electronic_energy_loss_histogram(electronic_bins, 0.0, max_depth),
@@ -137,6 +140,11 @@ struct Tallies {
       depth_histogram = o.depth_histogram;
     } else {
       depth_histogram.merge(o.depth_histogram);
+    }
+    if (range_histogram.bins.empty() && !o.range_histogram.bins.empty()) {
+      range_histogram = o.range_histogram;
+    } else {
+      range_histogram.merge(o.range_histogram);
     }
     if (displacement_histogram.bins.empty() && !o.displacement_histogram.bins.empty()) {
       displacement_histogram = o.displacement_histogram;
@@ -175,12 +183,19 @@ struct Tallies {
     ss << "\"sputtered\":" << sputtered << ",";
     ss << "\"range_mean\":" << (double)range_stats.mean << ",";
     ss << "\"range_count\":" << range_stats.n << ",";
+    ss << "\"range_straggling\":" << (double)std::sqrt(range_stats.variance()) << ",";
     ss << "\"energy_loss_mean\":" << (double)energy_loss_stats.mean << ",";
     ss << "\"energy_loss_count\":" << energy_loss_stats.n << ",";
     ss << "\"depth_histogram_bins\":[";
     for (size_t i = 0; i < depth_histogram.bins.size(); ++i) {
       if (i) ss << ",";
       ss << depth_histogram.bins[i];
+    }
+    ss << "],";
+    ss << "\"range_histogram_bins\":[";
+    for (size_t i = 0; i < range_histogram.bins.size(); ++i) {
+      if (i) ss << ",";
+      ss << range_histogram.bins[i];
     }
     ss << "],";
     ss << "\"displacement_histogram_bins\":[";

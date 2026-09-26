@@ -119,10 +119,13 @@ private:
   double calculateLayerDensity();
   void update2DViewMode(Qt::CheckState state);
   void update3DViewMode(Qt::CheckState state);
+  void updateProjectionVisibility();
   void launchSimulationThread(std::unique_ptr<common::Simulation> simulation);
   void handleSimulationResult(int result);
   void handleSimulationError(const QString &errorMessage);
   void finishSimulation();
+  void updateLiveStatistics(const common::Tallies &tallies);
+  void refreshLiveHistograms(const common::Tallies &tallies);
 
 public:
   static QString formatSimulationError(const std::exception &e,
@@ -213,6 +216,7 @@ private:
   QGroupBox *view3DBox = nullptr;
   Counter *counter = nullptr;
   QLabel *counterLabel = nullptr;
+  QLabel *liveStatisticsLabel = nullptr;
 
   // Layer forms
   QStandardItemModel *layerModel = nullptr;
@@ -221,6 +225,12 @@ private:
 
   // For particle track painting
   Canvas *canvas = nullptr;
+  Canvas *xyCanvas = nullptr;
+  Canvas *yzCanvas = nullptr;
+  Canvas *xzCanvas = nullptr;
+  QCheckBox *xyProjectionCheck = nullptr;
+  QCheckBox *yzProjectionCheck = nullptr;
+  QCheckBox *xzProjectionCheck = nullptr;
   Widget3DView *view3D = nullptr;
   QPainter *painter = nullptr;
   // boost::lockfree::spsc_queue<common::Simulation::DataVariant *> &queue;
@@ -231,6 +241,7 @@ private:
   int simulationResult = 0;
   bool simulationCancelled = false;
   std::size_t simulationCompletedBombardments = 0;
+  std::size_t lastLiveTallyBombardments = 0;
   // For Undo/Redo
   // QUndoStack *undoStack; // TODO: Implement undo/redo
 

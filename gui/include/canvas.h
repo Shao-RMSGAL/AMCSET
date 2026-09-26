@@ -22,6 +22,7 @@
 
 // Qt includes
 #include <QMutex>
+#include <QSet>
 #include <QVector>
 #include <QWidget>
 
@@ -29,9 +30,12 @@ class Canvas : public QWidget {
   Q_OBJECT
 
 public:
+  enum class Projection { XY, YZ, XZ };
+
   struct Point {
-    double depthAngstrom;
-    double lateralAngstrom;
+    double xAngstrom;
+    double yAngstrom;
+    double zAngstrom;
     std::size_t generation;
   };
 
@@ -40,6 +44,9 @@ public:
   void addPoint(double depthAngstrom, double lateralAngstrom,
                 std::size_t generation);
   void addPoints(const QVector<Point> &points);
+  void setProjection(Projection projection);
+  void setGenerationFilter(const QSet<std::size_t> &generations,
+                          bool showAllGenerations);
   void setRangeAngstrom(double rangeAngstrom);
 
   void clear();
@@ -50,5 +57,8 @@ protected:
 private:
   QVector<Point> points_;
   double rangeAngstrom_ = 1.0;
+  Projection projection_ = Projection::XZ;
+  QSet<std::size_t> visibleGenerations_;
+  bool showAllGenerations_ = true;
   QMutex mutex;
 };

@@ -32,7 +32,7 @@ Canvas::Canvas(QWidget *parent) : QWidget(parent) {}
 
 void Canvas::addPoint(double depthAngstrom, double lateralAngstrom,
                       std::size_t generation) {
-  addPoints({{depthAngstrom, lateralAngstrom, generation}});
+  addPoints({{0.0, lateralAngstrom, depthAngstrom, generation}});
 }
 
 void Canvas::addPoints(const QVector<Point> &points) {
@@ -52,6 +52,20 @@ void Canvas::setRangeAngstrom(double rangeAngstrom) {
   update();
 }
 
+void Canvas::setProjection(Projection projection) {
+  QMutexLocker locker(&mutex);
+  projection_ = projection;
+  update();
+}
+
+void Canvas::setGenerationFilter(const QSet<std::size_t> &generations,
+                                 bool showAllGenerations) {
+  QMutexLocker locker(&mutex);
+  visibleGenerations_ = generations;
+  showAllGenerations_ = showAllGenerations;
+  update();
+}
+
 void Canvas::clear() {
   QMutexLocker locker(&mutex);
   points_.clear();
@@ -62,10 +76,16 @@ void Canvas::paintEvent(QPaintEvent *event) {
   Q_UNUSED(event);
   QVector<Point> points;
   double rangeAngstrom = 1.0;
+  Projection projection = Projection::XZ;
+  QSet<std::size_t> visibleGenerations;
+  bool showAllGenerations = true;
   {
     QMutexLocker locker(&mutex);
     points = points_;
     rangeAngstrom = rangeAngstrom_;
+    projection = projection_;
+    visibleGenerations = visibleGenerations_;
+    showAllGenerations = showAllGenerations_;
   }
 
   QPainter painter(this);
@@ -93,30 +113,54 @@ void Canvas::paintEvent(QPaintEvent *event) {
     painter.drawLine(QPointF(x, plotArea.top()), QPointF(x, plotArea.bottom()));
     painter.drawLine(QPointF(plotArea.left(), y), QPointF(plotArea.right(), y));
     painter.setPen(textColor);
+    const bool longitudinal =
+      projection != Projection::XY;
     painter.drawText(QRectF(x - 35.0, plotArea.bottom() + 4.0, 70.0, 18.0),
-                     Qt::AlignHCenter | Qt::AlignTop,
-                     QString::number(fraction * rangeAngstrom, 'g', 4));
+             Qt::AlignHCenter | Qt::AlignTop,
+             QString::number(longitudinal
+                       ? fraction * rangeAngstrom
+                       : fraction * rangeAngstrom - halfRange,
+                     'g', 4));
     painter.drawText(QRectF(0.0, y - 9.0, leftMargin - 8.0, 18.0),
                      Qt::AlignRight | Qt::AlignVCenter,
-                     QString::number(fraction * rangeAngstrom_ - halfRange, 'g', 4));
+                     QString::number(fraction * rangeAngstrom - halfRange, 'g', 4));
   }
   painter.setPen(QPen(colors.color(QPalette::Mid), 1.2));
   painter.drawRect(plotArea);
   painter.setPen(textColor);
+  const auto xAxisLabel = projection == Projection::XY
+                              ? tr("X (Å)")
+                              : tr("Z (Å)");
+  const auto yAxisLabel = projection == Projection::XY
+                              ? tr("Y (Å)")
+                              : projection == Projection::YZ ? tr("Y (Å)")
+                                                             : tr("X (Å)");
   painter.drawText(QRectF(leftMargin, height() - 24.0,
                           width() - leftMargin - rightMargin, 20.0),
-                   Qt::AlignCenter, tr("Depth (Å)"));
+                   Qt::AlignCenter, xAxisLabel);
   painter.save();
   painter.rotate(-90.0);
   painter.drawText(QRectF(-height(), 0.0, height(), 20.0), Qt::AlignCenter,
-                   tr("Lateral displacement (Å)"));
+                   yAxisLabel);
   painter.restore();
 
   QMap<std::size_t, QVector<QPointF>> generationPoints;
   const double inverseRange = 1.0 / rangeAngstrom;
   for (const auto &point : points) {
-    const double xFraction = point.depthAngstrom * inverseRange;
-    const double yFraction = (point.lateralAngstrom + halfRange) * inverseRange;
+    if (!showAllGenerations && !visibleGenerations.contains(point.generation)) {
+      continue;
+    }
+    const double xValue = projection == Projection::XY
+                              ? point.xAngstrom
+                              : point.zAngstrom;
+    const double yValue = projection == Projection::XY
+                              ? point.yAngstrom
+                              : projection == Projection::YZ ? point.yAngstrom
+                                                             : point.xAngstrom;
+    const double xFraction = projection == Projection::XY
+                                 ? (xValue + halfRange) * inverseRange
+                                 : xValue * inverseRange;
+    const double yFraction = (yValue + halfRange) * inverseRange;
     if (xFraction < 0.0 || xFraction > 1.0 || yFraction < 0.0 || yFraction > 1.0) {
       continue;
     }

@@ -40,6 +40,10 @@ TEST(TalliesIntegration, MergeAfterBombardments) {
   const auto &t = sim.get_tallies();
   EXPECT_EQ(t.incidents, bombardment_count);
   EXPECT_GT(t.range_stats.n, 0u);
+  EXPECT_EQ(t.range_histogram.bins.size(), settings.displacement_bin_count_);
+  EXPECT_GT(std::accumulate(t.range_histogram.bins.begin(),
+                            t.range_histogram.bins.end(), 0.0),
+            0.0);
   EXPECT_EQ(t.displacement_histogram.bins.size(), settings.displacement_bin_count_);
   EXPECT_GT(t.total_displacements, 0u);
   EXPECT_GT(t.displacement_histogram.bins.size(), 0u);

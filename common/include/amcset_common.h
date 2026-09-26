@@ -1330,12 +1330,12 @@ public:
     const size_t electronic_energy_loss_bin_count_;
     const size_t nuclear_energy_loss_bin_count_;
     const size_t total_energy_loss_bin_count_;
+    const size_t range_bin_count_;
     const std::string displacement_histogram_output_file_;
     const std::string electronic_energy_loss_histogram_output_file_;
     const std::string nuclear_energy_loss_histogram_output_file_;
     const std::string total_energy_loss_histogram_output_file_;
-    const bool log_particle_tree_;
-    const std::string particle_tree_output_file_;
+    const std::string range_histogram_output_file_;
     const bool save_per_bombardment_info_;
     const std::string per_bombardment_output_dir_;
     const std::string electron_screening_parameters_path_;
@@ -1357,15 +1357,15 @@ public:
          size_t electronic_energy_loss_bin_count = 100,
          size_t nuclear_energy_loss_bin_count = 100,
          size_t total_energy_loss_bin_count = 100,
+         size_t range_bin_count = 100,
          std::string displacement_histogram_output_file = "output/displacement_histogram.csv",
          std::string electronic_energy_loss_histogram_output_file = "output/electronic_loss_histogram.csv",
          std::string nuclear_energy_loss_histogram_output_file = "output/nuclear_loss_histogram.csv",
          std::string total_energy_loss_histogram_output_file = "output/total_loss_histogram.csv",
-         bool log_particle_tree = false,
-        std::string particle_tree_output_file = "output/particle_tree.json",
         bool save_per_bombardment_info = false,
         std::string per_bombardment_output_dir = "output/bombardments/",
-         ScreeningModel screening_model = ScreeningModel::ThomasFermi);
+         ScreeningModel screening_model = ScreeningModel::ThomasFermi,
+         std::string range_histogram_output_file = {});
       Settings(energy_quantity electron_stopping_energy, size_t z_number,
          size_t mass_number, bool enable_damage_cascade,
          energy_quantity ion_stopping_energy,
@@ -1379,13 +1379,13 @@ public:
          size_t electronic_energy_loss_bin_count,
          size_t nuclear_energy_loss_bin_count,
          size_t total_energy_loss_bin_count,
+         size_t range_bin_count,
          std::string displacement_histogram_output_file,
          std::string electronic_energy_loss_histogram_output_file,
          std::string nuclear_energy_loss_histogram_output_file,
          std::string total_energy_loss_histogram_output_file,
-         bool log_particle_tree,
-         std::string particle_tree_output_file,
-         ScreeningModel screening_model);
+         ScreeningModel screening_model,
+         std::string range_histogram_output_file = {});
 
     Settings(energy_quantity electron_stopping_energy, size_t z_number,
          size_t mass_number, bool enable_damage_cascade,
@@ -1400,17 +1400,17 @@ public:
          size_t electronic_energy_loss_bin_count,
          size_t nuclear_energy_loss_bin_count,
          size_t total_energy_loss_bin_count,
+         size_t range_bin_count,
          std::string displacement_histogram_output_file,
          std::string electronic_energy_loss_histogram_output_file,
          std::string nuclear_energy_loss_histogram_output_file,
          std::string total_energy_loss_histogram_output_file,
-         bool log_particle_tree,
-         std::string particle_tree_output_file,
         bool save_per_bombardment_info,
         std::string per_bombardment_output_dir,
          std::string electron_screening_parameters_path,
          std::string mott_scattering_parameters_path,
-         ScreeningModel screening_model = ScreeningModel::ThomasFermi);
+         ScreeningModel screening_model = ScreeningModel::ThomasFermi,
+         std::string range_histogram_output_file = {});
     };
 
   Simulation() = delete;
@@ -1508,12 +1508,12 @@ public:
 
   // Tallies merge API
   void merge_tallies(const Tallies &tallies);
+  Tallies snapshot_tallies() const;
   const Tallies &get_tallies() const noexcept;
 
   void write_histogram_csv(const std::string &output_file,
                            const Histogram &histogram,
                            const std::string &value_label = "count") const;
-  void write_particle_tree_log() const;
 
 private:
   const Settings settings_;

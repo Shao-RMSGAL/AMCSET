@@ -149,6 +149,10 @@ QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
   rangeSpinBox->setValue(defaultDepth);
   connect(rangeSpinBox, &QDoubleSpinBox::valueChanged, view3D,
           &Widget3DView::setRange);
+    connect(rangeSpinBox, &QDoubleSpinBox::editingFinished, this,
+      &MainWindow::saveState);
+      connect(rangeSpinBox, qOverload<double>(&QDoubleSpinBox::valueChanged),
+        this, [this](double) { saveState(); });
   rangeSpinBox->setRange(minRange, maxRange);
   rangeSpinBox->setValue(defaultDepth);
   incidentFormLayout->addRow("Range (Angstrom)", rangeSpinBox);
@@ -188,7 +192,6 @@ QGroupBox *MainWindow::createIncidentParticleForms(QWidget *parent) {
     }
   });
   timer->start(10);
-  incidentFormLayout->addRow("Bombardment Counter", counterLabel);
 
   return formGroupBox;
 }
