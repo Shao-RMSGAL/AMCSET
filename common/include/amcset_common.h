@@ -1536,7 +1536,7 @@ public:
   /*! Try to pop a bombardment collision vector from the queue. Returns true if one was popped. Thread-safe. */
   bool try_pop_bombardment_results(std::vector<CollisionPoint> &out);
 
-  bool has_bombardment_results() const;
+  void clear_bombardment_results();
 }; // }}}
 
 /*!

@@ -56,7 +56,6 @@ void MainWindow::handleSimulationError(const QString &errorMessage) {
 }
 
 void MainWindow::handleSimulationResult(int result) {
-  simulationFinished = true;
   simulationResult = result;
   simulationCancelled = activeSimulation && activeSimulation->is_cancelled();
   simulationCompletedBombardments =
@@ -65,10 +64,10 @@ void MainWindow::handleSimulationResult(int result) {
   if (simulationThread) {
     simulationThread->wait();
   }
-  pollBombardmentQueue();
-  if (activeSimulation && !activeSimulation->has_bombardment_results()) {
-    finishSimulation();
+  if (activeSimulation) {
+    activeSimulation->clear_bombardment_results();
   }
+  finishSimulation();
 }
 
 void MainWindow::finishSimulation() {
@@ -101,7 +100,6 @@ void MainWindow::finishSimulation() {
 
 void MainWindow::launchSimulationThread(
     std::unique_ptr<common::Simulation> simulation) {
-  simulationFinished = false;
   simulationResult = 0;
   simulationCancelled = false;
   simulationCompletedBombardments = 0;
@@ -398,9 +396,6 @@ void MainWindow::pollBombardmentQueue() {
     counterPtr->setValue(static_cast<int>(activeSimulation->get_completed_bombardment_count()));
   }
 
-  if (simulationFinished && !activeSimulation->has_bombardment_results()) {
-    finishSimulation();
-  }
 }
 
 } // namespace gui

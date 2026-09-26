@@ -228,7 +228,6 @@ private:
   common::Simulation *activeSimulation = nullptr;
   SimulationThread *simulationThread = nullptr;
   QTimer *bombardmentPollTimer = nullptr;
-  bool simulationFinished = false;
   int simulationResult = 0;
   bool simulationCancelled = false;
   std::size_t simulationCompletedBombardments = 0;

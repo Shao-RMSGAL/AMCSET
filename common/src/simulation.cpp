@@ -330,9 +330,9 @@ bool Simulation::try_pop_bombardment_results(std::vector<CollisionPoint> &out) {
   return true;
 }
 
-bool Simulation::has_bombardment_results() const {
+void Simulation::clear_bombardment_results() {
   std::lock_guard<std::mutex> lock(bombardment_queue_mutex_);
-  return !bombardment_queue_.empty();
+  bombardment_queue_.clear();
 }
 
 std::string Simulation::print_settings() const try {
