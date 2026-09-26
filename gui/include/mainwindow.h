@@ -112,6 +112,7 @@ private:
   void populateResultCharts();
   QString buildOutputPath(const QString &filename) const;
   void updateResultPane(const QString &message);
+  void refreshSummaryView();
   void refreshResultsPane();
   QGroupBox *createIncidentParticleForms(QWidget *parent = nullptr);
   QGroupBox *createLayerForms(QWidget *parent = nullptr);
@@ -121,6 +122,7 @@ private:
   void launchSimulationThread(std::unique_ptr<common::Simulation> simulation);
   void handleSimulationResult(int result);
   void handleSimulationError(const QString &errorMessage);
+  void finishSimulation();
 
 public:
   static QString formatSimulationError(const std::exception &e,
@@ -156,6 +158,8 @@ private:
   QAction *aboutAct;
   QAction *aboutQtAct;
   QLabel *infoLabel = nullptr;
+  QPushButton *runSimulationButton = nullptr;
+  QPushButton *cancelSimulationButton = nullptr;
 
   // Incident particle forms
   QCheckBox *incidentElectron = nullptr;
@@ -178,7 +182,6 @@ private:
   QDoubleSpinBox *rangeSpinBox = nullptr;
   QTabWidget *mainTabs = nullptr;
   QDialog *settingsDialog = nullptr;
-  QTabWidget *resultsTabs = nullptr;
   QTabWidget *histogramTabs = nullptr;
   QTextBrowser *simulationSummaryView = nullptr;
   QLineEdit *outputDirectoryEdit = nullptr;
@@ -191,14 +194,13 @@ private:
   QLineEdit *perBombardmentOutputDirEdit = nullptr;
   QCheckBox *enableLoggingCheck = nullptr;
   QCheckBox *savePerBombardmentCheck = nullptr;
-  QCheckBox *logSingleDisplacementCheck = nullptr;
-  QCheckBox *logEndOfFlyingDistanceOnlyCheck = nullptr;
-  QCheckBox *logStoppingPointOnlyCheck = nullptr;
+  QCheckBox *saveAllGraphsCheck = nullptr;
   QSpinBox *angleDivisorSpinBox = nullptr;
   QSpinBox *flyingDistanceSpinBox = nullptr;
   QLineEdit *electronScreeningParametersEdit = nullptr;
   QLineEdit *mottScatteringParametersEdit = nullptr;
   QComboBox *screeningModelCombo = nullptr;
+  QComboBox *themeModeCombo = nullptr;
   QPlainTextEdit *resultPane = nullptr;
 
   // View controls
@@ -224,6 +226,10 @@ private:
   common::Simulation *activeSimulation = nullptr;
   SimulationThread *simulationThread = nullptr;
   QTimer *bombardmentPollTimer = nullptr;
+  bool simulationFinished = false;
+  int simulationResult = 0;
+  bool simulationCancelled = false;
+  std::size_t simulationCompletedBombardments = 0;
   // For Undo/Redo
   // QUndoStack *undoStack; // TODO: Implement undo/redo
 

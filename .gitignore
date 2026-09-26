@@ -26,4 +26,6 @@ log.txt
 */info.log
 .vscode/.conan_tools
 out.mp4
-
+out.mkv
+output.mp4
+output2/

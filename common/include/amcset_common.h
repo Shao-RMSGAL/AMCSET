@@ -1318,7 +1318,6 @@ public:
     const bool enable_damage_cascade_; //!< Control whether damage cascade is enabled
     const energy_quantity ion_stopping_energy_; //!< Energy at which ions stop
     const energy_quantity ion_displacement_energy_; //!< Energy to displace ions
-    const bool log_single_displacement_; //!< Track single displacements
     const size_t divisor_angle_number_; //!< Angle segment count
     const size_t flying_distance_number_; //!< Number of flying distances per group
     const length_quantity range_;    //!< Maximum range of particles
@@ -1341,8 +1340,6 @@ public:
     const std::string per_bombardment_output_dir_;
     const std::string electron_screening_parameters_path_;
     const std::string mott_scattering_parameters_path_;
-    const bool log_end_of_flying_distance_only_;
-    const bool log_stopping_point_only_;
     const ScreeningModel screening_model_;
 
     Settings() = delete; //!< Default constructor ensures initialization
@@ -1351,7 +1348,7 @@ public:
          size_t mass_number, bool enable_damage_cascade,
          energy_quantity ion_stopping_energy,
          energy_quantity ion_displacement_energy,
-         bool log_single_displacement, size_t divisor_angle_number,
+         size_t divisor_angle_number,
          size_t flying_distance_number, length_quantity range,
          size_t bombardment_count, bool is_electron,
          energy_quantity incident_energy, size_t thread_count,
@@ -1368,14 +1365,12 @@ public:
         std::string particle_tree_output_file = "output/particle_tree.json",
         bool save_per_bombardment_info = false,
         std::string per_bombardment_output_dir = "output/bombardments/",
-         ScreeningModel screening_model = ScreeningModel::ThomasFermi,
-         bool log_end_of_flying_distance_only = false,
-         bool log_stopping_point_only = false);
+         ScreeningModel screening_model = ScreeningModel::ThomasFermi);
       Settings(energy_quantity electron_stopping_energy, size_t z_number,
          size_t mass_number, bool enable_damage_cascade,
          energy_quantity ion_stopping_energy,
          energy_quantity ion_displacement_energy,
-         bool log_single_displacement, size_t divisor_angle_number,
+         size_t divisor_angle_number,
          size_t flying_distance_number, length_quantity range,
          size_t bombardment_count, bool is_electron,
          energy_quantity incident_energy, size_t thread_count,
@@ -1390,15 +1385,13 @@ public:
          std::string total_energy_loss_histogram_output_file,
          bool log_particle_tree,
          std::string particle_tree_output_file,
-         ScreeningModel screening_model,
-         bool log_end_of_flying_distance_only = false,
-         bool log_stopping_point_only = false);
+         ScreeningModel screening_model);
 
     Settings(energy_quantity electron_stopping_energy, size_t z_number,
          size_t mass_number, bool enable_damage_cascade,
          energy_quantity ion_stopping_energy,
          energy_quantity ion_displacement_energy,
-         bool log_single_displacement, size_t divisor_angle_number,
+         size_t divisor_angle_number,
          size_t flying_distance_number, length_quantity range,
          size_t bombardment_count, bool is_electron,
          energy_quantity incident_energy, size_t thread_count,
@@ -1417,9 +1410,7 @@ public:
         std::string per_bombardment_output_dir,
          std::string electron_screening_parameters_path,
          std::string mott_scattering_parameters_path,
-         ScreeningModel screening_model = ScreeningModel::ThomasFermi,
-         bool log_end_of_flying_distance_only = false,
-         bool log_stopping_point_only = false);
+         ScreeningModel screening_model = ScreeningModel::ThomasFermi);
     };
 
   Simulation() = delete;
@@ -1482,6 +1473,14 @@ public:
     return completed_bombardments_.load(std::memory_order_acquire);
   }
 
+  void request_cancel() noexcept {
+    cancellation_requested_.store(true, std::memory_order_release);
+  }
+
+  bool is_cancelled() const noexcept {
+    return cancellation_requested_.load(std::memory_order_acquire);
+  }
+
   void increment_completed_bombardment_count() noexcept {
     completed_bombardments_.fetch_add(1, std::memory_order_acq_rel);
   }
@@ -1525,6 +1524,7 @@ private:
   boost::asio::thread_pool thread_pool_;
   DrawFunction draw_function_; //!< Function used for drawing to the canvas
   std::atomic<size_t> completed_bombardments_{0};
+  std::atomic<bool> cancellation_requested_{false};
   // Queue of completed bombardment collision vectors for UI consumption
   std::deque<std::vector<CollisionPoint>> bombardment_queue_;
   mutable std::mutex bombardment_queue_mutex_;
@@ -1535,6 +1535,8 @@ public:
 
   /*! Try to pop a bombardment collision vector from the queue. Returns true if one was popped. Thread-safe. */
   bool try_pop_bombardment_results(std::vector<CollisionPoint> &out);
+
+  bool has_bombardment_results() const;
 }; // }}}
 
 /*!

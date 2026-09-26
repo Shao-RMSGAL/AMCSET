@@ -19,8 +19,10 @@
 // Qt library includes
 #include <QApplication>
 #include <QObject>
+#include <QPalette>
 #include <QSettings>
 #include <QSize>
+#include <QString>
 #include <QVariant>
 
 // Local includes
@@ -36,11 +38,15 @@ class Application : public QObject {
   Q_OBJECT
 
 public:
+  enum class ThemeMode { System = 0, Light = 1, Dark = 2 };
+
   explicit Application(amcset::common::Simulation *simulation = nullptr);
   ~Application();
 
   void toggleDarkMode();
   bool getDarkMode() const noexcept;
+  void setThemeMode(ThemeMode mode);
+  ThemeMode getThemeMode() const noexcept;
   // void runSimulation();
 
   void saveWindowSize(const QSize &size);
@@ -54,7 +60,9 @@ public:
   QVariantMap loadMainWindowState() const;
 
 private:
-  bool darkMode_;
+  ThemeMode themeMode_ = ThemeMode::System;
+  QString systemStyleName_;
+  QPalette systemPalette_;
   amcset::common::Simulation *simulation_;
   mutable QSettings settings_;
 };

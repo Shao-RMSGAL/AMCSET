@@ -132,10 +132,8 @@ void MainWindow::saveState() {
   if (particleTreeEdit) state["particleTreeOutput"] = particleTreeEdit->text();
   if (perBombardmentOutputDirEdit) state["perBombardmentOutputDir"] = perBombardmentOutputDirEdit->text();
   if (savePerBombardmentCheck) state["savePerBombardment"] = savePerBombardmentCheck->isChecked();
+  if (saveAllGraphsCheck) state["saveAllGraphs"] = saveAllGraphsCheck->isChecked();
   if (enableLoggingCheck) state["enableLogging"] = enableLoggingCheck->isChecked();
-  if (logSingleDisplacementCheck) state["logSingleDisplacement"] = logSingleDisplacementCheck->isChecked();
-  if (logEndOfFlyingDistanceOnlyCheck) state["logEndOfFlyingDistanceOnly"] = logEndOfFlyingDistanceOnlyCheck->isChecked();
-  if (logStoppingPointOnlyCheck) state["logStoppingPointOnly"] = logStoppingPointOnlyCheck->isChecked();
   if (angleDivisorSpinBox) state["angleDivisor"] = angleDivisorSpinBox->value();
   if (flyingDistanceSpinBox) state["flyingDistance"] = flyingDistanceSpinBox->value();
   if (electronScreeningParametersEdit) state["electronScreeningParameters"] = electronScreeningParametersEdit->text();
@@ -173,12 +171,18 @@ void MainWindow::restoreState() {
   if (nuclearOutputEdit) nuclearOutputEdit->setText(state.value("nuclearOutput", "nuclear_loss_histogram.csv").toString());
   if (totalOutputEdit) totalOutputEdit->setText(state.value("totalOutput", "total_loss_histogram.csv").toString());
   if (particleTreeEdit) particleTreeEdit->setText(state.value("particleTreeOutput", "particle_tree.json").toString());
-  if (perBombardmentOutputDirEdit) perBombardmentOutputDirEdit->setText(state.value("perBombardmentOutputDir", "output/bombardments/").toString());
+  if (perBombardmentOutputDirEdit) {
+    auto perBombardmentDir =
+        state.value("perBombardmentOutputDir", "bombardments/").toString();
+    perBombardmentDir = QDir::fromNativeSeparators(perBombardmentDir);
+    if (perBombardmentDir.startsWith(QStringLiteral("output/"))) {
+      perBombardmentDir.remove(0, QStringLiteral("output/").size());
+    }
+    perBombardmentOutputDirEdit->setText(perBombardmentDir);
+  }
   if (savePerBombardmentCheck) savePerBombardmentCheck->setChecked(state.value("savePerBombardment", false).toBool());
+  if (saveAllGraphsCheck) saveAllGraphsCheck->setChecked(state.value("saveAllGraphs", false).toBool());
   if (enableLoggingCheck) enableLoggingCheck->setChecked(state.value("enableLogging", false).toBool());
-  if (logSingleDisplacementCheck) logSingleDisplacementCheck->setChecked(state.value("logSingleDisplacement", false).toBool());
-  if (logEndOfFlyingDistanceOnlyCheck) logEndOfFlyingDistanceOnlyCheck->setChecked(state.value("logEndOfFlyingDistanceOnly", false).toBool());
-  if (logStoppingPointOnlyCheck) logStoppingPointOnlyCheck->setChecked(state.value("logStoppingPointOnly", false).toBool());
   if (angleDivisorSpinBox) angleDivisorSpinBox->setValue(state.value("angleDivisor", 1000).toInt());
   if (flyingDistanceSpinBox) flyingDistanceSpinBox->setValue(state.value("flyingDistance", 1000).toInt());
   if (electronScreeningParametersEdit) electronScreeningParametersEdit->setText(state.value("electronScreeningParameters", "common/assets/electron_screening_parameters.csv").toString());
@@ -256,14 +260,23 @@ MainWindow::MainWindow(Application *app) : app_(app) {
 
   auto *runCancelButtonLayoutWidget = new QWidget(this);
   auto *runCancelButtonLayout = new QHBoxLayout(runCancelButtonLayoutWidget);
-  auto *runButton = new QPushButton("Run Simulation");
-  runButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  connect(runButton, &QPushButton::clicked, this, &MainWindow::runSimulation);
-  auto *cancelButton = new QPushButton("Cancel Run ");
-  cancelButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  runSimulationButton = new QPushButton("Run Simulation");
+  runSimulationButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  connect(runSimulationButton, &QPushButton::clicked, this, &MainWindow::runSimulation);
+  cancelSimulationButton = new QPushButton("Cancel Run");
+  cancelSimulationButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  cancelSimulationButton->setEnabled(false);
+  connect(cancelSimulationButton, &QPushButton::clicked, this, [this]() {
+    if (!activeSimulation) {
+      return;
+    }
+    activeSimulation->request_cancel();
+    cancelSimulationButton->setEnabled(false);
+    statusBar()->showMessage(tr("Cancelling after active bombardments finish..."));
+  });
 
-  runCancelButtonLayout->addWidget(runButton);
-  runCancelButtonLayout->addWidget(cancelButton);
+  runCancelButtonLayout->addWidget(runSimulationButton);
+  runCancelButtonLayout->addWidget(cancelSimulationButton);
 
   canvas = new Canvas;
   canvas->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
@@ -345,7 +358,6 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   simulationSummaryView = new QTextBrowser(this);
   simulationSummaryView->setOpenExternalLinks(false);
   simulationSummaryView->setReadOnly(true);
-  simulationSummaryView->setStyleSheet("QTextBrowser { background: #f8f8f8; }");
   mainTabs->addTab(simulationSummaryView, "Summary");
 
   topLayout->addWidget(mainTabs);

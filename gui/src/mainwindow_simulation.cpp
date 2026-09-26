@@ -40,6 +40,8 @@ QString MainWindow::formatSimulationError(const std::exception &e,
 
 void MainWindow::handleSimulationError(const QString &errorMessage) {
   activeSimulation = nullptr;
+  if (runSimulationButton) runSimulationButton->setEnabled(true);
+  if (cancelSimulationButton) cancelSimulationButton->setEnabled(false);
   if (bombardmentPollTimer) {
     bombardmentPollTimer->stop();
   }
@@ -54,24 +56,62 @@ void MainWindow::handleSimulationError(const QString &errorMessage) {
 }
 
 void MainWindow::handleSimulationResult(int result) {
+  simulationFinished = true;
+  simulationResult = result;
+  simulationCancelled = activeSimulation && activeSimulation->is_cancelled();
+  simulationCompletedBombardments =
+      activeSimulation ? activeSimulation->get_completed_bombardment_count() : 0;
+  if (cancelSimulationButton) cancelSimulationButton->setEnabled(false);
+  if (simulationThread) {
+    simulationThread->wait();
+  }
+  pollBombardmentQueue();
+  if (activeSimulation && !activeSimulation->has_bombardment_results()) {
+    finishSimulation();
+  }
+}
+
+void MainWindow::finishSimulation() {
   activeSimulation = nullptr;
-  if (result != 0) {
+  if (runSimulationButton) runSimulationButton->setEnabled(true);
+  if (bombardmentPollTimer) bombardmentPollTimer->stop();
+  if (simulationThread) {
+    simulationThread->deleteLater();
+    simulationThread = nullptr;
+  }
+  if (simulationResult != 0) {
     handleSimulationError(QString("Simulation exited with code %1.")
-                             .arg(result));
+                             .arg(simulationResult));
     return;
   }
 
-  std::cerr << "Success" << std::endl;
   refreshResultsPane();
+  if (simulationCancelled) {
+    statusBar()->showMessage(
+        tr("Simulation cancelled after %1 bombardments.")
+            .arg(simulationCompletedBombardments),
+        10000);
+    updateResultPane(
+        tr("Simulation cancelled after %1 completed bombardments; partial results were saved.")
+            .arg(simulationCompletedBombardments));
+  } else {
+    statusBar()->showMessage(tr("Simulation complete."), 5000);
+  }
 }
 
 void MainWindow::launchSimulationThread(
     std::unique_ptr<common::Simulation> simulation) {
+  simulationFinished = false;
+  simulationResult = 0;
+  simulationCancelled = false;
+  simulationCompletedBombardments = 0;
   simulationThread = new SimulationThread(std::move(simulation));
   connect(simulationThread, &SimulationThread::resultReady, this,
           &MainWindow::handleSimulationResult);
   connect(simulationThread, &SimulationThread::errorReady, this,
           &MainWindow::handleSimulationError);
+    if (runSimulationButton) runSimulationButton->setEnabled(false);
+    if (cancelSimulationButton) cancelSimulationButton->setEnabled(true);
   simulationThread->start();
 }
 
@@ -105,6 +145,7 @@ void MainWindow::runSimulation() {
 
   if (use2DView->isChecked()) {
     canvas->clear();
+    canvas->setRangeAngstrom(rangeSpinBox->value());
   }
   if (use3DView->isChecked()) {
     view3D->clearScene();
@@ -115,22 +156,19 @@ void MainWindow::runSimulation() {
   const auto nuclearOutput = buildOutputPath(nuclearOutputEdit->text().trimmed());
   const auto totalOutput = buildOutputPath(totalOutputEdit->text().trimmed());
   const auto particleTreeOutput = buildOutputPath(particleTreeEdit->text().trimmed());
-  const auto perBombardmentOutputDir = perBombardmentOutputDirEdit ? perBombardmentOutputDirEdit->text().trimmed().toStdString() : std::string("output/bombardments/");
+  const auto perBombardmentOutputDir = buildOutputPath(
+      perBombardmentOutputDirEdit ? perBombardmentOutputDirEdit->text().trimmed()
+                                  : QStringLiteral("bombardments/"))
+                                       .toStdString();
 
   common::energy_quantity electron_stopping_energy = 40.0 * common::electron_volt;
   common::energy_quantity ion_stopping_energy = 40.0 * common::electron_volt;
   common::energy_quantity ion_displacement_energy = 40.0 * common::electron_volt;
-  const bool log_single_displacement =
-      logSingleDisplacementCheck ? logSingleDisplacementCheck->isChecked() : false;
   const size_t divisor_angle_number =
       angleDivisorSpinBox ? static_cast<size_t>(angleDivisorSpinBox->value()) : 1000;
   const size_t flying_distance_number =
       flyingDistanceSpinBox ? static_cast<size_t>(flyingDistanceSpinBox->value()) : 1000;
 
-  const bool log_end_of_flying_distance_only =
-      logEndOfFlyingDistanceOnlyCheck ? logEndOfFlyingDistanceOnlyCheck->isChecked() : false;
-  const bool log_stopping_point_only =
-      logStoppingPointOnlyCheck ? logStoppingPointOnlyCheck->isChecked() : false;
   const std::string electron_screening_path =
       electronScreeningParametersEdit ? electronScreeningParametersEdit->text().trimmed().toStdString()
                                       : "common/assets/electron_screening_parameters.csv";
@@ -155,7 +193,7 @@ void MainWindow::runSimulation() {
 
   auto settings = common::Simulation::Settings(
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
-      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      ion_stopping_energy, ion_displacement_energy,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
       is_electron, incident_energy, thread_count, incident_angle, 100, 100, 100,
       100, displacementOutput.toStdString(), electronicOutput.toStdString(),
@@ -163,8 +201,7 @@ void MainWindow::runSimulation() {
       enableLoggingCheck->isChecked(), particleTreeOutput.toStdString(),
       savePerBombardmentCheck && savePerBombardmentCheck->isChecked(),
       perBombardmentOutputDir,
-      electron_screening_path, mott_path, selected_model,
-      log_end_of_flying_distance_only, log_stopping_point_only);
+      electron_screening_path, mott_path, selected_model);
 
   // Perform safety confirmations BEFORE constructing or launching the simulation.
   if (savePerBombardmentCheck && savePerBombardmentCheck->isChecked()) {
@@ -275,52 +312,12 @@ void MainWindow::runSimulation() {
 
     activeSimulation = simulation.get();
     launchSimulationThread(std::move(simulation));
-    // If user enabled per-bombardment saving, warn them about large files
-    // Only show the confirmation when the bombardment count exceeds 100.
-    if (savePerBombardmentCheck && savePerBombardmentCheck->isChecked() && bombardment_count > 100) {
-      const auto ret = QMessageBox::warning(this, "Large Output Warning",
-        "Saving per-bombardment CSVs can generate very large files. It is not recommended for more than 100 bombardments. Continue?",
-        QMessageBox::Ok | QMessageBox::Cancel);
-      if (ret == QMessageBox::Cancel) {
-        // stop simulation start
-        if (simulationThread) {
-          simulationThread->deleteLater();
-          simulationThread = nullptr;
-        }
-        activeSimulation = nullptr;
-        return;
-      }
-    }
-
-    // Check whether the per-bombardment output directory already contains files.
-    if (savePerBombardmentCheck && savePerBombardmentCheck->isChecked()) {
-      const QString perDir = QString::fromStdString(perBombardmentOutputDir);
-      if (!perDir.trimmed().isEmpty()) {
-        const QDir dir(perDir);
-        if (dir.exists()) {
-          const auto entries = dir.entryList(QDir::AllEntries | QDir::NoDotAndDotDot);
-          if (!entries.isEmpty()) {
-            const auto overwriteRet = QMessageBox::warning(this, "Output Directory Not Empty",
-              QStringLiteral("The per-bombardment output directory '%1' is not empty. Running another simulation may overwrite existing files. Continue?").arg(perDir),
-              QMessageBox::Ok | QMessageBox::Cancel);
-            if (overwriteRet == QMessageBox::Cancel) {
-              if (simulationThread) {
-                simulationThread->deleteLater();
-                simulationThread = nullptr;
-              }
-              activeSimulation = nullptr;
-              return;
-            }
-          }
-        }
-      }
-    }
     if (!bombardmentPollTimer) {
       bombardmentPollTimer = new QTimer(this);
       connect(bombardmentPollTimer, &QTimer::timeout, this,
               &MainWindow::pollBombardmentQueue);
-      bombardmentPollTimer->start(1);
     }
+    bombardmentPollTimer->start(1);
   } catch (const std::exception &e) {
     common::print_exception(e);
     handleSimulationError(formatSimulationError(e));
@@ -345,52 +342,52 @@ void MainWindow::update3DViewMode(Qt::CheckState state) {
 
 void MainWindow::pollBombardmentQueue() {
   if (!activeSimulation) return;
-  std::vector<common::CollisionPoint> vec;
-  if (!activeSimulation->try_pop_bombardment_results(vec)) {
-    return;
-  }
 
   const auto canvasPtr = QPointer<Canvas>(canvas);
   const auto viewPtr = QPointer<Widget3DView>(view3D);
   const auto counterPtr = QPointer<Counter>(counter);
 
   const auto range = activeSimulation->get_settings(&common::Simulation::Settings::range_);
+  QVector<Canvas::Point> canvasPoints;
+  std::vector<common::CollisionPoint> vec;
+  if (activeSimulation->try_pop_bombardment_results(vec)) {
+    if (canvasPtr && use2DView && use2DView->checkState() == Qt::Checked) {
+      for (const auto &point : vec) {
+        canvasPoints.append({
+            (point.coordinate.z_ / common::angstrom).value(),
+            (point.coordinate.x_ / common::angstrom).value(),
+            point.generation});
+      }
+    }
 
-  if (canvasPtr && use2DView && use2DView->checkState() == Qt::Checked) {
-    const auto width = canvasPtr->width();
-    const auto half_height = canvasPtr->height() / 2;
-    for (size_t i = 0; i + 1 < vec.size(); ++i) {
-      const auto &p1 = vec[i].coordinate;
-      const auto &p2 = vec[i + 1].coordinate;
-      const auto start_x = (p1.x_ / range).value() * width + half_height;
-      const auto start_z = (p1.z_ / range).value() * width;
-      const auto finish_x = (p2.x_ / range).value() * width + half_height;
-      const auto finish_z = (p2.z_ / range).value() * width;
-      canvasPtr->addLine({(int)start_z, (int)start_x, (int)finish_z, (int)finish_x});
+    if (viewPtr && use3DView && use3DView->checkState() == Qt::Checked) {
+      for (size_t i = 0; i + 1 < vec.size(); ++i) {
+        const auto &p1 = vec[i].coordinate;
+        const auto &p2 = vec[i + 1].coordinate;
+        QVector3D point1((p1.x_ / common::angstrom).value(),
+                         (p1.y_ / common::angstrom).value(),
+                         (p1.z_ / common::angstrom).value());
+        QVector3D point2((p2.x_ / common::angstrom).value(),
+                         (p2.y_ / common::angstrom).value(),
+                         (p2.z_ / common::angstrom).value());
+        viewPtr->requestDrawLine(point1, point2, Qt::green);
+      }
     }
   }
 
-  if (viewPtr && use3DView && use3DView->checkState() == Qt::Checked) {
-    for (size_t i = 0; i + 1 < vec.size(); ++i) {
-      const auto &p1 = vec[i].coordinate;
-      const auto &p2 = vec[i + 1].coordinate;
-      const auto start_x = p1.x_ / common::angstrom;
-      const auto start_y = p1.y_ / common::angstrom;
-      const auto start_z = p1.z_ / common::angstrom;
-      const auto finish_x = p2.x_ / common::angstrom;
-      const auto finish_y = p2.y_ / common::angstrom;
-      const auto finish_z = p2.z_ / common::angstrom;
-      QVector3D point1(start_x, start_y, start_z);
-      QVector3D point2(finish_x, finish_y, finish_z);
-      viewPtr->requestDrawLine(point1, point2, Qt::green);
-    }
+  if (!vec.empty() && canvasPtr && use2DView && use2DView->checkState() == Qt::Checked) {
+    const auto rangeAngstrom = (range / common::angstrom).value();
+    canvasPtr->setRangeAngstrom(rangeAngstrom);
+    canvasPtr->addPoints(canvasPoints);
   }
 
   if (counterPtr && activeSimulation != nullptr) {
     counterPtr->setValue(static_cast<int>(activeSimulation->get_completed_bombardment_count()));
   }
 
-  QThread::msleep(1);
+  if (simulationFinished && !activeSimulation->has_bombardment_results()) {
+    finishSimulation();
+  }
 }
 
 } // namespace gui

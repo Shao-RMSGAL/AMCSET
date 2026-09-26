@@ -182,8 +182,6 @@ std::string Simulation::print_settings() const try {
   ss << "Ion stopping energy: " << settings_.ion_stopping_energy_ << std::endl;
   ss << "Ion displacement energy: " << settings_.ion_displacement_energy_
      << std::endl;
-  ss << "Log single displacement? "
-     << (settings_.log_single_displacement_ ? "Yes" : "No") << std::endl;
   ss << "Divisor angle number: " << settings_.divisor_angle_number_
      << std::endl;
   ss << "Flying distance number: " << settings_.flying_distance_number_
@@ -203,10 +201,6 @@ std::string Simulation::print_settings() const try {
      << settings_.total_energy_loss_bin_count_ << std::endl;
   ss << "Log particle tree? "
      << (settings_.log_particle_tree_ ? "Yes" : "No") << std::endl;
-  ss << "Log end-of-flight only? "
-     << (settings_.log_end_of_flying_distance_only_ ? "Yes" : "No") << std::endl;
-  ss << "Log stopping point only? "
-     << (settings_.log_stopping_point_only_ ? "Yes" : "No") << std::endl;
   ss << "Screening model: "
       << (settings_.screening_model_ == Simulation::Settings::ScreeningModel::QuickBasic ? "QuickBasic" : "ThomasFermi")
       << std::endl;

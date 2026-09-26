@@ -22,20 +22,25 @@
 
 // Qt includes
 #include <QMutex>
-#include <QPen>
-#include <QPixmap>
 #include <QVector>
 #include <QWidget>
 
-// TODO: Implement a functionality that saves the lines as a pixel map that is
-// drawn in addition to new lines to save on computation time.
 class Canvas : public QWidget {
   Q_OBJECT
 
 public:
+  struct Point {
+    double depthAngstrom;
+    double lateralAngstrom;
+    std::size_t generation;
+  };
+
   Canvas(QWidget *parent = nullptr);
 
-  void addLine(const QLine &line);
+  void addPoint(double depthAngstrom, double lateralAngstrom,
+                std::size_t generation);
+  void addPoints(const QVector<Point> &points);
+  void setRangeAngstrom(double rangeAngstrom);
 
   void clear();
 
@@ -43,11 +48,7 @@ protected:
   void paintEvent(QPaintEvent *event) override;
 
 private:
-  void flushLinesToBitmap();
-
-  static constexpr int kBitmapFlushThreshold = 10;
-
-  QVector<QLine> lines;
-  QPixmap renderCache;
+  QVector<Point> points_;
+  double rangeAngstrom_ = 1.0;
   QMutex mutex;
 };

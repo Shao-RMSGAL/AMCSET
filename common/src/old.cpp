@@ -376,8 +376,7 @@ void Particle::createSubstrateKnockon(
 void Ion::fire() {
     Velocity targetVelocity;
     Velocity newVelocity;
-    if(energy < input->getIonStoppingEnergy()
-            && !input->getLogSingleDisplacement()) {
+    if(energy < input->getIonStoppingEnergy()) {
         return;
     }
     while(energy > input->getIonStoppingEnergy()) {
@@ -394,11 +393,6 @@ void Ion::fire() {
             createSubstrateKnockon(coordinate, targetVelocity);
         }
 
-        if(!input->getLogStoppingPointOnly()) {
-            addCoordinate(coordinate);
-        }
-    }
-    if(input->getLogStoppingPointOnly()) {
         addCoordinate(coordinate);
     }
 };
@@ -709,20 +703,10 @@ void Electron::fire() {
                 createSubstrateKnockon(coordinate, targetVelocity);
             }
 
-            if(!input->getLogEndOfFlyingDistanceOnly() 
-                    && !input->getLogStoppingPointOnly()) {
-                addCoordinate(coordinate);
-            }
-            
-        }
-        if(input->getLogEndOfFlyingDistanceOnly()
-                && !input->getLogStoppingPointOnly()) {
             addCoordinate(coordinate);
+
         }
     }   
-    if(input->getLogStoppingPointOnly()) {
-        addCoordinate(coordinate);
-    }
 };
 
 double Electron::getMottDifferentialCrossSection(double Theta) {
@@ -925,7 +909,6 @@ InputFields::InputFields()
     inputDirectoryName(Defaults::inputDirectory),
     ionDisplacementEnergy(Defaults::ionDisplacementEnergy),
     ionStoppingEnergy(Defaults::ionStoppingEnergy),
-    logSingleDisplacement(Defaults::logSingleDisplacement),
     mass((Defaults::type == ION) ? Defaults::ionMass : Constants::electronMass),
     mottScatteringParametersFilename(Defaults::mottScatteringParametersFilename),
     numAngleDivisors(Defaults::numAngleDivisors),
@@ -942,8 +925,6 @@ InputFields::InputFields()
     substrateDensity(Defaults::substrateDensity),
     substrateMass(Defaults::substrateMass),
     type(Defaults::type),
-    logEndOfFlyingDistanceOnly(Defaults::logEndOfFlyingDistanceOnly),
-    logStoppingPointOnly(Defaults::logStoppingPointOnly),
     progressChecking(Defaults::progressChecking),
     numThreads(Defaults::numThreads),
     ioHandler(IOHandler::getInstance()) {}
@@ -958,7 +939,6 @@ InputFields::InputFields(
     const std::string& inputDirectoryName,
     double ionDisplacementEnergy,
     double ionStoppingEnergy,
-    bool logSingleDisplacement, 
     double mass,
     const std::string& mottScatteringParametersFilename,
     size_t numAngleDivisors,
@@ -975,8 +955,6 @@ InputFields::InputFields(
     double substrateDensity,
     double substrateMass,
     ParticleType type,
-    bool logEndOfFlyingDistanceOnly,
-    bool logStoppingPointOnly,
     bool progressChecking,
     size_t numThreads,
     std::shared_ptr<IOHandler> ioHandler)
@@ -989,7 +967,6 @@ InputFields::InputFields(
     inputDirectoryName(inputDirectoryName),
     ionDisplacementEnergy(ionDisplacementEnergy),
     ionStoppingEnergy(ionStoppingEnergy),
-    logSingleDisplacement(logSingleDisplacement),
     mass(mass),
     mottScatteringParametersFilename(mottScatteringParametersFilename),
     numAngleDivisors(numAngleDivisors),
@@ -1006,8 +983,6 @@ InputFields::InputFields(
     substrateDensity(substrateDensity),
     substrateMass(substrateMass),
     type(type),
-    logEndOfFlyingDistanceOnly(logEndOfFlyingDistanceOnly),
-    logStoppingPointOnly(logStoppingPointOnly),
     progressChecking(progressChecking),
     numThreads(numThreads),
     ioHandler(ioHandler) {};
@@ -1032,7 +1007,6 @@ std::shared_ptr<InputFields> InputFields::getInstance(std::shared_ptr<IOHandler>
 // Getters
 bool InputFields::getEnableDamageCascade() const { return enableDamageCascade; }
 double InputFields::getElectronStoppingEnergy() const { return electronStoppingEnergy; };
-bool InputFields::getLogSingleDisplacement() const { return logSingleDisplacement; }
 double InputFields::getCharge() const { return charge; }
 double InputFields::getEnergy() const { return energy; }
 double InputFields::getIonDisplacementEnergy() const { return ionDisplacementEnergy; };
@@ -1055,8 +1029,6 @@ const std::string& InputFields::getOutputCoordinateFilename() const { return out
 const std::string& InputFields::getOutputDirectory() const { return outputDirectory; }
 const std::string& InputFields::getOutputFileEndMarker() const { return outputFileEndMarker; }
 const std::string& InputFields::getOutputFileExtension() const { return outputFileExtension; }
-bool InputFields::getLogEndOfFlyingDistanceOnly() const { return logEndOfFlyingDistanceOnly;};
-bool InputFields::getLogStoppingPointOnly() const { return logStoppingPointOnly;};
 bool InputFields::getProgressChecking() const { return progressChecking; };
 size_t InputFields::getNumThreads() const { return numThreads; };
 std::shared_ptr<IOHandler> InputFields::getIOHandler() const { return ioHandler; };
@@ -1070,7 +1042,6 @@ void InputFields::setEnergy(double energy) { this->energy = energy; }
 void InputFields::setIonDisplacementEnergy(double energy) { this->ionDisplacementEnergy = energy; };
 void InputFields::setIonStoppingEnergy(double energy) { this->ionStoppingEnergy = energy; };
 void InputFields::setInputDirectoryName(const std::string& name) { this->inputDirectoryName = name; }
-void InputFields::setLogSingleDisplacement(bool log) { this->logSingleDisplacement = log; }
 void InputFields::setMass(double mass) { this->mass = mass; }
 void InputFields::setMottScatteringParametersFilename(const std::string& filename) { this->mottScatteringParametersFilename = filename; }
 void InputFields::setNumAngleDivisors(size_t divisors) { this->numAngleDivisors = divisors; }
@@ -1087,8 +1058,6 @@ void InputFields::setSubstrateCharge(double substrateCharge) { this->substrateCh
 void InputFields::setSubstrateDensity(double substrateDensity) { this->substrateDensity = substrateDensity; }
 void InputFields::setSubstrateMass(double substrateMass) { this->substrateMass = substrateMass; }
 void InputFields::setType(ParticleType type) { this->type = type; }
-void InputFields::setLogEndOfFlyingDistanceOnly(bool logEndOfFlyingDistanceOnly) {this->logEndOfFlyingDistanceOnly = logEndOfFlyingDistanceOnly; }
-void InputFields::setLogStoppingPointOnly(bool logStoppingPointOnly) {this->logStoppingPointOnly = logStoppingPointOnly; }
 void InputFields::setProgressChecking(bool progressChecking) {this->progressChecking = progressChecking; }
 void InputFields::setNumThreads(size_t numThreads) {this->numThreads = numThreads; }
 void InputFields::setIOHandler(std::shared_ptr<IOHandler> ioHandler) {this->ioHandler = ioHandler; }
@@ -1111,7 +1080,6 @@ std::string InputFields::printInputFields() const {
     oss << "Enable Damage Cascade:\t" << (enableDamageCascade ? "true" : "false") << std::endl;
     oss << "Substrate Displacement Energy (keV):\t" << ionDisplacementEnergy << std::endl;
     oss << "Ion Stopping Energy (keV):\t" << ionStoppingEnergy << std::endl;
-    oss << "Log Single Displacement:\t" << (logSingleDisplacement ? "true" : "false") << std::endl;
     oss << "Input Directory Name:\t" << inputDirectoryName << std::endl;
     oss << "Output Coordinate Filename:\t" << outputCoordinateFilename << std::endl;
     oss << "Output File Extension:\t" << outputFileExtension << std::endl;
@@ -1121,8 +1089,6 @@ std::string InputFields::printInputFields() const {
     oss << "Substrate Density:\t" << substrateDensity << std::endl;
     oss << "Substrate Mass:\t" << substrateMass << std::endl;
     // oss << "Range(unused):\t" << range << std::endl;
-    oss << "Log Stopping Point Only:\t" << (logStoppingPointOnly ? "true" : "false") << std::endl;
-    oss << "Log End of Flying Distance Only:\t" << (logEndOfFlyingDistanceOnly ? "true" : "false") << std::endl;
     oss << "Number of Threads:\t" << numThreads << std::endl;
     oss << "Simulation Count:\t" << simulationCount << std::endl;
     oss << "Progress Tracking:\t" << (progressChecking ? "true" : "false") << std::flush;
@@ -1286,18 +1252,13 @@ void Simulation::writeData(
         case OutputType::COORDINATE:
             for (const auto& particle : particles){
                 if(particle->getCoordinates().empty()) {
-                    if(input->getLogSingleDisplacement())
-                    {
-                        outputFile << bombardmentID << ','
-                                << particleID << ','
-                                << particle->getCoordinate().depth << ','
-                                << particle->getCoordinate().x << ','
-                                << particle->getCoordinate().y << ','
-                                << particle->getCoordinate().z << '\n';
-                        particleID++;
-                    } else {
-                        continue;
-                    }
+                    outputFile << bombardmentID << ','
+                            << particleID << ','
+                            << particle->getCoordinate().depth << ','
+                            << particle->getCoordinate().x << ','
+                            << particle->getCoordinate().y << ','
+                            << particle->getCoordinate().z << '\n';
+                    particleID++;
                 } else {
                     for (const auto& coordinate : particle->getCoordinates()) {
                         // DEBUG_PRINT("Writing coordinate " << coordinate.id);
@@ -1505,7 +1466,6 @@ IOHandler::IOHandler(
     settingsMessageStream << "ionMass(amu)=" << Defaults::ionMass << std::endl;
     settingsMessageStream << "substrateDisplacementEnergy(keV)=" << Defaults::ionDisplacementEnergy << std::endl;
     settingsMessageStream << "ionStoppingEnergy(keV)=" << Defaults::ionStoppingEnergy << std::endl;
-    settingsMessageStream << "logSingleDisplacement=" << ((Defaults::logSingleDisplacement) ? "true" : "false") << std::endl;
     settingsMessageStream << "inputDirectoryName=\"" << Defaults::inputDirectory << "\"" << std::endl;
     settingsMessageStream << "outputCoordinateFilename=\"" << Defaults::outputCoordinateFilename << "\"" << std::endl;
     settingsMessageStream << "outputFileEndMarker=\"" << Defaults::outputFileEnd << "\"" << std::endl;
@@ -1513,8 +1473,6 @@ IOHandler::IOHandler(
     settingsMessageStream << "outputDirectory=\"" << Defaults::outputDirectory << "\"" << std::endl;
     settingsMessageStream << "substrateCharge(e)=" << Defaults::substrateCharge << std::endl;
     settingsMessageStream << "substrateMass(amu)=" << Defaults::substrateMass << std::endl;
-    settingsMessageStream << "logEndOfFlyingDistanceOnly=" << ((Defaults::logEndOfFlyingDistanceOnly) ? "true" : "false") << std::endl;
-    settingsMessageStream << "logStoppingPointOnly=" << ((Defaults::logStoppingPointOnly) ? "true" : "false") << std::endl;
     settingsMessageStream << "simulationCount=" << Defaults::simulationCount << std::endl;
     settingsMessageStream << "numThreads=" << Defaults::numThreads;
     settingsMessage = settingsMessageStream.str();
@@ -1867,8 +1825,6 @@ void IOHandler::readSettingsFromFile() {
                 input->setIonDisplacementEnergy(std::stod(value));
             } else if (name == "ionStoppingEnergy(keV)") {
                 input->setIonStoppingEnergy(std::stod(value));
-            } else if (name == "logSingleDisplacement") {
-                input->setLogSingleDisplacement(stringToBool(value));
             } else if (name == "inputDirectoryName") {
                 value.erase(std::remove(value.begin(), value.end(), '\"'), value.end());
                 input->setInputDirectoryName(value);
@@ -1888,10 +1844,6 @@ void IOHandler::readSettingsFromFile() {
                 input->setSubstrateCharge(std::stod(value));
             } else if (name == "substrateMass(amu)") {
                 input->setSubstrateMass(std::stod(value));
-            } else if (name == "logEndOfFlyingDistanceOnly") {
-                input->setLogEndOfFlyingDistanceOnly(stringToBool(value));
-            } else if (name == "logStoppingPointOnly") {
-                input->setLogStoppingPointOnly(stringToBool(value));
             } else if (name == "simulationCount") {
                 input->setSimulationCount(std::stoi(value));
             } else if (name == "numThreads") {

@@ -42,7 +42,7 @@ Simulation::Settings::Settings(
   energy_quantity electron_stopping_energy, size_t z_number,
   size_t mass_number, bool enable_damage_cascade,
   energy_quantity ion_stopping_energy,
-  energy_quantity ion_displacement_energy, bool log_single_displacement,
+  energy_quantity ion_displacement_energy,
   size_t divisor_angle_number, size_t flying_distance_number,
   length_quantity range, size_t bombardment_count, bool is_electron,
   energy_quantity incident_energy, size_t thread_count,
@@ -59,16 +59,13 @@ Simulation::Settings::Settings(
   std::string per_bombardment_output_dir,
   std::string electron_screening_parameters_path,
   std::string mott_scattering_parameters_path,
-  Simulation::Settings::ScreeningModel screening_model,
-  bool log_end_of_flying_distance_only,
-  bool log_stopping_point_only) try
+  Simulation::Settings::ScreeningModel screening_model) try
   : electron_stopping_energy_(electron_stopping_energy), z_number_(z_number),
     mass_number_(mass_number),
     incident_particle_properties_(Particle::Properties(z_number, mass_number)),
     enable_damage_cascade_(enable_damage_cascade),
     ion_stopping_energy_(ion_stopping_energy),
     ion_displacement_energy_(ion_displacement_energy),
-    log_single_displacement_(log_single_displacement),
     divisor_angle_number_(divisor_angle_number),
     flying_distance_number_(flying_distance_number), range_(range),
     bombardment_count_(bombardment_count), is_electron_(is_electron),
@@ -91,8 +88,6 @@ Simulation::Settings::Settings(
     per_bombardment_output_dir_((per_bombardment_output_dir.empty()) ? std::string("output/bombardments/") : std::move(per_bombardment_output_dir)),
     electron_screening_parameters_path_(std::move(electron_screening_parameters_path)),
     mott_scattering_parameters_path_(std::move(mott_scattering_parameters_path)),
-    log_end_of_flying_distance_only_(log_end_of_flying_distance_only),
-    log_stopping_point_only_(log_stopping_point_only),
     screening_model_(screening_model) {
   if (incident_energy <= energy_quantity(0.0 * kilo_electron_volt)) {
     throw std::invalid_argument(
@@ -143,7 +138,7 @@ Simulation::Settings::Settings(
   energy_quantity electron_stopping_energy, size_t z_number,
   size_t mass_number, bool enable_damage_cascade,
   energy_quantity ion_stopping_energy,
-  energy_quantity ion_displacement_energy, bool log_single_displacement,
+  energy_quantity ion_displacement_energy,
   size_t divisor_angle_number, size_t flying_distance_number,
   length_quantity range, size_t bombardment_count, bool is_electron,
   energy_quantity incident_energy, size_t thread_count,
@@ -159,12 +154,10 @@ Simulation::Settings::Settings(
   bool log_particle_tree, std::string particle_tree_output_file,
   bool save_per_bombardment_info,
   std::string per_bombardment_output_dir,
-  Simulation::Settings::ScreeningModel screening_model,
-  bool log_end_of_flying_distance_only,
-  bool log_stopping_point_only)
+  Simulation::Settings::ScreeningModel screening_model)
   : Settings(electron_stopping_energy, z_number, mass_number,
          enable_damage_cascade, ion_stopping_energy,
-         ion_displacement_energy, log_single_displacement,
+         ion_displacement_energy,
          divisor_angle_number, flying_distance_number, range,
          bombardment_count, is_electron, incident_energy, thread_count,
          incident_angle, displacement_bin_count,
@@ -180,15 +173,14 @@ Simulation::Settings::Settings(
          std::move(per_bombardment_output_dir),
          std::string("common/assets/electron_screening_parameters.csv"),
          std::string("common/assets/mott_scattering_parameters.csv"),
-         screening_model, log_end_of_flying_distance_only,
-         log_stopping_point_only) {}
+         screening_model) {}
 
 // Delegating constructor matching the shorter overload used by tests
 Simulation::Settings::Settings(
   energy_quantity electron_stopping_energy, size_t z_number,
   size_t mass_number, bool enable_damage_cascade,
   energy_quantity ion_stopping_energy,
-  energy_quantity ion_displacement_energy, bool log_single_displacement,
+  energy_quantity ion_displacement_energy,
   size_t divisor_angle_number, size_t flying_distance_number,
   length_quantity range, size_t bombardment_count, bool is_electron,
   energy_quantity incident_energy, size_t thread_count,
@@ -202,12 +194,10 @@ Simulation::Settings::Settings(
   std::string nuclear_energy_loss_histogram_output_file,
   std::string total_energy_loss_histogram_output_file,
   bool log_particle_tree, std::string particle_tree_output_file,
-  Simulation::Settings::ScreeningModel screening_model,
-  bool log_end_of_flying_distance_only,
-  bool log_stopping_point_only)
+  Simulation::Settings::ScreeningModel screening_model)
   : Settings(electron_stopping_energy, z_number, mass_number,
          enable_damage_cascade, ion_stopping_energy,
-         ion_displacement_energy, log_single_displacement,
+         ion_displacement_energy,
          divisor_angle_number, flying_distance_number, range,
          bombardment_count, is_electron, incident_energy, thread_count,
          incident_angle, displacement_bin_count,
@@ -222,8 +212,7 @@ Simulation::Settings::Settings(
          false, std::string("output/bombardments/"),
          std::string("common/assets/electron_screening_parameters.csv"),
          std::string("common/assets/mott_scattering_parameters.csv"),
-         screening_model, log_end_of_flying_distance_only,
-         log_stopping_point_only) {}
+         screening_model) {}
 
 Simulation::Simulation(const Settings settings, Volume &&volume,
                        DrawFunction draw_function) try
@@ -253,6 +242,9 @@ int Simulation::run_simulation() try {
   LOG(INFO) << "Starting Simulation...";
   for (auto &bombardment : bombardments_) {
     boost::asio::post(thread_pool_, [this, &bombardment]() {
+      if (cancellation_requested_.load(std::memory_order_acquire)) {
+        return;
+      }
       VLOG(1) << "Starting Bombardment...";
       bombardment.run_bombardment();
       increment_completed_bombardment_count();
@@ -262,7 +254,13 @@ int Simulation::run_simulation() try {
     });
   }
   thread_pool_.join();
-  LOG(INFO) << "...Simulation complete";
+  if (is_cancelled()) {
+    LOG(INFO) << "...Simulation cancelled after "
+              << get_completed_bombardment_count() << "/"
+              << settings_.bombardment_count_ << " bombardments";
+  } else {
+    LOG(INFO) << "...Simulation complete";
+  }
   try {
     const std::filesystem::path output_root = "output";
     std::filesystem::create_directories(output_root);
@@ -332,6 +330,11 @@ bool Simulation::try_pop_bombardment_results(std::vector<CollisionPoint> &out) {
   return true;
 }
 
+bool Simulation::has_bombardment_results() const {
+  std::lock_guard<std::mutex> lock(bombardment_queue_mutex_);
+  return !bombardment_queue_.empty();
+}
+
 std::string Simulation::print_settings() const try {
   std::ostringstream ss;
   ss << "Electron stopping energy: " << settings_.electron_stopping_energy_
@@ -349,8 +352,6 @@ std::string Simulation::print_settings() const try {
   ss << "Ion stopping energy: " << settings_.ion_stopping_energy_ << std::endl;
   ss << "Ion displacement energy: " << settings_.ion_displacement_energy_
      << std::endl;
-  ss << "Log single displacement? "
-     << (settings_.log_single_displacement_ ? "Yes" : "No") << std::endl;
   ss << "Divisor angle number: " << settings_.divisor_angle_number_
      << std::endl;
   ss << "Flying distance number: " << settings_.flying_distance_number_
@@ -370,10 +371,6 @@ std::string Simulation::print_settings() const try {
      << settings_.total_energy_loss_bin_count_ << std::endl;
   ss << "Log particle tree? "
      << (settings_.log_particle_tree_ ? "Yes" : "No") << std::endl;
-  ss << "Log end-of-flight only? "
-     << (settings_.log_end_of_flying_distance_only_ ? "Yes" : "No") << std::endl;
-  ss << "Log stopping point only? "
-     << (settings_.log_stopping_point_only_ ? "Yes" : "No") << std::endl;
   ss << "Screening model: "
      << (settings_.screening_model_ == Simulation::Settings::ScreeningModel::QuickBasic ? "QuickBasic" : "ThomasFermi")
      << std::endl;

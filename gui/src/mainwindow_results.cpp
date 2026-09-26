@@ -25,6 +25,10 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QPlainTextEdit>
+#include <QPushButton>
+#include <QImage>
+#include <QPainter>
+#include <QPen>
 #include <QTabWidget>
 #include <QTextBrowser>
 #include <QVBoxLayout>
@@ -178,6 +182,8 @@ QString buildSimulationSummaryHtml(const QString &outputDir,
                                   const QStringList &filePaths,
                                   const QString &logFile,
                                   bool loggingEnabled,
+                                  const QColor &backgroundColor,
+                                  const QColor &textColor,
                                   const QString &incidentType,
                                   bool damageCascade,
                                   double incidentEnergy,
@@ -189,7 +195,9 @@ QString buildSimulationSummaryHtml(const QString &outputDir,
                                   int threadCount,
                                   int layerCount) {
   QStringList rows;
-  rows << QStringLiteral("<h2>Simulation Summary</h2>")
+  rows << QStringLiteral("<body style='background-color:%1;color:%2;'>")
+              .arg(backgroundColor.name(), textColor.name())
+       << QStringLiteral("<h2>Simulation Summary</h2>")
        << QStringLiteral("<h3>Input settings</h3>")
        << QStringLiteral("<table border='0' cellspacing='4' cellpadding='4'>")
        << QStringLiteral("<tr><td><b>Output directory</b></td><td>%1</td></tr>").arg(outputDir)
@@ -230,6 +238,7 @@ QString buildSimulationSummaryHtml(const QString &outputDir,
     }
   }
 
+  rows << QStringLiteral("</body>");
   return rows.join(QStringLiteral("\n"));
 }
 } // namespace
@@ -241,24 +250,62 @@ public:
                                HistogramDataKind kind = HistogramDataKind::Generic,
                                QWidget *parent = nullptr)
       : QWidget(parent), title_(title), kind_(kind), series_(new QLineSeries(this)) {
+    setMinimumSize(320, 240);
     const auto points = loadHistogramPoints(filePath);
     for (const auto &point : points) {
       series_->append(point);
     }
   }
 
+  bool savePng(const QString &filePath) const {
+    const QSize imageSize(1280, 800);
+    QImage image(imageSize, QImage::Format_ARGB32_Premultiplied);
+    image.fill(palette().color(QPalette::Base));
+    QPainter painter(&image);
+    drawPlot(painter, imageSize);
+    painter.end();
+    return image.save(filePath, "PNG");
+  }
+
 protected:
   void paintEvent(QPaintEvent *event) override {
     QWidget::paintEvent(event);
-
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.fillRect(rect(), QColor(245, 245, 245));
+    drawPlot(painter, size());
+  }
+
+private:
+  static double niceStep(double range) {
+    if (!std::isfinite(range) || range <= 0.0) {
+      return 1.0;
+    }
+    const double rawStep = range / 5.0;
+    const double magnitude = std::pow(10.0, std::floor(std::log10(rawStep)));
+    const double fraction = rawStep / magnitude;
+    const double niceFraction = fraction <= 1.0 ? 1.0
+                                : fraction <= 2.0 ? 2.0
+                                : fraction <= 5.0 ? 5.0
+                                                  : 10.0;
+    return niceFraction * magnitude;
+  }
+
+  static QString formatTick(double value, double step) {
+    const int decimals = std::clamp(
+        static_cast<int>(std::ceil(-std::log10(step))) + 1, 0, 8);
+    return QString::number(value, 'f', decimals);
+  }
+
+  void drawPlot(QPainter &painter, const QSize &canvasSize) const {
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    const auto colors = palette();
+    painter.fillRect(QRect(QPoint(0, 0), canvasSize), colors.color(QPalette::Base));
 
     const auto points = series_->points();
-    if (points.size() < 2) {
-      painter.setPen(Qt::gray);
-      painter.drawText(rect(), Qt::AlignCenter, tr("No data available"));
+    if (points.isEmpty()) {
+      painter.setPen(colors.color(QPalette::Text));
+      painter.drawText(QRect(QPoint(0, 0), canvasSize), Qt::AlignCenter,
+                       tr("No data available"));
       return;
     }
 
@@ -273,49 +320,78 @@ protected:
       maxY = std::max(maxY, point.y());
     }
 
-    if (qFuzzyCompare(maxX, minX)) {
-      minX -= 1.0;
-      maxX += 1.0;
-    }
-    if (qFuzzyCompare(maxY, minY)) {
-      minY = std::min(0.0, minY) - 1.0;
-      maxY = std::max(1.0, maxY) + 1.0;
-    }
+    minY = std::min(0.0, minY);
+    const double xStep = niceStep(maxX - minX);
+    const double yStep = niceStep(maxY - minY);
+    minX = std::floor(minX / xStep) * xStep;
+    maxX = std::ceil(maxX / xStep) * xStep;
+    minY = std::floor(minY / yStep) * yStep;
+    maxY = std::ceil(maxY / yStep) * yStep;
+    if (maxX <= minX) maxX = minX + xStep;
+    if (maxY <= minY) maxY = minY + yStep;
 
-    const auto margin = 24.0;
+    const double leftMargin = 76.0;
+    const double rightMargin = 18.0;
+    const double topMargin = 30.0;
+    const double bottomMargin = 58.0;
+    const QRectF plotArea(leftMargin, topMargin,
+                          std::max(1.0, canvasSize.width() - leftMargin - rightMargin),
+                          std::max(1.0, canvasSize.height() - topMargin - bottomMargin));
     auto transform = [&](const QPointF &pt) {
       const double sx = (pt.x() - minX) / std::max(maxX - minX, 1e-12);
       const double sy = (pt.y() - minY) / std::max(maxY - minY, 1e-12);
-      const double x = margin + sx * (width() - 2.0 * margin);
-      const double y = height() - margin - sy * (height() - 2.0 * margin);
+      const double x = plotArea.left() + sx * plotArea.width();
+      const double y = plotArea.bottom() - sy * plotArea.height();
       return QPointF(x, y);
     };
 
-    QPen pen(Qt::blue, 2.0);
-    painter.setPen(pen);
+    const int xTickCount = std::min(10, static_cast<int>((maxX - minX) / xStep) + 1);
+    const int yTickCount = std::min(10, static_cast<int>((maxY - minY) / yStep) + 1);
+    painter.setFont(QFontDatabase::systemFont(QFontDatabase::GeneralFont));
+    painter.setPen(colors.color(QPalette::Text));
+    for (int i = 0; i < xTickCount; ++i) {
+      const double value = minX + i * xStep;
+      const double x = plotArea.left() + (value - minX) / (maxX - minX) * plotArea.width();
+      painter.setPen(QPen(colors.color(QPalette::AlternateBase), 1.0));
+      painter.drawLine(QPointF(x, plotArea.top()), QPointF(x, plotArea.bottom()));
+      painter.setPen(colors.color(QPalette::Text));
+      painter.drawText(QRectF(x - 42.0, plotArea.bottom() + 4.0, 84.0, 18.0),
+                       Qt::AlignHCenter | Qt::AlignTop, formatTick(value, xStep));
+    }
+    for (int i = 0; i < yTickCount; ++i) {
+      const double value = minY + i * yStep;
+      const double y = plotArea.bottom() - (value - minY) / (maxY - minY) * plotArea.height();
+      painter.setPen(QPen(colors.color(QPalette::AlternateBase), 1.0));
+      painter.drawLine(QPointF(plotArea.left(), y), QPointF(plotArea.right(), y));
+      painter.setPen(colors.color(QPalette::Text));
+      painter.drawText(QRectF(0.0, y - 9.0, leftMargin - 8.0, 18.0),
+                       Qt::AlignRight | Qt::AlignVCenter, formatTick(value, yStep));
+    }
+
+    painter.setPen(QPen(colors.color(QPalette::Mid), 1.2));
+    painter.drawRect(plotArea);
+    painter.setPen(QPen(colors.color(QPalette::Highlight), 2.0));
     QPolygonF polygon;
     for (const auto &point : points) {
       polygon << transform(point);
     }
     painter.drawPolyline(polygon);
 
-    painter.setPen(Qt::black);
-    painter.drawLine(QPointF(margin, height() - margin),
-                     QPointF(width() - margin, height() - margin));
-    painter.drawLine(QPointF(margin, margin),
-                     QPointF(margin, height() - margin));
-
+    painter.setPen(colors.color(QPalette::Text));
     const auto xLabel = histogramAxisLabel(kind_, true);
     const auto yLabel = histogramAxisLabel(kind_, false);
-    painter.drawText(QRectF(0, height() - 20, width(), 20), Qt::AlignCenter, xLabel);
+    painter.drawText(QRectF(leftMargin, canvasSize.height() - 24.0,
+                            canvasSize.width() - leftMargin - rightMargin, 20.0),
+                     Qt::AlignCenter, xLabel);
     painter.save();
     painter.rotate(-90.0);
-    painter.drawText(QRectF(-height(), 0, height(), 20), Qt::AlignCenter, yLabel);
+    painter.drawText(QRectF(-canvasSize.height(), 0, canvasSize.height(), 20),
+                     Qt::AlignCenter, yLabel);
     painter.restore();
-    painter.drawText(QRectF(0, 0, width(), 18), Qt::AlignCenter, title_);
+    painter.drawText(QRectF(0, 4.0, canvasSize.width(), 20.0), Qt::AlignCenter,
+                     title_);
   }
 
-private:
   QString title_;
   HistogramDataKind kind_;
   QLineSeries *series_;
@@ -334,7 +410,7 @@ QString MainWindow::buildOutputPath(const QString &filename) const {
     return normalized;
   }
 
-  QString cleanPath = normalized;
+  QString cleanPath = QDir::fromNativeSeparators(normalized);
   const QString outputDirPrefix = QStringLiteral("output/");
   if (cleanPath.startsWith(outputDirPrefix)) {
     cleanPath = cleanPath.mid(outputDirPrefix.size());
@@ -405,8 +481,51 @@ void MainWindow::populateResultCharts() {
         return;
       }
       const auto kind = detectHistogramKind(filePath);
+      const auto csvBaseName = fileInfo.completeBaseName();
       auto *plotWidget = new HistogramPlotWidget(filePath, title, kind, target);
-      target->addTab(plotWidget, title);
+      auto *chartPage = new QWidget(target);
+      auto *chartLayout = new QVBoxLayout(chartPage);
+      auto *chartActions = new QHBoxLayout();
+      auto *saveButton = new QPushButton(tr("Save"), chartPage);
+      chartActions->addStretch();
+      chartActions->addWidget(saveButton);
+      chartLayout->addWidget(plotWidget, 1);
+      chartLayout->addLayout(chartActions);
+      target->addTab(chartPage, title);
+
+      connect(saveButton, &QPushButton::clicked, this,
+                [this, plotWidget, csvBaseName]() {
+                const auto outputDir = outputDirectoryEdit
+                                           ? outputDirectoryEdit->text().trimmed()
+                                           : QStringLiteral("output");
+                const auto suggestedPath =
+                  QDir(outputDir).filePath(csvBaseName + QStringLiteral(".png"));
+                auto imagePath = QFileDialog::getSaveFileName(
+                    this, tr("Save graph"), suggestedPath,
+                    tr("PNG image (*.png)"));
+                if (imagePath.isEmpty()) {
+                  return;
+                }
+                if (QFileInfo(imagePath).suffix().isEmpty()) {
+                  imagePath += QStringLiteral(".png");
+                }
+                if (!plotWidget->savePng(imagePath)) {
+                  QMessageBox::warning(this, tr("Save graph"),
+                                       tr("Unable to save graph to %1").arg(imagePath));
+                }
+              });
+
+      if (saveAllGraphsCheck && saveAllGraphsCheck->isChecked()) {
+        const auto outputDir = outputDirectoryEdit
+                                   ? outputDirectoryEdit->text().trimmed()
+                                   : QStringLiteral("output");
+        QDir().mkpath(outputDir);
+        const auto imagePath =
+          QDir(outputDir).filePath(csvBaseName + QStringLiteral(".png"));
+        if (!plotWidget->savePng(imagePath)) {
+          updateResultPane(tr("Unable to save graph to %1").arg(imagePath));
+        }
+      }
     };
 
     const auto outputDirPath = outputDirectoryEdit ? outputDirectoryEdit->text().trimmed() : QStringLiteral("output");
@@ -451,12 +570,39 @@ void MainWindow::populateResultCharts() {
     }
   };
 
-  if (resultsTabs) {
-    populateTabWidget(resultsTabs);
-  }
   if (histogramTabs) {
     populateTabWidget(histogramTabs);
   }
+}
+
+void MainWindow::refreshSummaryView() {
+  if (!simulationSummaryView) {
+    return;
+  }
+
+  QStringList summaryPaths;
+  summaryPaths << (displacementOutputEdit ? displacementOutputEdit->text().trimmed() : QString())
+               << (electronicOutputEdit ? electronicOutputEdit->text().trimmed() : QString())
+               << (nuclearOutputEdit ? nuclearOutputEdit->text().trimmed() : QString())
+               << (totalOutputEdit ? totalOutputEdit->text().trimmed() : QString());
+  const auto outputDir = outputDirectoryEdit ? outputDirectoryEdit->text().trimmed() : QStringLiteral("output");
+  const auto summaryPalette = simulationSummaryView->palette();
+  simulationSummaryView->setHtml(buildSimulationSummaryHtml(
+      outputDir, summaryPaths,
+      logFileEdit ? logFileEdit->text().trimmed() : QStringLiteral("amcset.log"),
+      enableLoggingCheck && enableLoggingCheck->isChecked(),
+      summaryPalette.color(QPalette::Base),
+      summaryPalette.color(QPalette::Text),
+      incidentElectron && incidentElectron->isChecked() ? QStringLiteral("Electron") : QStringLiteral("Ion"),
+      damageCascade && damageCascade->isChecked(),
+      incidentEnergy ? incidentEnergy->value() : 0.0,
+      incidentMass ? incidentMass->value() : 1,
+      incidentCharge ? incidentCharge->value() : 1,
+      incidentAngle ? incidentAngle->value() : 0.0,
+      rangeSpinBox ? rangeSpinBox->value() : 0.0,
+      bombardmentCountSpinBox ? bombardmentCountSpinBox->value() : 1,
+      threadCountSpinBox ? threadCountSpinBox->value() : 1,
+      layerModel ? static_cast<int>(layerModel->rowCount()) : 0));
 }
 
 void MainWindow::refreshResultsPane() {
@@ -467,22 +613,7 @@ void MainWindow::refreshResultsPane() {
                << (totalOutputEdit ? totalOutputEdit->text().trimmed() : QString());
 
   const auto outputDir = outputDirectoryEdit ? outputDirectoryEdit->text().trimmed() : QStringLiteral("output");
-  if (simulationSummaryView) {
-    simulationSummaryView->setHtml(buildSimulationSummaryHtml(
-        outputDir, summaryPaths,
-        logFileEdit ? logFileEdit->text().trimmed() : QStringLiteral("amcset.log"),
-        enableLoggingCheck && enableLoggingCheck->isChecked(),
-        incidentElectron && incidentElectron->isChecked() ? QStringLiteral("Electron") : QStringLiteral("Ion"),
-        damageCascade && damageCascade->isChecked(),
-        incidentEnergy ? incidentEnergy->value() : 0.0,
-        incidentMass ? incidentMass->value() : 1,
-        incidentCharge ? incidentCharge->value() : 1,
-        incidentAngle ? incidentAngle->value() : 0.0,
-        rangeSpinBox ? rangeSpinBox->value() : 0.0,
-        bombardmentCountSpinBox ? bombardmentCountSpinBox->value() : 1,
-        threadCountSpinBox ? threadCountSpinBox->value() : 1,
-        layerModel ? static_cast<int>(layerModel->rowCount()) : 0));
-  }
+  refreshSummaryView();
 
   if (!resultPane) return;
   resultPane->clear();
@@ -495,11 +626,8 @@ void MainWindow::refreshResultsPane() {
   summary << "Particle tree: " + (particleTreeEdit ? particleTreeEdit->text().trimmed() : QString());
   summary << "Log file: " + (logFileEdit ? logFileEdit->text().trimmed() : QString());
   summary << "Logging enabled: " + QString(enableLoggingCheck && enableLoggingCheck->isChecked() ? "Yes" : "No");
-  summary << "Log single displacement: " + QString(logSingleDisplacementCheck && logSingleDisplacementCheck->isChecked() ? "Yes" : "No");
   summary << "Angle divisors: " + QString::number(angleDivisorSpinBox ? angleDivisorSpinBox->value() : 1000);
   summary << "Flying distances: " + QString::number(flyingDistanceSpinBox ? flyingDistanceSpinBox->value() : 1000);
-  summary << "Log end-of-flight only: " + QString(logEndOfFlyingDistanceOnlyCheck && logEndOfFlyingDistanceOnlyCheck->isChecked() ? "Yes" : "No");
-  summary << "Log stopping point only: " + QString(logStoppingPointOnlyCheck && logStoppingPointOnlyCheck->isChecked() ? "Yes" : "No");
   resultPane->setPlainText(summary.join("\n"));
   populateResultCharts();
 }
@@ -536,25 +664,25 @@ void MainWindow::createSettingsDialog() {
   formLayout->addRow("Output directory", outputDirRow);
 
   const auto fileFields = std::vector<std::pair<QLineEdit **, const char *>>{
-      {&displacementOutputEdit, "Displacement output"},
-      {&electronicOutputEdit, "Electronic loss output"},
-      {&nuclearOutputEdit, "Nuclear loss output"},
-      {&totalOutputEdit, "Total loss output"},
-      {&particleTreeEdit, "Particle tree output"},
+      {&displacementOutputEdit, "Displacement output file"},
+      {&electronicOutputEdit, "Electronic loss output file"},
+      {&nuclearOutputEdit, "Nuclear loss output file"},
+      {&totalOutputEdit, "Total loss output file"},
+      {&particleTreeEdit, "Particle tree output file"},
   };
 
   // Per-bombardment CSV output
   auto *perBombardmentRow = new QWidget(settingsTab);
   auto *perBombardmentLayout = new QHBoxLayout(perBombardmentRow);
   perBombardmentLayout->setContentsMargins(0,0,0,0);
-  perBombardmentOutputDirEdit = new QLineEdit("output/bombardments/", perBombardmentRow);
+  perBombardmentOutputDirEdit = new QLineEdit("bombardments/", perBombardmentRow);
   auto *perBombardmentBrowse = new QPushButton("Browse", perBombardmentRow);
   connect(perBombardmentBrowse, &QPushButton::clicked, this, [this]() {
     browseOutputDirectory(perBombardmentOutputDirEdit, "Select per-bombardment output directory");
   });
   perBombardmentLayout->addWidget(perBombardmentOutputDirEdit);
   perBombardmentLayout->addWidget(perBombardmentBrowse);
-  formLayout->addRow("Per-bombardment output dir", perBombardmentRow);
+  formLayout->addRow("Per-bombardment output directory", perBombardmentRow);
 
   savePerBombardmentCheck = new QCheckBox(settingsTab);
   savePerBombardmentCheck->setChecked(false);
@@ -577,7 +705,7 @@ void MainWindow::createSettingsDialog() {
     auto *layout = new QHBoxLayout(row);
     layout->setContentsMargins(0, 0, 0, 0);
     *field = new QLineEdit(QString(QString(label).toLower().replace(" ", "_")) + ".csv", row);
-    auto *browseButton = new QPushButton("File", row);
+    auto *browseButton = new QPushButton("Browse", row);
     connect(browseButton, &QPushButton::clicked, this, [this, field, label]() {
       browseOutputFile(*field, QString("Select %1").arg(label), "csv");
     });
@@ -591,14 +719,14 @@ void MainWindow::createSettingsDialog() {
   nuclearOutputEdit->setText("nuclear_loss_histogram.csv");
   totalOutputEdit->setText("total_loss_histogram.csv");
   particleTreeEdit->setText("particle_tree.json");
-  if (perBombardmentOutputDirEdit) perBombardmentOutputDirEdit->setText("output/bombardments/");
+  if (perBombardmentOutputDirEdit) perBombardmentOutputDirEdit->setText("bombardments/");
   if (savePerBombardmentCheck) savePerBombardmentCheck->setChecked(false);
 
   auto *logFileRow = new QWidget(settingsTab);
   auto *logFileLayout = new QHBoxLayout(logFileRow);
   logFileLayout->setContentsMargins(0, 0, 0, 0);
   logFileEdit = new QLineEdit("amcset.log", logFileRow);
-  auto *logBrowse = new QPushButton("File", logFileRow);
+  auto *logBrowse = new QPushButton("Browse", logFileRow);
   connect(logBrowse, &QPushButton::clicked, this, [this]() {
     browseOutputFile(logFileEdit, "Select log file", "log");
   });
@@ -609,18 +737,6 @@ void MainWindow::createSettingsDialog() {
   enableLoggingCheck = new QCheckBox(settingsTab);
   enableLoggingCheck->setChecked(false);
   formLayout->addRow("Enable logging", enableLoggingCheck);
-
-  logSingleDisplacementCheck = new QCheckBox(settingsTab);
-  logSingleDisplacementCheck->setChecked(false);
-  formLayout->addRow("Log single displacement", logSingleDisplacementCheck);
-
-  logEndOfFlyingDistanceOnlyCheck = new QCheckBox(settingsTab);
-  logEndOfFlyingDistanceOnlyCheck->setChecked(false);
-  electronSettingsLayout->addRow("Log end-of-flight only", logEndOfFlyingDistanceOnlyCheck);
-
-  logStoppingPointOnlyCheck = new QCheckBox(settingsTab);
-  logStoppingPointOnlyCheck->setChecked(false);
-  electronSettingsLayout->addRow("Log stopping point only", logStoppingPointOnlyCheck);
 
   angleDivisorSpinBox = new QSpinBox(settingsTab);
   angleDivisorSpinBox->setRange(1, 1000000);
@@ -665,15 +781,34 @@ void MainWindow::createSettingsDialog() {
   screeningLayout->addWidget(screeningModelCombo);
   electronSettingsLayout->addRow("Screening model", screeningRow);
 
+  auto *preferencesGroup = new QGroupBox("Preferences", settingsTab);
+  auto *preferencesLayout = new QFormLayout(preferencesGroup);
+  themeModeCombo = new QComboBox(preferencesGroup);
+  themeModeCombo->addItem(tr("System"), static_cast<int>(Application::ThemeMode::System));
+  themeModeCombo->addItem(tr("Light"), static_cast<int>(Application::ThemeMode::Light));
+  themeModeCombo->addItem(tr("Dark"), static_cast<int>(Application::ThemeMode::Dark));
+  if (app_) {
+    const auto themeIndex =
+        themeModeCombo->findData(static_cast<int>(app_->getThemeMode()));
+    themeModeCombo->setCurrentIndex(themeIndex < 0 ? 0 : themeIndex);
+  }
+  connect(themeModeCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+          this, [this](int index) {
+            if (app_ && themeModeCombo) {
+              app_->setThemeMode(static_cast<Application::ThemeMode>(
+                  themeModeCombo->itemData(index).toInt()));
+              refreshSummaryView();
+            }
+          });
+  preferencesLayout->addRow(tr("Color theme"), themeModeCombo);
+
+  saveAllGraphsCheck = new QCheckBox(preferencesGroup);
+  preferencesLayout->addRow(tr("Save all graphs"), saveAllGraphsCheck);
+
   settingsLayout->addLayout(formLayout);
   settingsLayout->addWidget(electronSettingsGroup);
+  settingsLayout->addWidget(preferencesGroup);
   settingsTabs->addTab(settingsTab, "Settings");
-
-  auto *resultsPage = new QWidget(settingsTabs);
-  auto *resultsLayout = new QVBoxLayout(resultsPage);
-  resultsTabs = new QTabWidget(resultsPage);
-  resultsLayout->addWidget(resultsTabs);
-  settingsTabs->addTab(resultsPage, "Results");
 
   dialogLayout->addWidget(settingsTabs);
 

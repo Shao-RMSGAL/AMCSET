@@ -14,11 +14,11 @@ Usage
     python animate_cascade.py bombardment_0.csv --generations 0-2
     python animate_cascade.py bombardment_0.csv --generations 4
     python animate_cascade.py bombardment_0.csv --generations all
-    python animate_cascade.py bombardment_0.csv --mp4 out.mp4
-    python animate_cascade.py bombardment_0.csv --mp4 out.mp4 --fps 30
+    python animate_cascade.py bombardment_0.csv --mkv out.mkv
+    python animate_cascade.py bombardment_0.csv --mkv out.mkv --fps 30
 
 Interactive mode (default) opens a matplotlib window you can rotate/zoom
-while it plays. --mp4 renders to a video file instead (requires ffmpeg).
+while it plays. --mkv renders to a Matroska video instead (requires ffmpeg).
 
 Data model
 ----------
@@ -40,6 +40,7 @@ import matplotlib.pyplot as plt
 from matplotlib import animation
 from matplotlib.gridspec import GridSpec
 from matplotlib.lines import Line2D
+from matplotlib.ticker import ScalarFormatter
 
 COLUMN_NAMES = [
     "energy", "x", "y", "z", "vx", "vy", "vz", "znum", "mass", "gen", "time",
@@ -112,6 +113,7 @@ def build_track_arrays(df, tracks):
         tr["e"] = e[idx]
         tr["t_start"] = tr["t"][0]
         tr["t_end"] = tr["t"][-1]
+        tr["time_sorted"] = np.all(tr["t"][1:] >= tr["t"][:-1])
     return tracks
 
 
@@ -261,14 +263,18 @@ def run(args):
     show_gens = parse_generation_filter(args.generations, max_gen)
 
     t_min = df["time"].min()
-    t_max = df["time"].max()
+    data_t_max = df["time"].max()
+    t_max = min(data_t_max, args.max_time) if args.max_time is not None else data_t_max
+    if t_max <= t_min:
+        raise ValueError(f"--max-time must be greater than the first event time ({t_min:.6g} s).")
     t_span = t_max - t_min
 
     # spatial bounds (small padding)
     pad = 0.05
-    xr = (df["x"].min(), df["x"].max())
-    yr = (df["y"].min(), df["y"].max())
-    zr = (df["z"].min(), df["z"].max())
+    plotted_rows = df[df["time"] <= t_max]
+    xr = (plotted_rows["x"].min(), plotted_rows["x"].max())
+    yr = (plotted_rows["y"].min(), plotted_rows["y"].max())
+    zr = (plotted_rows["z"].min(), plotted_rows["z"].max())
 
     def padded(r):
         span = r[1] - r[0]
@@ -281,20 +287,25 @@ def run(args):
     # Only animate tracks whose generation is in the requested set
     visible_tracks = [tr for tr in tracks if tr["gen"] in show_gens]
 
-    n_frames = args.frames
+    n_frames = (max(1, round(args.duration * args.fps))
+                if args.mkv and args.fps is not None else args.frames)
     frame_times = np.linspace(t_min, t_max, n_frames)
 
-    # ---- figure layout: 3D cascade view (left, large) + diagnostics (right column)
-    fig = plt.figure(figsize=(15, 8.5))
+    # ---- large 3D and XY views above full-width XZ and YZ views
+    fig = plt.figure(figsize=(18, 12))
     fig.suptitle("Collision Cascade — Particle Tracks by Generation", fontsize=13, fontweight="bold")
-    gs = GridSpec(4, 3, figure=fig, width_ratios=[2.4, 1, 1], hspace=0.55, wspace=0.35,
-                  left=0.05, right=0.97, top=0.90, bottom=0.08)
+    gs = GridSpec(6, 3, figure=fig, height_ratios=[1, 1, 1, 1, 1.2, 1.2],
+                  width_ratios=[2.4, 1.05, 2], hspace=0.6, wspace=0.35,
+                  left=0.04, right=0.98, top=0.90, bottom=0.08)
 
-    ax3d = fig.add_subplot(gs[:, 0], projection="3d")
-    ax_disp = fig.add_subplot(gs[0, 1:])
-    ax_inc = fig.add_subplot(gs[1, 1:])
-    ax_nuc = fig.add_subplot(gs[2, 1:])
-    ax_ele = fig.add_subplot(gs[3, 1:])
+    ax3d = fig.add_subplot(gs[:4, 0], projection="3d")
+    ax_xy = fig.add_subplot(gs[:4, 1])
+    ax_xz = fig.add_subplot(gs[4, :])
+    ax_yz = fig.add_subplot(gs[5, :])
+    ax_disp = fig.add_subplot(gs[0, 2])
+    ax_inc = fig.add_subplot(gs[1, 2])
+    ax_nuc = fig.add_subplot(gs[2, 2])
+    ax_ele = fig.add_subplot(gs[3, 2])
 
     ax3d.set_xlim(*xr)
     ax3d.set_ylim(*yr)
@@ -303,6 +314,25 @@ def run(args):
     ax3d.set_ylabel("y (Å)")
     ax3d.set_zlabel("z (Å)")
     ax3d.set_title(f"Generations shown: {args.generations}", fontsize=10)
+
+    ax_xy.set_xlim(*xr)
+    ax_xy.set_ylim(*yr)
+    ax_xy.set_aspect("equal", adjustable="box")
+    ax_xy.set_xlabel("x (Å)")
+    ax_xy.set_ylabel("y (Å)")
+    ax_xy.set_title("XY view", fontsize=10)
+
+    ax_xz.set_xlim(*zr)
+    ax_xz.set_ylim(*xr)
+    ax_xz.set_xlabel("z (Å)")
+    ax_xz.set_ylabel("x (Å)")
+    ax_xz.set_title("XZ view (Z horizontal)", fontsize=10)
+
+    ax_yz.set_xlim(*zr)
+    ax_yz.set_ylim(*yr)
+    ax_yz.set_xlabel("z (Å)")
+    ax_yz.set_ylabel("y (Å)")
+    ax_yz.set_title("YZ view (Z horizontal)", fontsize=10)
 
     time_text = ax3d.text2D(0.02, 0.97, "", transform=ax3d.transAxes,
                              fontsize=11, va="top",
@@ -318,6 +348,12 @@ def run(args):
     # line + head-marker artists per visible track
     line_artists = []
     head_artists = []
+    xy_line_artists = []
+    xy_head_artists = []
+    xz_line_artists = []
+    xz_head_artists = []
+    yz_line_artists = []
+    yz_head_artists = []
     for tr in visible_tracks:
         color = gen_color(tr["gen"])
         (line,) = ax3d.plot([], [], [], color=color, lw=1.2, alpha=0.85)
@@ -325,12 +361,35 @@ def run(args):
                              markeredgecolor="black", markeredgewidth=0.3)
         line_artists.append(line)
         head_artists.append(head)
+        (xy_line,) = ax_xy.plot([], [], color=color, lw=1.2, alpha=0.85)
+        (xy_head,) = ax_xy.plot([], [], marker="o", color=color, markersize=3.5,
+                                markeredgecolor="black", markeredgewidth=0.3)
+        xy_line_artists.append(xy_line)
+        xy_head_artists.append(xy_head)
+        (xz_line,) = ax_xz.plot([], [], color=color, lw=1.2, alpha=0.85)
+        (xz_head,) = ax_xz.plot([], [], marker="o", color=color, markersize=3.5,
+                                markeredgecolor="black", markeredgewidth=0.3)
+        xz_line_artists.append(xz_line)
+        xz_head_artists.append(xz_head)
+        (yz_line,) = ax_yz.plot([], [], color=color, lw=1.2, alpha=0.85)
+        (yz_head,) = ax_yz.plot([], [], marker="o", color=color, markersize=3.5,
+                    markeredgecolor="black", markeredgewidth=0.3)
+        yz_line_artists.append(yz_line)
+        yz_head_artists.append(yz_head)
 
     # ---- diagnostic panels: static full curves, with a moving cursor
-    def setup_panel(ax, xdata, ydata, ylabel, color):
+    def setup_panel(ax, xdata, ydata, ylabel, color, scientific=False):
+        visible = xdata <= t_max
+        xdata = xdata[visible]
+        ydata = ydata[visible]
         ax.plot(xdata, ydata, color=color, lw=1.3)
         ax.set_ylabel(ylabel, fontsize=8)
         ax.tick_params(labelsize=7)
+        if scientific:
+            formatter = ScalarFormatter(useMathText=True)
+            formatter.set_scientific(True)
+            formatter.set_powerlimits((0, 0))
+            ax.yaxis.set_major_formatter(formatter)
         ax.set_xlim(t_min, t_max)
         ymax = ydata.max() if len(ydata) else 1.0
         ax.set_ylim(0, ymax * 1.1 if ymax > 0 else 1.0)
@@ -344,15 +403,15 @@ def run(args):
     ax_disp.set_title("Cumulative displacements vs time", fontsize=9)
 
     cur_inc, vl_inc = setup_panel(ax_inc, diag["incident_t"], diag["incident_e"],
-                                   "Incident E (eV)", "#b2182b")
+                                   "Incident E (eV)", "#b2182b", scientific=True)
     ax_inc.set_title("Incident particle energy vs time", fontsize=9)
 
     cur_nuc, vl_nuc = setup_panel(ax_nuc, diag["nuclear_t"], diag["nuclear_cum"],
-                                   "Nuclear loss (eV)", "#4daf4a")
+                                   "Nuclear loss (eV)", "#4daf4a", scientific=True)
     ax_nuc.set_title("Cumulative nuclear energy loss vs time", fontsize=9)
 
     cur_ele, vl_ele = setup_panel(ax_ele, diag["elec_t"], diag["elec_cum"],
-                                   "Electronic loss (eV)", "#984ea3")
+                                   "Electronic loss (eV)", "#984ea3", scientific=True)
     ax_ele.set_title("Cumulative electronic energy loss vs time", fontsize=9)
     ax_ele.set_xlabel("time (s)", fontsize=8)
 
@@ -379,29 +438,64 @@ def run(args):
             line.set_3d_properties([])
             head.set_data([], [])
             head.set_3d_properties([])
+        for line, head in zip(xy_line_artists, xy_head_artists):
+            line.set_data([], [])
+            head.set_data([], [])
+        for line, head in zip(xz_line_artists, xz_head_artists):
+            line.set_data([], [])
+            head.set_data([], [])
+        for line, head in zip(yz_line_artists, yz_head_artists):
+            line.set_data([], [])
+            head.set_data([], [])
         time_text.set_text(fmt_time(t_min))
-        return line_artists + head_artists + [time_text]
+        return (line_artists + head_artists + xy_line_artists + xy_head_artists
+                + xz_line_artists + xz_head_artists + yz_line_artists
+                + yz_head_artists + [time_text])
 
     def animate(frame_i):
         tcur = frame_times[frame_i]
-        for tr, line, head in zip(visible_tracks, line_artists, head_artists):
+        for tr, line, head, xy_line, xy_head, xz_line, xz_head, yz_line, yz_head in zip(
+                visible_tracks, line_artists, head_artists, xy_line_artists,
+            xy_head_artists, xz_line_artists, xz_head_artists,
+            yz_line_artists, yz_head_artists):
             if tcur < tr["t_start"]:
                 line.set_data([], [])
                 line.set_3d_properties([])
                 head.set_data([], [])
                 head.set_3d_properties([])
+                xy_line.set_data([], [])
+                xy_head.set_data([], [])
+                xz_line.set_data([], [])
+                xz_head.set_data([], [])
+                yz_line.set_data([], [])
+                yz_head.set_data([], [])
                 continue
-            mask = tr["t"] <= tcur
-            n = mask.sum()
-            if n == 0:
+            if tr["time_sorted"]:
+                n = np.searchsorted(tr["t"], tcur, side="right")
+                if n == 0:
+                    continue
+                xs = tr["x"][:n]
+                ys = tr["y"][:n]
+                zs = tr["z"][:n]
+            else:
+                visible = tr["t"] <= tcur
+                if not visible.any():
+                    continue
+                xs = tr["x"][visible]
+                ys = tr["y"][visible]
+                zs = tr["z"][visible]
+            if len(xs) == 0:
                 continue
-            xs = tr["x"][:n]
-            ys = tr["y"][:n]
-            zs = tr["z"][:n]
             line.set_data(xs, ys)
             line.set_3d_properties(zs)
             head.set_data([xs[-1]], [ys[-1]])
             head.set_3d_properties([zs[-1]])
+            xy_line.set_data(xs, ys)
+            xy_head.set_data([xs[-1]], [ys[-1]])
+            xz_line.set_data(zs, xs)
+            xz_head.set_data([zs[-1]], [xs[-1]])
+            yz_line.set_data(zs, ys)
+            yz_head.set_data([zs[-1]], [ys[-1]])
 
         time_text.set_text(fmt_time(tcur))
 
@@ -410,7 +504,9 @@ def run(args):
         update_panel(cur_nuc, vl_nuc, diag["nuclear_t"], diag["nuclear_cum"], tcur)
         update_panel(cur_ele, vl_ele, diag["elec_t"], diag["elec_cum"], tcur)
 
-        return line_artists + head_artists + [time_text, cur_disp, cur_inc, cur_nuc, cur_ele]
+        return (line_artists + head_artists + xy_line_artists + xy_head_artists
+            + xz_line_artists + xz_head_artists + yz_line_artists + yz_head_artists
+            + [time_text, cur_disp, cur_inc, cur_nuc, cur_ele])
 
     interval_ms = (args.duration * 1000.0) / n_frames
 
@@ -419,12 +515,14 @@ def run(args):
         interval=interval_ms, blit=False, repeat=True,
     )
 
-    if args.mp4:
+    if args.mkv:
         fps = args.fps if args.fps else max(1, round(n_frames / args.duration))
-        writer = animation.FFMpegWriter(fps=fps, bitrate=args.bitrate)
-        print(f"Rendering MP4 to {args.mp4} ({n_frames} frames @ {fps} fps, "
-              f"~{args.duration:.1f}s playback)...")
-        ani.save(args.mp4, writer=writer, dpi=args.dpi)
+        writer = animation.FFMpegWriter(fps=fps, bitrate=args.bitrate,
+                                        extra_args=["-f", "matroska"])
+        playback_duration = n_frames / fps
+        print(f"Rendering MKV to {args.mkv} ({n_frames} frames @ {fps} fps, "
+              f"~{playback_duration:.1f}s playback)...")
+        ani.save(args.mkv, writer=writer, dpi=args.dpi)
         print("Done.")
     else:
         plt.show()
@@ -435,18 +533,20 @@ def build_arg_parser():
     p.add_argument("csv", help="Path to bombardment CSV file.")
     p.add_argument("--duration", type=float, default=5.0,
                     help="Total animation playback duration in seconds (default: 5).")
+    p.add_argument("--max-time", type=float, default=None,
+                    help="Latest simulation time to plot in seconds (default: all available data).")
     p.add_argument("--frames", type=int, default=300,
-                    help="Number of animation frames (default: 300).")
+                    help="Frame count for interactive playback and video export when --fps is omitted (default: 300).")
     p.add_argument("--generations", type=str, default="all",
                     help="Which generations to show: 'all', a single number "
                          "(e.g. '2'), or a range (e.g. '0-3'). Default: all.")
-    p.add_argument("--mp4", type=str, default=None,
-                    help="If given, render to this MP4 file path instead of "
+    p.add_argument("--mkv", type=str, default=None,
+                    help="If given, render to this Matroska file path instead of "
                          "opening an interactive window (requires ffmpeg).")
     p.add_argument("--fps", type=int, default=None,
-                    help="Frames per second for MP4 export (default: frames/duration).")
-    p.add_argument("--dpi", type=int, default=120, help="DPI for MP4 export.")
-    p.add_argument("--bitrate", type=int, default=3000, help="Bitrate (kbps) for MP4 export.")
+                    help="Video frames per second; with --duration, determines export frame count and overrides --frames.")
+    p.add_argument("--dpi", type=int, default=120, help="DPI for video export.")
+    p.add_argument("--bitrate", type=int, default=3000, help="Bitrate (kbps) for video export.")
     return p
 
 

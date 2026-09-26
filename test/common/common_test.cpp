@@ -104,7 +104,6 @@ protected:
     auto ion_stopping_energy =
         energy_quantity(0.04 * kilo_electron_volt); // Stop at 4 eV
     auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
-    bool log_single_displacement = true;
     size_t divisor_angle_number = 1000;
     size_t flying_distance_number = 1000;
     auto range = length_quantity(80000000.0 * angstrom);
@@ -120,7 +119,7 @@ protected:
                 create_water_layer(length_quantity(1000.0 * angstrom))});
     Simulation::Settings settings(
         electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
-        ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+        ion_stopping_energy, ion_displacement_energy,
         divisor_angle_number, flying_distance_number, range, bombardment_count,
         is_electron, incident_energy, thread_count, incident_angle);
 
@@ -197,7 +196,6 @@ TEST_F(CommonTest, simulation_tracks_completed_bombardments) try {
   bool enable_damage_cascade = true;
   auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
   auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
-  bool log_single_displacement = true;
   size_t divisor_angle_number = 1000;
   size_t flying_distance_number = 1000;
   auto range = length_quantity(80000000.0 * angstrom);
@@ -212,7 +210,7 @@ TEST_F(CommonTest, simulation_tracks_completed_bombardments) try {
                         create_water_layer(length_quantity(1000.0 * angstrom))});
   Simulation::Settings settings(
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
-      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      ion_stopping_energy, ion_displacement_energy,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
       is_electron, incident_energy, thread_count, incident_angle);
 
@@ -225,6 +223,35 @@ TEST_F(CommonTest, simulation_tracks_completed_bombardments) try {
   FAIL();
 }
 
+TEST_F(CommonTest, cancellation_skips_unstarted_bombardments) try {
+  const auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
+  const size_t z_number = 14;
+  const size_t mass_number = 28;
+  const auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
+  const auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
+  const size_t divisor_angle_number = 1000;
+  const size_t flying_distance_number = 1000;
+  const auto range = length_quantity(80000000.0 * angstrom);
+  const size_t bombardment_count = 4;
+  const auto incident_energy = energy_quantity(50.0 * kilo_electron_volt);
+  const size_t thread_count = 2;
+
+  Simulation::Settings settings(
+      electron_stopping_energy, z_number, mass_number, true,
+      ion_stopping_energy, ion_displacement_energy, divisor_angle_number,
+      flying_distance_number, range, bombardment_count, false,
+      incident_energy, thread_count);
+  Simulation simulation(settings, Volume({create_iron_layer(range)}));
+
+  simulation.request_cancel();
+  EXPECT_EQ(simulation.run_simulation(), 0);
+  EXPECT_TRUE(simulation.is_cancelled());
+  EXPECT_EQ(simulation.get_completed_bombardment_count(), size_t{0});
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
 TEST_F(CommonTest, electron_bombardment_runs) try {
   auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
   size_t z_number = 26;
@@ -232,7 +259,6 @@ TEST_F(CommonTest, electron_bombardment_runs) try {
   bool enable_damage_cascade = true;
   auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
   auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
-  bool log_single_displacement = true;
   size_t divisor_angle_number = 64;
   size_t flying_distance_number = 64;
   auto range = length_quantity(80000000.0 * angstrom);
@@ -245,7 +271,7 @@ TEST_F(CommonTest, electron_bombardment_runs) try {
   auto volume = Volume({create_iron_layer(range)});
   Simulation::Settings settings(
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
-      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      ion_stopping_energy, ion_displacement_energy,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
       is_electron, incident_energy, thread_count, incident_angle);
 
@@ -319,7 +345,6 @@ TEST_F(CommonTest, screening_length_quickbasic_equivalence) try {
   bool enable_damage_cascade = true;
   auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
   auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
-  bool log_single_displacement = true;
   size_t divisor_angle_number = 1000;
   size_t flying_distance_number = 1000;
   auto range = length_quantity(80000000.0 * angstrom);
@@ -336,7 +361,7 @@ TEST_F(CommonTest, screening_length_quickbasic_equivalence) try {
   // Use QuickBasic screening model explicitly
   Simulation::Settings settings(
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
-      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      ion_stopping_energy, ion_displacement_energy,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
       is_electron, incident_energy, thread_count, incident_angle,
       100, 100, 100, 100, std::string("output/displacement_histogram.csv"),
@@ -503,7 +528,6 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
   bool enable_damage_cascade = false;
   auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
   auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
-  bool log_single_displacement = true;
   size_t divisor_angle_number = 1000;
   size_t flying_distance_number = 1000;
   auto range = length_quantity(80000000.0 * angstrom);
@@ -519,7 +543,7 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
 
   Simulation::Settings settings(
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
-      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      ion_stopping_energy, ion_displacement_energy,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
       is_electron, incident_energy, thread_count,
       0.0 * amcset::common::radian, 64, 128, 256, 512,
@@ -536,7 +560,6 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
   ASSERT_EQ(settings.enable_damage_cascade_, enable_damage_cascade);
   ASSERT_EQ(settings.ion_stopping_energy_, ion_stopping_energy);
   ASSERT_EQ(settings.ion_displacement_energy_, ion_displacement_energy);
-  ASSERT_EQ(settings.log_single_displacement_, log_single_displacement);
   ASSERT_EQ(settings.divisor_angle_number_, divisor_angle_number);
   ASSERT_EQ(settings.flying_distance_number_, flying_distance_number);
   ASSERT_EQ(settings.range_, range);
@@ -572,9 +595,6 @@ TEST_F(CommonTest, simulation_and_settings_test) try {
       simulation.get_settings(&Simulation::Settings::ion_displacement_energy_),
       ion_displacement_energy);
   ASSERT_EQ(
-      simulation.get_settings(&Simulation::Settings::log_single_displacement_),
-      log_single_displacement);
-  ASSERT_EQ(
       simulation.get_settings(&Simulation::Settings::divisor_angle_number_),
       divisor_angle_number);
   ASSERT_EQ(
@@ -606,7 +626,6 @@ TEST_F(CommonTest, simulation_writes_all_output_files) try {
   bool enable_damage_cascade = false;
   auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
   auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
-  bool log_single_displacement = true;
   size_t divisor_angle_number = 1000;
   size_t flying_distance_number = 1000;
   auto range = length_quantity(5000000.0 * angstrom);
@@ -621,7 +640,7 @@ TEST_F(CommonTest, simulation_writes_all_output_files) try {
 
   Simulation::Settings settings(
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
-      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      ion_stopping_energy, ion_displacement_energy,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
       is_electron, incident_energy, thread_count, incident_angle, 64, 64, 64,
       64, "output/test_regression/displacement_histogram.csv",
@@ -652,7 +671,6 @@ TEST_F(CommonTest, bombardment_test) try {
   bool enable_damage_cascade = true;
   auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
   auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
-  bool log_single_displacement = true;
   size_t divisor_angle_number = 1000;
   size_t flying_distance_number = 1000;
   auto range = length_quantity(80000000.0 * angstrom);
@@ -666,7 +684,7 @@ TEST_F(CommonTest, bombardment_test) try {
 
   Simulation::Settings settings(
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
-      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      ion_stopping_energy, ion_displacement_energy,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
       is_electron, incident_energy, thread_count, incident_angle);
 

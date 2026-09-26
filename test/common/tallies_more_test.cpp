@@ -56,7 +56,6 @@ TEST(TalliesIntegration, SimulationAggregatesTallies) {
   bool enable_damage_cascade = true;
   auto ion_stopping_energy = energy_quantity(0.04 * kilo_electron_volt);
   auto ion_displacement_energy = energy_quantity(0.04 * kilo_electron_volt);
-  bool log_single_displacement = true;
   size_t divisor_angle_number = 100;
   size_t flying_distance_number = 100;
   auto range = length_quantity(80000000.0 * angstrom);
@@ -70,7 +69,7 @@ TEST(TalliesIntegration, SimulationAggregatesTallies) {
 
   Simulation::Settings settings(
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
-      ion_stopping_energy, ion_displacement_energy, log_single_displacement,
+      ion_stopping_energy, ion_displacement_energy,
       divisor_angle_number, flying_distance_number, range, bombardment_count,
       is_electron, incident_energy, thread_count);
 

@@ -19,6 +19,8 @@
 
 // Qt includes
 #include <QPalette>
+#include <QStyle>
+#include <QStyleFactory>
 
 // Logging libraries
 #include <glog/logging.h>
@@ -31,9 +33,15 @@ namespace gui {
 
 Application::Application(amcset::common::Simulation *simulation)
     : QObject(nullptr), simulation_(simulation) {
-  // Initialize settings
-  darkMode_ = true;
+  systemStyleName_ = qApp->style()->objectName();
+  systemPalette_ = qApp->palette();
   settings_.beginGroup("MainWindow");
+  const auto storedMode = settings_.value("themeMode", 0).toInt();
+  themeMode_ = storedMode >= static_cast<int>(ThemeMode::System) &&
+                       storedMode <= static_cast<int>(ThemeMode::Dark)
+                   ? static_cast<ThemeMode>(storedMode)
+                   : ThemeMode::System;
+  setThemeMode(themeMode_);
 }
 
 Application::~Application() {
@@ -42,64 +50,66 @@ Application::~Application() {
 }
 
 void Application::toggleDarkMode() {
-#ifndef Q_OS_MACOS
-  qApp->setStyle("Fusion");
-  auto palette = QPalette();
-  auto disabledColor = QColor(127, 127, 127);
+  setThemeMode(getDarkMode() ? ThemeMode::Light : ThemeMode::Dark);
+}
 
-  // Slightly inefficient, but easier than manually declaring each variable
-  QColor color;
-  QColor color_1;
-  Qt::GlobalColor primaryColor;
-  Qt::GlobalColor secondaryColor;
+void Application::setThemeMode(ThemeMode mode) {
+  themeMode_ = mode;
+  settings_.setValue("themeMode", static_cast<int>(themeMode_));
 
-  if (darkMode_) {
-    LOG(INFO) << "Enabling Light Mode";
-    color_1 = QColor(200, 200, 200);
-    color = QColor(255, 255, 255);
-    primaryColor = Qt::black;
-    secondaryColor = Qt::white;
-  } else {
-    LOG(INFO) << "Enabling Dark Mode";
-    color_1 = QColor(18, 18, 18);
-    color = QColor(38, 38, 38);
-    primaryColor = Qt::white;
-    secondaryColor = Qt::black;
+  if (themeMode_ == ThemeMode::System) {
+    qApp->setStyle(QStyleFactory::create(systemStyleName_));
+    qApp->setPalette(systemPalette_);
+    qApp->setStyleSheet(QString());
+    return;
   }
 
-  darkMode_ = !darkMode_;
+  qApp->setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+  auto palette = QPalette();
+  const auto disabledColor = QColor(127, 127, 127);
+  const bool dark = themeMode_ == ThemeMode::Dark;
+  const auto windowColor = dark ? QColor(38, 38, 38) : QColor(242, 242, 242);
+  const auto baseColor = dark ? QColor(25, 25, 25) : QColor(255, 255, 255);
+  const auto alternateColor = dark ? QColor(45, 45, 45) : QColor(248, 248, 248);
+  const auto textColor = dark ? QColor(238, 238, 238) : QColor(32, 32, 32);
+  const auto buttonColor = dark ? QColor(52, 52, 52) : QColor(232, 232, 232);
+  const auto tooltipColor = dark ? QColor(48, 48, 48) : QColor(255, 255, 220);
 
-  palette.setColor(QPalette::Window, color);
-  palette.setColor(QPalette::WindowText, primaryColor);
-  palette.setColor(QPalette::Base, color);
-  palette.setColor(QPalette::AlternateBase, color);
-  palette.setColor(QPalette::ToolTipBase, secondaryColor);
-  palette.setColor(QPalette::ToolTipText, secondaryColor);
-  palette.setColor(QPalette::Text, primaryColor);
+  palette.setColor(QPalette::Window, windowColor);
+  palette.setColor(QPalette::WindowText, textColor);
+  palette.setColor(QPalette::Base, baseColor);
+  palette.setColor(QPalette::AlternateBase, alternateColor);
+  palette.setColor(QPalette::ToolTipBase, tooltipColor);
+  palette.setColor(QPalette::ToolTipText, textColor);
+  palette.setColor(QPalette::Text, textColor);
   palette.setColor(QPalette::Disabled, QPalette::Text, disabledColor);
-  palette.setColor(QPalette::Button, color);
-  palette.setColor(QPalette::ButtonText, secondaryColor);
+  palette.setColor(QPalette::Button, buttonColor);
+  palette.setColor(QPalette::ButtonText, textColor);
   palette.setColor(QPalette::Disabled, QPalette::ButtonText, disabledColor);
   palette.setColor(QPalette::BrightText, Qt::red);
   palette.setColor(QPalette::Link, QColor(42, 130, 218));
   palette.setColor(QPalette::Highlight, QColor(42, 130, 218));
-  palette.setColor(QPalette::HighlightedText, primaryColor);
+  palette.setColor(QPalette::HighlightedText, Qt::white);
   palette.setColor(QPalette::Disabled, QPalette::HighlightedText,
                    disabledColor);
-  // palette.setColor(QPalette::, QPalette::HighlightedText, color_1);
-
-  palette.setColor(QPalette::ButtonText, primaryColor);
 
   qApp->setPalette(palette);
-  qApp->setStyleSheet("QToolTip { color: #000000; background-color:#ffffff;"
-                      "border: 1px solid black; }");
-#else
-  LOG(INFO) << "Dark mode cannot be set. You are on MacOS."
-#endif
+  qApp->setStyleSheet(QString());
 }
-// }}}
 
-bool Application::getDarkMode() const noexcept { return darkMode_; };
+bool Application::getDarkMode() const noexcept {
+  if (themeMode_ == ThemeMode::Dark) {
+    return true;
+  }
+  if (themeMode_ == ThemeMode::Light) {
+    return false;
+  }
+  return qApp->palette().color(QPalette::Window).lightness() < 128;
+}
+
+Application::ThemeMode Application::getThemeMode() const noexcept {
+  return themeMode_;
+}
 
 // void Application::runSimulation() { simulation_->run_simulation(); }
 
