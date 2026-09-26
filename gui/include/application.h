@@ -47,6 +47,10 @@ public:
   bool getDarkMode() const noexcept;
   void setThemeMode(ThemeMode mode);
   ThemeMode getThemeMode() const noexcept;
+  bool showLargeCsvWarning() const;
+  void setShowLargeCsvWarning(bool show);
+  bool showOutputOverwriteWarning() const;
+  void setShowOutputOverwriteWarning(bool show);
   // void runSimulation();
 
   void saveWindowSize(const QSize &size);

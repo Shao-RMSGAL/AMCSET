@@ -692,10 +692,17 @@ void MainWindow::createSettingsDialog() {
   // Use "clicked" so programmatic changes (loading settings at startup)
   // do not trigger the warning — only user clicks do.
   connect(savePerBombardmentCheck, &QCheckBox::clicked, this, [this](bool checked) {
-    if (!checked) return;
-    QMessageBox::warning(this, "Large Output Warning",
+    if (!checked || (app_ && !app_->showLargeCsvWarning())) return;
+    QMessageBox warning(QMessageBox::Warning, "Large Output Warning",
       "Saving per-bombardment CSVs can generate very large files. It is not recommended for more than 100 bombardments.",
-      QMessageBox::Ok);
+      QMessageBox::Ok, this);
+    auto *dontTellAgain = new QCheckBox(tr("Do not tell me again"), &warning);
+    warning.setCheckBox(dontTellAgain);
+    warning.exec();
+    if (app_ && dontTellAgain->isChecked()) {
+      app_->setShowLargeCsvWarning(false);
+      if (showLargeCsvWarningCheck) showLargeCsvWarningCheck->setChecked(false);
+    }
   });
 
   for (const auto &entry : fileFields) {
@@ -804,6 +811,21 @@ void MainWindow::createSettingsDialog() {
 
   saveAllGraphsCheck = new QCheckBox(preferencesGroup);
   preferencesLayout->addRow(tr("Save all graphs"), saveAllGraphsCheck);
+
+  showLargeCsvWarningCheck = new QCheckBox(preferencesGroup);
+  showLargeCsvWarningCheck->setChecked(!app_ || app_->showLargeCsvWarning());
+  connect(showLargeCsvWarningCheck, &QCheckBox::toggled, this, [this](bool show) {
+    if (app_) app_->setShowLargeCsvWarning(show);
+  });
+  preferencesLayout->addRow(tr("Show large CSV warning"), showLargeCsvWarningCheck);
+
+  showOutputOverwriteWarningCheck = new QCheckBox(preferencesGroup);
+  showOutputOverwriteWarningCheck->setChecked(!app_ || app_->showOutputOverwriteWarning());
+  connect(showOutputOverwriteWarningCheck, &QCheckBox::toggled, this, [this](bool show) {
+    if (app_) app_->setShowOutputOverwriteWarning(show);
+  });
+  preferencesLayout->addRow(tr("Show output directory overwrite warning"),
+                            showOutputOverwriteWarningCheck);
 
   settingsLayout->addLayout(formLayout);
   settingsLayout->addWidget(electronSettingsGroup);

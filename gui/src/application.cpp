@@ -111,6 +111,22 @@ Application::ThemeMode Application::getThemeMode() const noexcept {
   return themeMode_;
 }
 
+bool Application::showLargeCsvWarning() const {
+  return settings_.value("showLargeCsvWarning", true).toBool();
+}
+
+void Application::setShowLargeCsvWarning(bool show) {
+  settings_.setValue("showLargeCsvWarning", show);
+}
+
+bool Application::showOutputOverwriteWarning() const {
+  return settings_.value("showOutputOverwriteWarning", true).toBool();
+}
+
+void Application::setShowOutputOverwriteWarning(bool show) {
+  settings_.setValue("showOutputOverwriteWarning", show);
+}
+
 // void Application::runSimulation() { simulation_->run_simulation(); }
 
 void Application::saveWindowSize(const QSize &size) {

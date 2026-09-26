@@ -206,13 +206,18 @@ void MainWindow::runSimulation() {
   // Perform safety confirmations BEFORE constructing or launching the simulation.
   if (savePerBombardmentCheck && savePerBombardmentCheck->isChecked()) {
     // Warn only when bombardment count is large
-    if (bombardment_count > 100) {
-      const auto ret = QMessageBox::warning(this, "Large Output Warning",
+    if (bombardment_count > 100 && (!app_ || app_->showLargeCsvWarning())) {
+      QMessageBox warning(QMessageBox::Warning, "Large Output Warning",
         "Saving per-bombardment CSVs can generate very large files. It is not recommended for more than 100 bombardments. Continue?",
-        QMessageBox::Ok | QMessageBox::Cancel);
-      if (ret == QMessageBox::Cancel) {
-        return;
+        QMessageBox::Ok | QMessageBox::Cancel, this);
+      auto *dontTellAgain = new QCheckBox(tr("Do not tell me again"), &warning);
+      warning.setCheckBox(dontTellAgain);
+      const auto ret = warning.exec();
+      if (app_ && dontTellAgain->isChecked()) {
+        app_->setShowLargeCsvWarning(false);
+        if (showLargeCsvWarningCheck) showLargeCsvWarningCheck->setChecked(false);
       }
+      if (ret == QMessageBox::Cancel) return;
     }
 
     // Check whether the per-bombardment output directory already contains files.
@@ -221,13 +226,21 @@ void MainWindow::runSimulation() {
       const QDir dir(perDir);
       if (dir.exists()) {
         const auto entries = dir.entryList(QDir::AllEntries | QDir::NoDotAndDotDot);
-        if (!entries.isEmpty()) {
-          const auto overwriteRet = QMessageBox::warning(this, "Output Directory Not Empty",
+        if (!entries.isEmpty() &&
+            (!app_ || app_->showOutputOverwriteWarning())) {
+          QMessageBox warning(QMessageBox::Warning, "Output Directory Not Empty",
             QStringLiteral("The per-bombardment output directory '%1' is not empty. Running another simulation may overwrite existing files. Continue?").arg(perDir),
-            QMessageBox::Ok | QMessageBox::Cancel);
-          if (overwriteRet == QMessageBox::Cancel) {
-            return;
+            QMessageBox::Ok | QMessageBox::Cancel, this);
+          auto *dontTellAgain = new QCheckBox(tr("Do not tell me again"), &warning);
+          warning.setCheckBox(dontTellAgain);
+          const auto overwriteRet = warning.exec();
+          if (app_ && dontTellAgain->isChecked()) {
+            app_->setShowOutputOverwriteWarning(false);
+            if (showOutputOverwriteWarningCheck) {
+              showOutputOverwriteWarningCheck->setChecked(false);
+            }
           }
+          if (overwriteRet == QMessageBox::Cancel) return;
         }
       }
     }

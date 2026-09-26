@@ -195,6 +195,8 @@ private:
   QCheckBox *enableLoggingCheck = nullptr;
   QCheckBox *savePerBombardmentCheck = nullptr;
   QCheckBox *saveAllGraphsCheck = nullptr;
+  QCheckBox *showLargeCsvWarningCheck = nullptr;
+  QCheckBox *showOutputOverwriteWarningCheck = nullptr;
   QSpinBox *angleDivisorSpinBox = nullptr;
   QSpinBox *flyingDistanceSpinBox = nullptr;
   QLineEdit *electronScreeningParametersEdit = nullptr;
