@@ -2,13 +2,8 @@
 * text=auto
 
 # C/C++ source files: store LF in the repository
-*.c     text eol=lf
 *.h     text eol=lf
-*.cc    text eol=lf
 *.cpp   text eol=lf
-*.cxx   text eol=lf
-*.hpp   text eol=lf
-*.hxx   text eol=lf
 
 # CMake
 *.cmake text eol=lf
