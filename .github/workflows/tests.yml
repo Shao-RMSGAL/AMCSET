@@ -1,0 +1,43 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: self-hosted
+    timeout-minutes: 180
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Conan
+        run: python -m pip install --disable-pip-version-check conan==2.7.0
+        shell: powershell
+
+      - name: Detect build environment
+        run: conan profile detect --force
+        shell: powershell
+
+      - name: Install dependencies
+        run: .\qbuild.ps1 -Conan
+        shell: powershell
+
+      - name: Build
+        run: .\qbuild.ps1 -Build
+        shell: powershell
+
+      - name: Run tests
+        run: ctest --test-dir build/test --build-config Release --output-on-failure
+        shell: powershell
