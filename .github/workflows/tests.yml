@@ -23,7 +23,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install Conan
-        run: python -m pip install --disable-pip-version-check conan==2.7.0
+        run: |
+          python -m pip install --disable-pip-version-check conan==2.7.0
+          conan remote update conancenter --url https://center2.conan.io
         shell: powershell
 
       - name: Detect build environment
