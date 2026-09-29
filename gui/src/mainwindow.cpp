@@ -361,9 +361,27 @@ MainWindow::MainWindow(Application *app) : app_(app) {
   xyProjectionCheck->setChecked(true);
   yzProjectionCheck->setChecked(true);
   xzProjectionCheck->setChecked(true);
-  projectionLayout->addWidget(xyProjectionCheck);
-  projectionLayout->addWidget(yzProjectionCheck);
-  projectionLayout->addWidget(xzProjectionCheck);
+  auto addProjectionControl = [this, projectionSidebar, projectionLayout](
+                                  QCheckBox *check, Canvas *canvas,
+                                  const QString &fileName) {
+    auto *row = new QWidget(projectionSidebar);
+    auto *rowLayout = new QHBoxLayout(row);
+    rowLayout->setContentsMargins(0, 0, 0, 0);
+    auto *saveButton = new QPushButton(tr("Save PNG"), row);
+    saveButton->setEnabled(check->isChecked());
+    rowLayout->addWidget(check, 1);
+    rowLayout->addWidget(saveButton);
+    projectionLayout->addWidget(row);
+    connect(check, &QCheckBox::toggled, saveButton, &QWidget::setEnabled);
+    connect(saveButton, &QPushButton::clicked, this,
+            [this, canvas, fileName]() { saveProjection(canvas, fileName); });
+  };
+  addProjectionControl(xyProjectionCheck, xyCanvas,
+                       QStringLiteral("xy_projection.png"));
+  addProjectionControl(yzProjectionCheck, yzCanvas,
+                       QStringLiteral("yz_projection.png"));
+  addProjectionControl(xzProjectionCheck, xzCanvas,
+                       QStringLiteral("xz_projection.png"));
   generationFilterCombo = new QComboBox(projectionSidebar);
   generationFilterCombo->addItems(
       {tr("Incident particle only"), tr("Primary knock-ons only"),

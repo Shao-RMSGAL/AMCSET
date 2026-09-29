@@ -524,6 +524,7 @@ void MainWindow::populateResultCharts() {
       const auto kind = detectHistogramKind(filePath);
       const auto csvBaseName = fileInfo.completeBaseName();
       auto *plotWidget = new HistogramPlotWidget(filePath, title, kind, target);
+      plotWidget->setProperty("graphFileName", csvBaseName);
       if (!fileInfo.exists() || !fileInfo.isFile()) {
         plotWidget->setHistogram(common::Histogram());
       }
@@ -531,7 +532,7 @@ void MainWindow::populateResultCharts() {
       auto *chartPage = new QWidget(target);
       auto *chartLayout = new QVBoxLayout(chartPage);
       auto *chartActions = new QHBoxLayout();
-      auto *saveButton = new QPushButton(tr("Save"), chartPage);
+      auto *saveButton = new QPushButton(tr("Save PNG"), chartPage);
       chartActions->addStretch();
       chartActions->addWidget(saveButton);
       chartLayout->addWidget(plotWidget, 1);
@@ -540,37 +541,38 @@ void MainWindow::populateResultCharts() {
 
       connect(saveButton, &QPushButton::clicked, this,
                 [this, plotWidget, csvBaseName]() {
-                const auto outputDir = outputDirectoryEdit
-                                           ? outputDirectoryEdit->text().trimmed()
-                                           : QStringLiteral("output");
+                auto outputDir = outputDirectoryEdit
+                                     ? outputDirectoryEdit->text().trimmed()
+                                     : QStringLiteral("output");
+                if (outputDir.isEmpty()) {
+                  outputDir = QStringLiteral("output");
+                }
+                if (!QDir().mkpath(outputDir)) {
+                  QMessageBox::warning(
+                      this, tr("Save graph"),
+                      tr("Unable to create output directory %1").arg(outputDir));
+                  return;
+                }
                 const auto suggestedPath =
-                  QDir(outputDir).filePath(csvBaseName + QStringLiteral(".png"));
+                    QDir(outputDir).absoluteFilePath(
+                        csvBaseName + QStringLiteral(".png"));
                 auto imagePath = QFileDialog::getSaveFileName(
                     this, tr("Save graph"), suggestedPath,
                     tr("PNG image (*.png)"));
                 if (imagePath.isEmpty()) {
                   return;
                 }
-                if (QFileInfo(imagePath).suffix().isEmpty()) {
-                  imagePath += QStringLiteral(".png");
+                const QFileInfo selectedFile(imagePath);
+                if (selectedFile.suffix().compare(QStringLiteral("png"),
+                                                  Qt::CaseInsensitive) != 0) {
+                  imagePath = selectedFile.dir().filePath(
+                      selectedFile.completeBaseName() + QStringLiteral(".png"));
                 }
                 if (!plotWidget->savePng(imagePath)) {
                   QMessageBox::warning(this, tr("Save graph"),
                                        tr("Unable to save graph to %1").arg(imagePath));
                 }
               });
-
-      if (saveAllGraphsCheck && saveAllGraphsCheck->isChecked()) {
-        const auto outputDir = outputDirectoryEdit
-                                   ? outputDirectoryEdit->text().trimmed()
-                                   : QStringLiteral("output");
-        QDir().mkpath(outputDir);
-        const auto imagePath =
-          QDir(outputDir).filePath(csvBaseName + QStringLiteral(".png"));
-        if (!plotWidget->savePng(imagePath)) {
-          updateResultPane(tr("Unable to save graph to %1").arg(imagePath));
-        }
-      }
     };
 
     const auto outputDirPath = outputDirectoryEdit ? outputDirectoryEdit->text().trimmed() : QStringLiteral("output");
@@ -646,6 +648,114 @@ void MainWindow::populateResultCharts() {
       refreshLiveHistograms(latestLiveTallies,
                             latestLiveTalliesBombardmentCount);
     }
+  }
+}
+
+void MainWindow::saveProjection(Canvas *projection, const QString &fileName) {
+  if (!projection) {
+    return;
+  }
+
+  auto outputDir = outputDirectoryEdit
+                       ? outputDirectoryEdit->text().trimmed()
+                       : QStringLiteral("output");
+  if (outputDir.isEmpty()) {
+    outputDir = QStringLiteral("output");
+  }
+  if (!QDir().mkpath(outputDir)) {
+    QMessageBox::warning(
+        this, tr("Save graph"),
+        tr("Unable to create output directory %1").arg(outputDir));
+    return;
+  }
+
+  auto imagePath = QFileDialog::getSaveFileName(
+      this, tr("Save graph"),
+      QDir(outputDir).absoluteFilePath(fileName), tr("PNG image (*.png)"));
+  if (imagePath.isEmpty()) {
+    return;
+  }
+  const QFileInfo selectedFile(imagePath);
+  if (selectedFile.suffix().compare(QStringLiteral("png"),
+                                    Qt::CaseInsensitive) != 0) {
+    imagePath = selectedFile.dir().filePath(
+        selectedFile.completeBaseName() + QStringLiteral(".png"));
+  }
+  if (!projection->savePng(imagePath)) {
+    QMessageBox::warning(this, tr("Save graph"),
+                         tr("Unable to save graph to %1").arg(imagePath));
+  }
+}
+
+void MainWindow::saveGraphsToOutputDirectory() {
+  auto outputDir = outputDirectoryEdit
+                       ? outputDirectoryEdit->text().trimmed()
+                       : QStringLiteral("output");
+  if (outputDir.isEmpty()) {
+    outputDir = QStringLiteral("output");
+  }
+  if (!QDir().mkpath(outputDir)) {
+    const auto message =
+        tr("Unable to create graph output directory %1").arg(outputDir);
+    updateResultPane(message);
+    QMessageBox::warning(this, tr("Save graphs"), message);
+    return;
+  }
+
+  QStringList failedImages;
+  int savedCount = 0;
+  auto saveProjectionIfEnabled =
+      [&](Canvas *projection, QCheckBox *check, const QString &fileName) {
+    if (!projection || !check || !check->isChecked()) {
+      return;
+    }
+    const auto imagePath = QDir(outputDir).filePath(fileName);
+    if (projection->savePng(imagePath)) {
+      ++savedCount;
+    } else {
+      failedImages.append(imagePath);
+    }
+  };
+  saveProjectionIfEnabled(xyCanvas, xyProjectionCheck,
+                          QStringLiteral("xy_projection.png"));
+  saveProjectionIfEnabled(yzCanvas, yzProjectionCheck,
+                          QStringLiteral("yz_projection.png"));
+  saveProjectionIfEnabled(xzCanvas, xzProjectionCheck,
+                          QStringLiteral("xz_projection.png"));
+
+  if (histogramTabs) {
+    for (int tabIndex = 0; tabIndex < histogramTabs->count(); ++tabIndex) {
+      auto *page = histogramTabs->widget(tabIndex);
+      auto *plotWidget =
+          page ? page->findChild<HistogramPlotWidget *>() : nullptr;
+      if (!plotWidget || !plotWidget->isEnabled()) {
+        continue;
+      }
+
+      auto graphFileName =
+          plotWidget->property("graphFileName").toString().trimmed();
+      if (graphFileName.isEmpty()) {
+        graphFileName = histogramTabs->tabText(tabIndex);
+      }
+      const auto imagePath =
+          QDir(outputDir).filePath(graphFileName + QStringLiteral(".png"));
+      if (plotWidget->savePng(imagePath)) {
+        ++savedCount;
+      } else {
+        failedImages.append(imagePath);
+      }
+    }
+  }
+
+  if (savedCount > 0) {
+    updateResultPane(
+        tr("Saved %1 graph PNG(s) to %2").arg(savedCount).arg(outputDir));
+  }
+  if (!failedImages.isEmpty()) {
+    const auto message =
+        tr("Unable to save graph images:\n%1").arg(failedImages.join('\n'));
+    updateResultPane(message);
+    QMessageBox::warning(this, tr("Save graphs"), message);
   }
 }
 
@@ -952,7 +1062,11 @@ void MainWindow::createSettingsDialog() {
   preferencesLayout->addRow(tr("Color theme"), themeModeCombo);
 
   saveAllGraphsCheck = new QCheckBox(preferencesGroup);
-  preferencesLayout->addRow(tr("Save all graphs"), saveAllGraphsCheck);
+  saveAllGraphsCheck->setToolTip(
+      tr("Save a PNG for each enabled graph to the output directory after a "
+         "simulation completes."));
+  preferencesLayout->addRow(
+      tr("Automatically save graphs after simulation"), saveAllGraphsCheck);
 
   showLargeCsvWarningCheck = new QCheckBox(preferencesGroup);
   showLargeCsvWarningCheck->setChecked(!app_ || app_->showLargeCsvWarning());

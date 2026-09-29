@@ -47,6 +47,7 @@ public:
   void setGenerationFilter(const QSet<std::size_t> &generations,
                           bool showAllGenerations);
   void setRangeAngstrom(double rangeAngstrom);
+  bool savePng(const QString &filePath);
 
   void clear();
 

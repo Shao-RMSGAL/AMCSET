@@ -22,24 +22,27 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Conan
+      - name: Build and test
         run: |
+          $ErrorActionPreference = 'Stop'
+          & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\Launch-VsDevShell.ps1'
+          Set-Location $env:GITHUB_WORKSPACE
+
           python -m pip install --disable-pip-version-check conan==2.7.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
           conan remote update conancenter --url https://center2.conan.io
-        shell: powershell
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Detect build environment
-        run: conan profile detect --force
-        shell: powershell
+          conan profile detect --force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Install dependencies
-        run: .\qbuild.ps1 -Conan
-        shell: powershell
+          .\qbuild.ps1 -Conan
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build
-        run: .\qbuild.ps1 -Build
-        shell: powershell
+          .\qbuild.ps1 -Build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Run tests
-        run: ctest --test-dir build/test --build-config Release --output-on-failure
+          ctest --test-dir build/test --build-config Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         shell: powershell

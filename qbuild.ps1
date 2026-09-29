@@ -84,7 +84,8 @@ $CmakeBuildPreset = "conan-release"
 $CmakeFlags = @("--preset", "conan-$modeLower")
 $RunFlags = @("--minloglevel=3", "--gui=true")
 
-$TestDir = Join-Path $BuildDir "test"
+# $TestDir = Join-Path $BuildDir "test"
+$TestDir = "build\test"
 $env:TESTDIR = Join-Path $BuildDir "log"
 
 function Check-Status {

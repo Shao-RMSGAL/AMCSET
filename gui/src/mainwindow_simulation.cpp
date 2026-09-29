@@ -100,6 +100,9 @@ void MainWindow::finishSimulation() {
   }
 
   refreshResultsPane();
+  if (saveAllGraphsCheck && saveAllGraphsCheck->isChecked()) {
+    saveGraphsToOutputDirectory();
+  }
   if (simulationCancelled) {
     statusBar()->showMessage(
         tr("Simulation cancelled after %1 bombardments.")

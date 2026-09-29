@@ -65,6 +65,11 @@ void Canvas::setGenerationFilter(const QSet<std::size_t> &generations,
   update();
 }
 
+bool Canvas::savePng(const QString &filePath) {
+  const auto image = grab();
+  return !image.isNull() && image.save(filePath, "PNG");
+}
+
 void Canvas::clear() {
   QMutexLocker locker(&mutex);
   points_.clear();

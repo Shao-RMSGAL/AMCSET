@@ -112,6 +112,8 @@ private:
   void browseOutputFile(QLineEdit *lineEdit, const QString &title,
                        const QString &defaultSuffix = QString());
   void populateResultCharts();
+  void saveProjection(Canvas *projection, const QString &fileName);
+  void saveGraphsToOutputDirectory();
   QString buildOutputPath(const QString &filename) const;
   void updateResultPane(const QString &message);
   void refreshSummaryView();
