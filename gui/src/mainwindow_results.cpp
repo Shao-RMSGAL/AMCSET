@@ -826,7 +826,7 @@ void MainWindow::refreshSummaryView() {
       layerModel ? static_cast<int>(layerModel->rowCount()) : 0));
 }
 
-void MainWindow::refreshResultsPane() {
+void MainWindow::refreshResultsPane(bool refreshCharts) {
   QStringList summaryPaths;
   summaryPaths << (displacementOutputEdit ? displacementOutputEdit->text().trimmed() : QString())
                << (electronicOutputEdit ? electronicOutputEdit->text().trimmed() : QString())
@@ -844,13 +844,14 @@ void MainWindow::refreshResultsPane() {
   summary << "Electronic loss histogram: " + summaryPaths.value(1, QString());
   summary << "Nuclear loss histogram: " + summaryPaths.value(2, QString());
   summary << "Total loss histogram: " + summaryPaths.value(3, QString());
-  summary << "Particle tree: " + (particleTreeEdit ? particleTreeEdit->text().trimmed() : QString());
   summary << "Log file: " + (logFileEdit ? logFileEdit->text().trimmed() : QString());
   summary << "Logging enabled: " + QString(enableLoggingCheck && enableLoggingCheck->isChecked() ? "Yes" : "No");
   summary << "Angle divisors: " + QString::number(angleDivisorSpinBox ? angleDivisorSpinBox->value() : 1000);
   summary << "Flying distances: " + QString::number(flyingDistanceSpinBox ? flyingDistanceSpinBox->value() : 1000);
   resultPane->setPlainText(summary.join("\n"));
-  populateResultCharts();
+  if (refreshCharts) {
+    populateResultCharts();
+  }
 }
 
 void MainWindow::createSettingsDialog() {
@@ -873,7 +874,8 @@ void MainWindow::createSettingsDialog() {
   histogramLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   histogramLayout->setLabelAlignment(Qt::AlignLeft);
 
-  auto *electronSettingsGroup = new QGroupBox("Electron transport", electronTab);
+  auto *electronSettingsGroup = new QGroupBox(tr("Stopping model options"),
+                                               electronTab);
   auto *electronSettingsLayout = new QFormLayout(electronSettingsGroup);
   electronSettingsLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   electronSettingsLayout->setLabelAlignment(Qt::AlignLeft);
@@ -956,18 +958,6 @@ void MainWindow::createSettingsDialog() {
   if (perBombardmentOutputDirEdit) perBombardmentOutputDirEdit->setText("bombardments/");
   if (savePerBombardmentCheck) savePerBombardmentCheck->setChecked(false);
 
-  auto *particleTreeRow = new QWidget(generalTab);
-  auto *particleTreeLayout = new QHBoxLayout(particleTreeRow);
-  particleTreeLayout->setContentsMargins(0, 0, 0, 0);
-  particleTreeEdit = new QLineEdit("particle_tree.json", particleTreeRow);
-  auto *particleTreeBrowse = new QPushButton("Browse", particleTreeRow);
-  connect(particleTreeBrowse, &QPushButton::clicked, this, [this]() {
-    browseOutputFile(particleTreeEdit, "Select particle tree output file", "json");
-  });
-  particleTreeLayout->addWidget(particleTreeEdit);
-  particleTreeLayout->addWidget(particleTreeBrowse);
-  formLayout->addRow("Particle tree output file", particleTreeRow);
-
   auto addBinCount = [histogramsTab, histogramLayout](QSpinBox **field,
                                                        const QString &label) {
     *field = new QSpinBox(histogramsTab);
@@ -1035,10 +1025,105 @@ void MainWindow::createSettingsDialog() {
   auto *screeningLayout = new QHBoxLayout(screeningRow);
   screeningLayout->setContentsMargins(0, 0, 0, 0);
   screeningModelCombo = new QComboBox(electronTab);
-  screeningModelCombo->addItem("Thomas-Fermi (default)");
-  screeningModelCombo->addItem("QuickBasic (ion.bas)");
+  screeningModelCombo->addItem(tr("Thomas-Fermi (default)"));
+  screeningModelCombo->addItem(tr("Firsov"));
+  screeningModelCombo->addItem(tr("ZBL"));
+  screeningModelCombo->addItem(tr("Molière"));
+  screeningModelCombo->addItem(tr("Custom Thomas-Fermi scale"));
+  screeningModelCombo->setToolTip(
+      tr("Selects the screened nuclear interaction used to calculate "
+         "scattering angles and recoil energy transfer."));
   screeningLayout->addWidget(screeningModelCombo);
-  electronSettingsLayout->addRow("Screening model", screeningRow);
+  electronSettingsLayout->addRow(tr("Nuclear stopping model"), screeningRow);
+
+  electronicStoppingModelCombo = new QComboBox(electronTab);
+  electronicStoppingModelCombo->addItem(tr("ZBL (current default)"));
+  electronicStoppingModelCombo->addItem(tr("LSS"));
+  electronicStoppingModelCombo->addItem(tr("Custom power law"));
+  electronSettingsLayout->addRow(tr("Electronic stopping model"),
+                                 electronicStoppingModelCombo);
+
+  customElectronicCoefficientSpinBox = new QDoubleSpinBox(electronTab);
+  customElectronicCoefficientSpinBox->setRange(1e-8, 1e12);
+  customElectronicCoefficientSpinBox->setDecimals(8);
+  customElectronicCoefficientSpinBox->setValue(1.0);
+  customElectronicCoefficientSpinBox->setToolTip(
+      tr("Ion C in Sₑ/N = C × E^(n/100), where Sₑ/N is in "
+         "10⁻¹⁸ keV·cm²/atom and E is in keV."));
+  electronSettingsLayout->addRow(tr("Custom ion C"),
+                                 customElectronicCoefficientSpinBox);
+
+  customElectronicExponentSpinBox = new QDoubleSpinBox(electronTab);
+  customElectronicExponentSpinBox->setRange(0.0, 1000.0);
+  customElectronicExponentSpinBox->setDecimals(4);
+  customElectronicExponentSpinBox->setValue(100.0);
+  customElectronicExponentSpinBox->setToolTip(
+      tr("Ion n in the custom power law; the energy exponent is n/100."));
+  electronSettingsLayout->addRow(tr("Custom ion n"),
+                                 customElectronicExponentSpinBox);
+
+  customRecoilElectronicCoefficientSpinBox = new QDoubleSpinBox(electronTab);
+  customRecoilElectronicCoefficientSpinBox->setRange(1e-8, 1e12);
+  customRecoilElectronicCoefficientSpinBox->setDecimals(8);
+  customRecoilElectronicCoefficientSpinBox->setValue(1.0);
+  customRecoilElectronicCoefficientSpinBox->setToolTip(
+      tr("Custom power-law coefficient for primary recoils."));
+  electronSettingsLayout->addRow(
+      tr("Custom recoil C"), customRecoilElectronicCoefficientSpinBox);
+
+  customRecoilElectronicExponentSpinBox = new QDoubleSpinBox(electronTab);
+  customRecoilElectronicExponentSpinBox->setRange(0.0, 1000.0);
+  customRecoilElectronicExponentSpinBox->setDecimals(4);
+  customRecoilElectronicExponentSpinBox->setValue(100.0);
+  customRecoilElectronicExponentSpinBox->setToolTip(
+      tr("Custom power-law n for primary recoils; energy exponent is n/100."));
+  electronSettingsLayout->addRow(
+      tr("Custom recoil n"), customRecoilElectronicExponentSpinBox);
+
+  customNuclearScreeningScaleSpinBox = new QDoubleSpinBox(electronTab);
+  customNuclearScreeningScaleSpinBox->setRange(1e-6, 1000.0);
+  customNuclearScreeningScaleSpinBox->setDecimals(6);
+  customNuclearScreeningScaleSpinBox->setValue(1.0);
+  customNuclearScreeningScaleSpinBox->setToolTip(
+      tr("Multiplier applied to the Thomas-Fermi screening length."));
+  electronSettingsLayout->addRow(tr("Custom nuclear screening scale"),
+                                 customNuclearScreeningScaleSpinBox);
+
+  auto updateStoppingModelFields = [this]() {
+    if (customElectronicCoefficientSpinBox) {
+      const bool customElectronic =
+          electronicStoppingModelCombo &&
+          electronicStoppingModelCombo->currentIndex() == 2;
+      customElectronicCoefficientSpinBox->setEnabled(customElectronic);
+      customElectronicExponentSpinBox->setEnabled(customElectronic);
+      customRecoilElectronicCoefficientSpinBox->setEnabled(customElectronic);
+      customRecoilElectronicExponentSpinBox->setEnabled(customElectronic);
+    }
+    if (customNuclearScreeningScaleSpinBox) {
+      customNuclearScreeningScaleSpinBox->setEnabled(
+          screeningModelCombo && screeningModelCombo->currentIndex() == 4);
+    }
+  };
+  connect(electronicStoppingModelCombo,
+          qOverload<int>(&QComboBox::currentIndexChanged), this,
+          [this, updateStoppingModelFields](int) {
+            updateStoppingModelFields();
+            saveState();
+          });
+  connect(screeningModelCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+          this, [this, updateStoppingModelFields](int) {
+            updateStoppingModelFields();
+            saveState();
+          });
+  for (auto *field : {customElectronicCoefficientSpinBox,
+                      customElectronicExponentSpinBox,
+                      customRecoilElectronicCoefficientSpinBox,
+                      customRecoilElectronicExponentSpinBox,
+                      customNuclearScreeningScaleSpinBox}) {
+    connect(field, qOverload<double>(&QDoubleSpinBox::valueChanged), this,
+            [this](double) { saveState(); });
+  }
+  updateStoppingModelFields();
 
   auto *preferencesGroup = new QGroupBox("Preferences", preferencesTab);
   auto *preferencesLayout = new QFormLayout(preferencesGroup);
@@ -1093,7 +1178,7 @@ void MainWindow::createSettingsDialog() {
   preferencesTabLayout->addStretch();
   settingsTabs->addTab(generalTab, tr("General"));
   settingsTabs->addTab(histogramsTab, tr("Histograms"));
-  settingsTabs->addTab(electronTab, tr("Electron transport"));
+  settingsTabs->addTab(electronTab, tr("Stopping models"));
   settingsTabs->addTab(preferencesTab, tr("Preferences"));
 
   dialogLayout->addWidget(settingsTabs);
@@ -1102,7 +1187,8 @@ void MainWindow::createSettingsDialog() {
                                        Qt::Horizontal, settingsDialog);
   connect(buttons, &QDialogButtonBox::accepted, settingsDialog, &QDialog::accept);
   connect(buttons, &QDialogButtonBox::rejected, settingsDialog, &QDialog::reject);
-  connect(buttons, &QDialogButtonBox::accepted, this, &MainWindow::refreshResultsPane);
+  connect(buttons, &QDialogButtonBox::accepted, this,
+          [this]() { refreshResultsPane(true); });
   dialogLayout->addWidget(buttons);
 
   resultPane = new QPlainTextEdit(settingsDialog);

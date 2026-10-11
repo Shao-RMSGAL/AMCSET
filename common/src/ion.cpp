@@ -36,6 +36,7 @@
 #include <boost/units/systems/si/mass.hpp>
 
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -45,6 +46,28 @@
 
 namespace amcset {
 namespace common {
+
+Ion::Ion(size_t z_number, size_t mass_number, const Simulation &simulation,
+         boost::random::uniform_01<double> &uniform_distribution,
+         boost::random::mt19937 &random_number_generator,
+         ParticleDataLeaf &data_leaf, Bombardment &bombardment,
+         size_t generation, double birth_time_seconds)
+    : Particle(z_number, mass_number, simulation, uniform_distribution,
+               random_number_generator, data_leaf, bombardment, generation,
+               birth_time_seconds),
+      custom_electronic_coefficient_(
+          generation == 0
+              ? simulation.get_settings(
+                    &Simulation::Settings::custom_electronic_coefficient_)
+              : simulation.get_settings(
+                    &Simulation::Settings::
+                        custom_recoil_electronic_coefficient_)),
+      custom_electronic_exponent_(
+          generation == 0
+              ? simulation.get_settings(
+                    &Simulation::Settings::custom_electronic_exponent_)
+              : simulation.get_settings(
+                    &Simulation::Settings::custom_recoil_electronic_exponent_)) {}
 
 dimensionless_quantity Ion::screening_function(dimensionless_quantity reduced_radius) const {
   const auto result = 0.1818 * exp(-3.2 * reduced_radius) +
@@ -58,10 +81,10 @@ dimensionless_quantity Ion::screening_function(dimensionless_quantity reduced_ra
 
 length_quantity Ion::screening_length(dimensionless_quantity z_1,
                     dimensionless_quantity z_2) const {
-  return Ion::screening_length_for_model(
-    z_1, z_2,
-    simulation_.get_settings(&Simulation::Settings::screening_model_) ==
-      Simulation::Settings::ScreeningModel::QuickBasic);
+  return simulation_.nuclear_screening_length_function_(
+      z_1, z_2,
+      simulation_.get_settings(
+          &Simulation::Settings::custom_nuclear_screening_scale_));
 }
 
 length_quantity Ion::screening_length_for_model(dimensionless_quantity z_1,
@@ -76,12 +99,83 @@ length_quantity Ion::screening_length_for_model(dimensionless_quantity z_1,
          (pow(z_1, 0.23) + pow(z_2, 0.23));
 }
 
+dimensionless_quantity Simulation::thomas_fermi_screening(
+    dimensionless_quantity x) {
+  return 0.1818 * exp(-3.2 * x) + 0.5099 * exp(-0.9423 * x) +
+         0.2802 * exp(-0.4028 * x) + 0.2817 * exp(-0.2016 * x);
+}
+
+dimensionless_quantity Simulation::zbl_screening(dimensionless_quantity x) {
+  return 0.1818 * exp(-3.2 * x) + 0.5099 * exp(-0.9423 * x) +
+         0.2802 * exp(-0.4029 * x) + 0.02817 * exp(-0.2016 * x);
+}
+
+dimensionless_quantity Simulation::moliere_screening(dimensionless_quantity x) {
+  return 0.35 * exp(-0.3 * x) + 0.55 * exp(-1.2 * x) + 0.10 * exp(-6.0 * x);
+}
+
+dimensionless_quantity Simulation::thomas_fermi_screening_derivative(
+    dimensionless_quantity x) {
+  return -3.2 * 0.1818 * exp(-3.2 * x) -
+         0.9423 * 0.5099 * exp(-0.9423 * x) -
+         0.4028 * 0.2802 * exp(-0.4028 * x) -
+         0.2016 * 0.2817 * exp(-0.2016 * x);
+}
+
+dimensionless_quantity Simulation::zbl_screening_derivative(
+    dimensionless_quantity x) {
+  return -3.2 * 0.1818 * exp(-3.2 * x) -
+         0.9423 * 0.5099 * exp(-0.9423 * x) -
+         0.4029 * 0.2802 * exp(-0.4029 * x) -
+         0.2016 * 0.02817 * exp(-0.2016 * x);
+}
+
+dimensionless_quantity Simulation::moliere_screening_derivative(
+    dimensionless_quantity x) {
+  return -0.3 * 0.35 * exp(-0.3 * x) -
+         1.2 * 0.55 * exp(-1.2 * x) -
+         6.0 * 0.10 * exp(-6.0 * x);
+}
+
+length_quantity Simulation::thomas_fermi_screening_length(
+    dimensionless_quantity z_1, dimensionless_quantity z_2, double) {
+  return 0.25 * cbrt(9.0 * pi * pi / 2.0) * bohr_radius /
+         (pow(z_1, 0.23) + pow(z_2, 0.23));
+}
+
+length_quantity Simulation::firsov_screening_length(
+    dimensionless_quantity z_1, dimensionless_quantity z_2, double) {
+  return 0.8854 * bohr_radius /
+         pow(pow(z_1, 0.5) + pow(z_2, 0.5), 2.0 / 3.0);
+}
+
+length_quantity Simulation::zbl_screening_length(
+    dimensionless_quantity z_1, dimensionless_quantity z_2, double) {
+  return 0.8854 * bohr_radius /
+         (pow(z_1, 0.23) + pow(z_2, 0.23));
+}
+
+length_quantity Simulation::moliere_screening_length(
+    dimensionless_quantity z_1, dimensionless_quantity z_2, double) {
+  return 0.8853 * bohr_radius /
+         sqrt(pow(z_1, 2.0 / 3.0) + pow(z_2, 2.0 / 3.0));
+}
+
+length_quantity Simulation::custom_screening_length(
+    dimensionless_quantity z_1, dimensionless_quantity z_2, double scale) {
+  return scale * thomas_fermi_screening_length(z_1, z_2, 1.0);
+}
+
 energy_quantity Ion::screening_potential(length_quantity radius,
                                          dimensionless_quantity z_1,
                                          dimensionless_quantity z_2) const {
-  auto reduced_length = radius / screening_length(z_1, z_2);
-  auto result = screening_function(reduced_length) * z_1 * z_2 * e_statcoulomb *
-                e_statcoulomb / radius;
+  const auto length = screening_length(z_1, z_2);
+  const auto reduced_length = radius / length;
+  const auto coulomb_energy_length =
+      elementary_charge * elementary_charge /
+      (4.0 * pi * si::constants::codata::epsilon_0);
+  auto result = simulation_.nuclear_screening_function_(reduced_length) *
+                z_1 * z_2 * coulomb_energy_length / radius;
   VLOG(2) << "Screening potential with radius " << radius << ", z_1 " << z_1
           << ", and z_2 " << z_2 << " is " << result;
   return result;
@@ -92,17 +186,14 @@ voltage_quantity Ion::screening_potential_derivative(length_quantity radius,
                                     dimensionless_quantity z_2) const {
   auto s_length = screening_length(z_1, z_2);
   auto reduced_radius = radius / s_length;
+  const auto coulomb_energy_length =
+      elementary_charge * elementary_charge /
+      (4.0 * pi * si::constants::codata::epsilon_0);
   auto result =
-      (0.1818 * exp(-3.2 * reduced_radius) * (-3.2 / s_length) +
-       0.5099 * exp(-0.9423 * reduced_radius) * (-0.9423 / s_length) +
-       0.2802 * exp(-0.4028 * reduced_radius) * (-0.4028 / s_length) +
-       0.2817 * exp(-0.2016 * reduced_radius) * (-0.2016 / s_length)) *
-          z_1 * z_2 * e_statcoulomb * e_statcoulomb / radius -
-      (0.1818 * exp(-3.2 * reduced_radius) +
-       0.5099 * exp(-0.9423 * reduced_radius) +
-       0.2802 * exp(-0.4028 * reduced_radius) +
-       0.2817 * exp(-0.2016 * reduced_radius)) *
-          z_1 * z_2 * e_statcoulomb * e_statcoulomb / (radius * radius);
+      (simulation_.nuclear_screening_derivative_function_(reduced_radius) /
+           s_length -
+       simulation_.nuclear_screening_function_(reduced_radius) / radius) *
+      z_1 * z_2 * coulomb_energy_length / radius;
   VLOG(2) << "Screening potential derivative with radius " << radius << ", z_1 " << z_1
           << ", and z_2 " << z_2 << " is " << result;
   return result;
@@ -270,14 +361,21 @@ angle_quantity Ion::magic_formula_scattering_angle(length_quantity impact_parame
 energy_quantity Ion::nuclear_energy_loss(mass_quantity atom_mass, mass_quantity target_mass,
                          energy_quantity incident_energy,
                          angle_quantity scattering_angle) const {
-  auto result = 4.0 * atom_mass * target_mass /
-                pow<2>(atom_mass + target_mass) * incident_energy *
-                pow<2>(sin(scattering_angle));
+  auto result = simulation_.nuclear_stopping_function_(
+      atom_mass, target_mass, incident_energy, scattering_angle);
   VLOG(2) << "Nuclear scattering energy loss atom mass " << atom_mass
           << " target_mass " << target_mass << " incident_energy "
           << incident_energy << " scattering_angle " << scattering_angle
           << " has result " << result;
   return result;
+}
+
+energy_quantity Simulation::binary_collision_nuclear_stopping(
+    mass_quantity atom_mass, mass_quantity target_mass,
+    energy_quantity incident_energy, angle_quantity scattering_angle) {
+  return 4.0 * atom_mass * target_mass /
+         pow<2>(atom_mass + target_mass) * incident_energy *
+         pow<2>(sin(scattering_angle));
 }
 
 angle_quantity Ion::laboratory_scattering_angle(angle_quantity cm_scattering_angle,
@@ -332,12 +430,20 @@ void Ion::fire() try {
     auto number_density = current_layer.get_number_density();
     VLOG(3) << "Layer number density: " << number_density;
 
-    auto e_energy_loss = electronic_stopping_energy(
-        z_1, m_1, energy, number_density, layer_properties);
+    auto e_energy_loss = std::min(
+        electronic_stopping_energy(z_1, m_1, energy, number_density,
+                                   layer_properties),
+        energy);
     VLOG(2) << "Electronic stopping energy loss: " << e_energy_loss;
     energy -= e_energy_loss;
     VLOG(2) << "Energy after electronic stopping: " << energy;
     bombardment_.record_energy_loss((long double)e_energy_loss.value(), coordinate_.z_.value(), Bombardment::EnergyLossType::electronic);
+    if (energy <= ion_stopping_energy) {
+      bombardment_.record_energy_loss(
+          static_cast<long double>(e_energy_loss.value()),
+          coordinate_.z_.value(), Bombardment::EnergyLossType::total);
+      break;
+    }
 
     auto speed = speed_from_energy(energy, m_1);
     VLOG(3) << "Speed from energy: " << speed;
@@ -473,31 +579,69 @@ length_quantity Ion::interatomic_spacing(number_density_quantity number_density)
 energy_quantity Ion::electronic_stopping_energy(dimensionless_quantity charge,
                                 mass_quantity mass, energy_quantity energy,
                                 number_density_quantity number_density,
-                                const Properties &properties) const try {
+                                const Properties &properties) const {
+  return simulation_.electronic_stopping_function_(
+      charge, mass, energy, number_density,
+      interatomic_spacing(number_density), properties,
+      custom_electronic_coefficient_, custom_electronic_exponent_);
+}
+
+energy_quantity Simulation::zbl_electronic_stopping(
+    dimensionless_quantity charge, mass_quantity mass, energy_quantity energy,
+    number_density_quantity number_density, length_quantity travel_length,
+    const Particle::Properties &target, double, double) {
   VLOG(2) << "Calculating ion electronic stopping energy with charge " << charge
           << ", mass " << mass << ", and energy " << energy;
   auto c_1 =
       1.212 * root<2>(constants::m_u) * root<2>(electron_volt) / angstrom;
   VLOG(3) << "Value of c_1 " << c_1;
   const auto k_l = c_1 * pow<static_rational<7, 6>>(charge) *
-                   properties.charge_ /
+                   target.charge_ /
                    (pow<static_rational<3, 2>>(
                         pow<static_rational<2, 3>>(charge) +
-                        pow<static_rational<2, 3>>(properties.charge_)) *
+                        pow<static_rational<2, 3>>(target.charge_)) *
                     root<2>(mass));
   VLOG(3) << "Value of k_l " << k_l;
   const auto stopping_energy = k_l * root<2>(energy);
   VLOG(3) << "Value of stopping_energy " << stopping_energy;
   const auto c_2 = 1.59 * pow<3>(angstrom);
   VLOG(3) << "Value of c_2 " << c_2;
-  const auto travel_length = interatomic_spacing(number_density);
   VLOG(3) << "Value of travel_length " << travel_length;
   const auto energy_loss =
       c_2 * travel_length * number_density * constants::N_A * stopping_energy;
   VLOG(3) << "Value of energy_loss " << energy_loss;
   return energy_loss;
-} catch (...) {
-  rethrow(EXCEPTION_MESSAGE(""));
+}
+
+energy_quantity Simulation::lss_electronic_stopping(
+    dimensionless_quantity charge, mass_quantity mass, energy_quantity energy,
+    number_density_quantity number_density, length_quantity travel_length,
+    const Particle::Properties &target, double, double) {
+  const auto combined_charge =
+      pow(pow(charge, 2.0 / 3.0) + pow(target.charge_, 2.0 / 3.0), 1.5);
+  const auto screening_factor = pow(charge, 1.0 / 6.0);
+  const auto speed = sqrt(2.0 * energy / mass);
+  const auto bohr_speed = fine_structure_constant * si::constants::codata::c;
+  const auto coulomb_energy_length =
+      elementary_charge * elementary_charge /
+      (4.0 * pi * si::constants::codata::epsilon_0);
+  const auto stopping_cross_section =
+      8.0 * pi * coulomb_energy_length * bohr_radius * screening_factor *
+      charge * target.charge_ / combined_charge * (speed / bohr_speed);
+  return stopping_cross_section * travel_length * number_density *
+         constants::N_A;
+}
+
+energy_quantity Simulation::custom_power_law_electronic_stopping(
+    dimensionless_quantity, mass_quantity, energy_quantity energy,
+    number_density_quantity number_density, length_quantity travel_length,
+    const Particle::Properties &, double coefficient, double exponent) {
+  const auto energy_keV = energy / kilo_electron_volt;
+  const auto stopping_cross_section =
+      coefficient * pow(energy_keV, exponent / 100.0) * 1e-19 *
+      electron_volt * pow<2>(si::meter);
+  return stopping_cross_section * travel_length * number_density *
+         constants::N_A;
 }
 
 } // namespace common

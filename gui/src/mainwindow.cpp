@@ -179,7 +179,34 @@ void MainWindow::saveState() {
   if (flyingDistanceSpinBox) state["flyingDistance"] = flyingDistanceSpinBox->value();
   if (electronScreeningParametersEdit) state["electronScreeningParameters"] = electronScreeningParametersEdit->text();
   if (mottScatteringParametersEdit) state["mottScatteringParameters"] = mottScatteringParametersEdit->text();
-  if (screeningModelCombo) state["screeningModel"] = screeningModelCombo->currentIndex();
+  if (screeningModelCombo) {
+    state["screeningModel"] = screeningModelCombo->currentIndex();
+    state["nuclearStoppingModel"] = screeningModelCombo->currentIndex();
+  }
+  if (electronicStoppingModelCombo) {
+    state["electronicStoppingModel"] =
+        electronicStoppingModelCombo->currentIndex();
+  }
+  if (customElectronicCoefficientSpinBox) {
+    state["customElectronicCoefficient"] =
+        customElectronicCoefficientSpinBox->value();
+  }
+  if (customElectronicExponentSpinBox) {
+    state["customElectronicExponent"] =
+        customElectronicExponentSpinBox->value();
+  }
+  if (customRecoilElectronicCoefficientSpinBox) {
+    state["customRecoilElectronicCoefficient"] =
+        customRecoilElectronicCoefficientSpinBox->value();
+  }
+  if (customRecoilElectronicExponentSpinBox) {
+    state["customRecoilElectronicExponent"] =
+        customRecoilElectronicExponentSpinBox->value();
+  }
+  if (customNuclearScreeningScaleSpinBox) {
+    state["customNuclearScreeningScale"] =
+        customNuclearScreeningScaleSpinBox->value();
+  }
   if (displacementBinCountSpinBox) state["displacementBinCount"] = displacementBinCountSpinBox->value();
   if (electronicLossBinCountSpinBox) state["electronicLossBinCount"] = electronicLossBinCountSpinBox->value();
   if (nuclearLossBinCountSpinBox) state["nuclearLossBinCount"] = nuclearLossBinCountSpinBox->value();
@@ -241,7 +268,35 @@ void MainWindow::restoreState() {
   if (flyingDistanceSpinBox) flyingDistanceSpinBox->setValue(state.value("flyingDistance", 1000).toInt());
   if (electronScreeningParametersEdit) electronScreeningParametersEdit->setText(state.value("electronScreeningParameters", "common/assets/electron_screening_parameters.csv").toString());
   if (mottScatteringParametersEdit) mottScatteringParametersEdit->setText(state.value("mottScatteringParameters", "common/assets/mott_scattering_parameters.csv").toString());
-  if (screeningModelCombo) screeningModelCombo->setCurrentIndex(state.value("screeningModel", 0).toInt());
+  if (screeningModelCombo) {
+    screeningModelCombo->setCurrentIndex(
+        state.value("nuclearStoppingModel",
+                    state.value("screeningModel", 0)).toInt());
+  }
+  if (electronicStoppingModelCombo) {
+    electronicStoppingModelCombo->setCurrentIndex(
+        state.value("electronicStoppingModel", 0).toInt());
+  }
+  if (customElectronicCoefficientSpinBox) {
+    customElectronicCoefficientSpinBox->setValue(
+        state.value("customElectronicCoefficient", 1.0).toDouble());
+  }
+  if (customElectronicExponentSpinBox) {
+    customElectronicExponentSpinBox->setValue(
+        state.value("customElectronicExponent", 100.0).toDouble());
+  }
+  if (customRecoilElectronicCoefficientSpinBox) {
+    customRecoilElectronicCoefficientSpinBox->setValue(
+        state.value("customRecoilElectronicCoefficient", 1.0).toDouble());
+  }
+  if (customRecoilElectronicExponentSpinBox) {
+    customRecoilElectronicExponentSpinBox->setValue(
+        state.value("customRecoilElectronicExponent", 100.0).toDouble());
+  }
+  if (customNuclearScreeningScaleSpinBox) {
+    customNuclearScreeningScaleSpinBox->setValue(
+        state.value("customNuclearScreeningScale", 1.0).toDouble());
+  }
   if (displacementBinCountSpinBox) displacementBinCountSpinBox->setValue(state.value("displacementBinCount", 100).toInt());
   if (electronicLossBinCountSpinBox) electronicLossBinCountSpinBox->setValue(state.value("electronicLossBinCount", 100).toInt());
   if (nuclearLossBinCountSpinBox) nuclearLossBinCountSpinBox->setValue(state.value("nuclearLossBinCount", 100).toInt());
