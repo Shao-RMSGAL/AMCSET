@@ -96,16 +96,6 @@ function Check-Status {
     }
 }
 
-function Copy-CompileCommands {
-    $src = Join-Path $BuildDir "compile_commands.json"
-    if (Test-Path $src) {
-        Copy-Item -Path $src -Destination (Join-Path $ProjectDir "compile_commands.json") -Force
-        Check-Status $LASTEXITCODE
-    } else {
-        Write-Host "Warning: compile_commands.json not found in $BuildDir"
-    }
-}
-
 function Test-ConanBuildFiles {
     $generatorDir = Join-Path $ProjectDir "build\generators"
     $toolchainPath = Join-Path $generatorDir "conan_toolchain.cmake"
@@ -148,8 +138,6 @@ function Invoke-Build {
 
     & $CmakeCmd --build --preset $CmakeBuildPreset 2>&1 | Out-Host
     Check-Status $LASTEXITCODE
-
-    Copy-CompileCommands
 }
 
 function Invoke-Test {
