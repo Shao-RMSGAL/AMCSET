@@ -1,3 +1,19 @@
+// Copyright 2025, Texas A&M University
+//
+// This file is part of AMCSET.
+//
+// AMCSET is free software: you can redistribute it and/or modify it under the
+// terms of the GNU General Public License as published by the Free Software
+// Foundation, either version 3 of the License, or (at your option) any later
+// version.
+//
+// AMCSET is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+// A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License along with
+// AMCSET. If not, see <https://www.gnu.org/licenses/>.
+
 /*! \file simulation.cpp
  *  \brief Implements the multi-bombardment simulation lifecycle and tally output.
  *
@@ -37,6 +53,99 @@
 namespace amcset {
 namespace common {
 
+namespace {
+Simulation::ElectronicStoppingFunction select_electronic_stopping_function(
+    Simulation::Settings::ElectronicStoppingModel model) {
+  switch (model) {
+  case Simulation::Settings::ElectronicStoppingModel::ZBL:
+    return &Simulation::zbl_electronic_stopping;
+  case Simulation::Settings::ElectronicStoppingModel::LSS:
+    return &Simulation::lss_electronic_stopping;
+  case Simulation::Settings::ElectronicStoppingModel::CustomPowerLaw:
+    return &Simulation::custom_power_law_electronic_stopping;
+  }
+  throw std::invalid_argument("Unsupported electronic stopping model.");
+}
+
+Simulation::NuclearScreeningFunction select_nuclear_screening_function(
+    Simulation::Settings::ScreeningModel model) {
+  switch (model) {
+  case Simulation::Settings::ScreeningModel::ThomasFermi:
+  case Simulation::Settings::ScreeningModel::QuickBasic:
+  case Simulation::Settings::ScreeningModel::Custom:
+    return &Simulation::thomas_fermi_screening;
+  case Simulation::Settings::ScreeningModel::ZBL:
+    return &Simulation::zbl_screening;
+  case Simulation::Settings::ScreeningModel::Moliere:
+    return &Simulation::moliere_screening;
+  }
+  throw std::invalid_argument("Unsupported nuclear stopping model.");
+}
+
+Simulation::NuclearScreeningFunction
+select_nuclear_screening_derivative_function(
+    Simulation::Settings::ScreeningModel model) {
+  switch (model) {
+  case Simulation::Settings::ScreeningModel::ThomasFermi:
+  case Simulation::Settings::ScreeningModel::QuickBasic:
+  case Simulation::Settings::ScreeningModel::Custom:
+    return &Simulation::thomas_fermi_screening_derivative;
+  case Simulation::Settings::ScreeningModel::ZBL:
+    return &Simulation::zbl_screening_derivative;
+  case Simulation::Settings::ScreeningModel::Moliere:
+    return &Simulation::moliere_screening_derivative;
+  }
+  throw std::invalid_argument("Unsupported nuclear stopping model.");
+}
+
+Simulation::NuclearScreeningLengthFunction
+select_nuclear_screening_length_function(
+    Simulation::Settings::ScreeningModel model) {
+  switch (model) {
+  case Simulation::Settings::ScreeningModel::ThomasFermi:
+    return &Simulation::thomas_fermi_screening_length;
+  case Simulation::Settings::ScreeningModel::Custom:
+    return &Simulation::custom_screening_length;
+  case Simulation::Settings::ScreeningModel::QuickBasic:
+    return &Simulation::firsov_screening_length;
+  case Simulation::Settings::ScreeningModel::ZBL:
+    return &Simulation::zbl_screening_length;
+  case Simulation::Settings::ScreeningModel::Moliere:
+    return &Simulation::moliere_screening_length;
+  }
+  throw std::invalid_argument("Unsupported nuclear stopping model.");
+}
+
+const char *nuclear_model_name(Simulation::Settings::ScreeningModel model) {
+  switch (model) {
+  case Simulation::Settings::ScreeningModel::ThomasFermi:
+    return "Thomas-Fermi";
+  case Simulation::Settings::ScreeningModel::QuickBasic:
+    return "Firsov";
+  case Simulation::Settings::ScreeningModel::ZBL:
+    return "ZBL";
+  case Simulation::Settings::ScreeningModel::Moliere:
+    return "Moliere";
+  case Simulation::Settings::ScreeningModel::Custom:
+    return "Custom Thomas-Fermi scale";
+  }
+  return "Unknown";
+}
+
+const char *electronic_model_name(
+    Simulation::Settings::ElectronicStoppingModel model) {
+  switch (model) {
+  case Simulation::Settings::ElectronicStoppingModel::ZBL:
+    return "ZBL";
+  case Simulation::Settings::ElectronicStoppingModel::LSS:
+    return "LSS";
+  case Simulation::Settings::ElectronicStoppingModel::CustomPowerLaw:
+    return "Custom power law";
+  }
+  return "Unknown";
+}
+} // namespace
+
 // Full constructor (matches header second declaration) including electron/mott paths
 Simulation::Settings::Settings(
   energy_quantity electron_stopping_energy, size_t z_number,
@@ -60,7 +169,13 @@ Simulation::Settings::Settings(
   std::string electron_screening_parameters_path,
   std::string mott_scattering_parameters_path,
   Simulation::Settings::ScreeningModel screening_model,
-  std::string range_histogram_output_file) try
+  std::string range_histogram_output_file,
+  Simulation::Settings::ElectronicStoppingModel electronic_stopping_model,
+  double custom_electronic_coefficient,
+  double custom_electronic_exponent,
+  double custom_recoil_electronic_coefficient,
+  double custom_recoil_electronic_exponent,
+  double custom_nuclear_screening_scale) try
   : electron_stopping_energy_(electron_stopping_energy), z_number_(z_number),
     mass_number_(mass_number),
     incident_particle_properties_(Particle::Properties(z_number, mass_number)),
@@ -95,7 +210,14 @@ Simulation::Settings::Settings(
     per_bombardment_output_dir_((per_bombardment_output_dir.empty()) ? std::string("output/bombardments/") : std::move(per_bombardment_output_dir)),
     electron_screening_parameters_path_(std::move(electron_screening_parameters_path)),
     mott_scattering_parameters_path_(std::move(mott_scattering_parameters_path)),
-    screening_model_(screening_model) {
+    screening_model_(screening_model),
+    electronic_stopping_model_(electronic_stopping_model),
+    custom_electronic_coefficient_(custom_electronic_coefficient),
+    custom_electronic_exponent_(custom_electronic_exponent),
+    custom_recoil_electronic_coefficient_(
+        custom_recoil_electronic_coefficient),
+    custom_recoil_electronic_exponent_(custom_recoil_electronic_exponent),
+    custom_nuclear_screening_scale_(custom_nuclear_screening_scale) {
   if (incident_energy <= energy_quantity(0.0 * kilo_electron_volt)) {
     throw std::invalid_argument(
         EXCEPTION_MESSAGE("Incident energy should be greater than 0. Value: " +
@@ -131,6 +253,25 @@ Simulation::Settings::Settings(
     throw std::invalid_argument(
         EXCEPTION_MESSAGE("Thread count must be greater than 0"));
   }
+  if (electronic_stopping_model_ ==
+          ElectronicStoppingModel::CustomPowerLaw &&
+      (!std::isfinite(custom_electronic_coefficient_) ||
+       custom_electronic_coefficient_ <= 0.0 ||
+       !std::isfinite(custom_electronic_exponent_) ||
+       custom_electronic_exponent_ < 0.0 ||
+       !std::isfinite(custom_recoil_electronic_coefficient_) ||
+       custom_recoil_electronic_coefficient_ <= 0.0 ||
+       !std::isfinite(custom_recoil_electronic_exponent_) ||
+       custom_recoil_electronic_exponent_ < 0.0)) {
+    throw std::invalid_argument(
+        "Custom electronic stopping coefficient must be positive and its "
+        "exponent must be finite and non-negative.");
+  }
+  if (!std::isfinite(custom_nuclear_screening_scale_) ||
+      custom_nuclear_screening_scale_ <= 0.0) {
+    throw std::invalid_argument(
+        "Custom nuclear screening scale must be finite and positive.");
+  }
     if (displacement_bin_count == 0 || electronic_energy_loss_bin_count == 0 ||
       nuclear_energy_loss_bin_count == 0 || total_energy_loss_bin_count == 0 ||
       range_bin_count == 0) {
@@ -163,7 +304,13 @@ Simulation::Settings::Settings(
   bool save_per_bombardment_info,
   std::string per_bombardment_output_dir,
   Simulation::Settings::ScreeningModel screening_model,
-  std::string range_histogram_output_file)
+  std::string range_histogram_output_file,
+  Simulation::Settings::ElectronicStoppingModel electronic_stopping_model,
+  double custom_electronic_coefficient,
+  double custom_electronic_exponent,
+  double custom_recoil_electronic_coefficient,
+  double custom_recoil_electronic_exponent,
+  double custom_nuclear_screening_scale)
   : Settings(electron_stopping_energy, z_number, mass_number,
          enable_damage_cascade, ion_stopping_energy,
          ion_displacement_energy,
@@ -181,7 +328,10 @@ Simulation::Settings::Settings(
          save_per_bombardment_info, std::move(per_bombardment_output_dir),
          std::string("common/assets/electron_screening_parameters.csv"),
          std::string("common/assets/mott_scattering_parameters.csv"),
-         screening_model, std::move(range_histogram_output_file)) {}
+         screening_model, std::move(range_histogram_output_file),
+         electronic_stopping_model, custom_electronic_coefficient,
+         custom_electronic_exponent, custom_recoil_electronic_coefficient,
+         custom_recoil_electronic_exponent, custom_nuclear_screening_scale) {}
 
 Simulation::Settings::Settings(
   energy_quantity electron_stopping_energy, size_t z_number,
@@ -202,7 +352,13 @@ Simulation::Settings::Settings(
   std::string nuclear_energy_loss_histogram_output_file,
   std::string total_energy_loss_histogram_output_file,
   Simulation::Settings::ScreeningModel screening_model,
-  std::string range_histogram_output_file)
+  std::string range_histogram_output_file,
+  Simulation::Settings::ElectronicStoppingModel electronic_stopping_model,
+  double custom_electronic_coefficient,
+  double custom_electronic_exponent,
+  double custom_recoil_electronic_coefficient,
+  double custom_recoil_electronic_exponent,
+  double custom_nuclear_screening_scale)
   : Settings(electron_stopping_energy, z_number, mass_number,
          enable_damage_cascade, ion_stopping_energy,
          ion_displacement_energy,
@@ -220,11 +376,28 @@ Simulation::Settings::Settings(
          false, std::string("output/bombardments/"),
          std::string("common/assets/electron_screening_parameters.csv"),
          std::string("common/assets/mott_scattering_parameters.csv"),
-         screening_model, std::move(range_histogram_output_file)) {}
+         screening_model, std::move(range_histogram_output_file),
+         electronic_stopping_model, custom_electronic_coefficient,
+         custom_electronic_exponent, custom_recoil_electronic_coefficient,
+         custom_recoil_electronic_exponent, custom_nuclear_screening_scale) {}
 
 Simulation::Simulation(const Settings settings, Volume &&volume,
                        DrawFunction draw_function) try
-    : settings_(settings), volume_(std::move(volume)),
+    : settings_(settings),
+      electronic_stopping_function_(
+          select_electronic_stopping_function(
+              settings_.electronic_stopping_model_)),
+      nuclear_stopping_function_(
+          &Simulation::binary_collision_nuclear_stopping),
+      nuclear_screening_function_(
+          select_nuclear_screening_function(settings_.screening_model_)),
+      nuclear_screening_derivative_function_(
+          select_nuclear_screening_derivative_function(
+              settings_.screening_model_)),
+      nuclear_screening_length_function_(
+          select_nuclear_screening_length_function(
+              settings_.screening_model_)),
+      volume_(std::move(volume)),
       tallies_(settings.range_bin_count_, settings.range_.value(), settings.displacement_bin_count_,
                settings.electronic_energy_loss_bin_count_,
                settings.nuclear_energy_loss_bin_count_,
@@ -377,9 +550,26 @@ std::string Simulation::print_settings() const try {
     ss << "Total loss histogram bins: "
      << settings_.total_energy_loss_bin_count_ << std::endl;
     ss << "Range histogram bins: " << settings_.range_bin_count_ << std::endl;
-  ss << "Screening model: "
-     << (settings_.screening_model_ == Simulation::Settings::ScreeningModel::QuickBasic ? "QuickBasic" : "ThomasFermi")
+  ss << "Nuclear stopping model: "
+     << nuclear_model_name(settings_.screening_model_) << std::endl;
+  ss << "Electronic stopping model: "
+     << electronic_model_name(settings_.electronic_stopping_model_)
      << std::endl;
+  if (settings_.electronic_stopping_model_ ==
+      Settings::ElectronicStoppingModel::CustomPowerLaw) {
+    ss << "Custom electronic stopping C: "
+       << settings_.custom_electronic_coefficient_ << std::endl;
+    ss << "Custom electronic stopping n: "
+       << settings_.custom_electronic_exponent_ << std::endl;
+    ss << "Custom recoil electronic stopping C: "
+       << settings_.custom_recoil_electronic_coefficient_ << std::endl;
+    ss << "Custom recoil electronic stopping n: "
+       << settings_.custom_recoil_electronic_exponent_ << std::endl;
+  }
+  if (settings_.screening_model_ == Settings::ScreeningModel::Custom) {
+    ss << "Custom nuclear screening scale: "
+       << settings_.custom_nuclear_screening_scale_ << std::endl;
+  }
   return ss.str();
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));

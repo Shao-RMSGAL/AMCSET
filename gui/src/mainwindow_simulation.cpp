@@ -150,7 +150,10 @@ void MainWindow::finishSimulation() {
     return;
   }
 
-  refreshResultsPane();
+  refreshResultsPane(false);
+  if (saveAllGraphsCheck && saveAllGraphsCheck->isChecked()) {
+    saveGraphsToOutputDirectory();
+  }
   if (simulationCancelled) {
     statusBar()->showMessage(
         tr("Simulation cancelled after %1 bombardments.")
@@ -265,10 +268,33 @@ void MainWindow::runSimulation() {
   common::energy_quantity incident_energy = incidentEnergy->value() * common::kilo_electron_volt;
   size_t thread_count = threadCountSpinBox->value();
 
-  common::Simulation::Settings::ScreeningModel selected_model =
-      (screeningModelCombo && screeningModelCombo->currentIndex() == 1)
-          ? common::Simulation::Settings::ScreeningModel::QuickBasic
-          : common::Simulation::Settings::ScreeningModel::ThomasFermi;
+  const auto selected_nuclear_model =
+      static_cast<common::Simulation::Settings::ScreeningModel>(
+          screeningModelCombo ? screeningModelCombo->currentIndex() : 0);
+  const auto selected_electronic_model =
+      static_cast<common::Simulation::Settings::ElectronicStoppingModel>(
+          electronicStoppingModelCombo
+              ? electronicStoppingModelCombo->currentIndex()
+              : 0);
+  const double custom_electronic_coefficient =
+      customElectronicCoefficientSpinBox
+          ? customElectronicCoefficientSpinBox->value()
+          : 1.0;
+  const double custom_electronic_exponent =
+      customElectronicExponentSpinBox ? customElectronicExponentSpinBox->value()
+                                      : 100.0;
+  const double custom_recoil_electronic_coefficient =
+      customRecoilElectronicCoefficientSpinBox
+          ? customRecoilElectronicCoefficientSpinBox->value()
+          : 1.0;
+  const double custom_recoil_electronic_exponent =
+      customRecoilElectronicExponentSpinBox
+          ? customRecoilElectronicExponentSpinBox->value()
+          : 100.0;
+  const double custom_nuclear_screening_scale =
+      customNuclearScreeningScaleSpinBox
+          ? customNuclearScreeningScaleSpinBox->value()
+          : 1.0;
 
   auto settings = common::Simulation::Settings(
       electron_stopping_energy, z_number, mass_number, enable_damage_cascade,
@@ -284,8 +310,12 @@ void MainWindow::runSimulation() {
       nuclearOutput.toStdString(), totalOutput.toStdString(),
       savePerBombardmentCheck && savePerBombardmentCheck->isChecked(),
       perBombardmentOutputDir,
-      electron_screening_path, mott_path, selected_model,
-      rangeOutput.toStdString());
+      electron_screening_path, mott_path, selected_nuclear_model,
+      rangeOutput.toStdString(), selected_electronic_model,
+      custom_electronic_coefficient, custom_electronic_exponent,
+      custom_recoil_electronic_coefficient,
+      custom_recoil_electronic_exponent,
+      custom_nuclear_screening_scale);
 
   // Perform safety confirmations BEFORE constructing or launching the simulation.
   if (savePerBombardmentCheck && savePerBombardmentCheck->isChecked()) {

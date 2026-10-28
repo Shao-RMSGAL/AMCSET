@@ -1,4 +1,4 @@
-// Copyright 2024, Texas A&M University
+// Copyright 2025, Texas A&M University
 //
 // This file is part of AMCSET.
 //
@@ -8,9 +8,8 @@
 // version.
 //
 // AMCSET is distributed in the hope that it will be useful, but WITHOUT ANY
-// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-// FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
-// details.
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+// A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
@@ -774,11 +773,11 @@ public:
   Electron(size_t z_number, size_t mass_number, const Simulation &simulation,
            boost::random::uniform_01<double> &uniform_distribution,
            boost::random::mt19937 &random_number_generator,
-       ParticleDataLeaf &data_leaf, Bombardment &bombardment,
-       size_t generation = 0, double birth_time_seconds = 0.0)
-     : Particle(z_number, mass_number, simulation, uniform_distribution,
-          random_number_generator, data_leaf, bombardment, generation,
-          birth_time_seconds) {};
+           ParticleDataLeaf &data_leaf, Bombardment &bombardment,
+           size_t generation = 0, double birth_time_seconds = 0.0)
+      : Particle(z_number, mass_number, simulation, uniform_distribution,
+                 random_number_generator, data_leaf, bombardment, generation,
+                 birth_time_seconds) {};
 
   /*!
    * \brief Fire an electron
@@ -835,10 +834,7 @@ public:
       boost::random::uniform_01<double> &uniform_distribution,
       boost::random::mt19937 &random_number_generator,
       ParticleDataLeaf &data_leaf, Bombardment &bombardment,
-       size_t generation = 0, double birth_time_seconds = 0.0)
-      : Particle(z_number, mass_number, simulation, uniform_distribution,
-         random_number_generator, data_leaf, bombardment, generation,
-         birth_time_seconds) {};
+      size_t generation = 0, double birth_time_seconds = 0.0);
 
   /*!
    * \brief Fire an ion
@@ -853,6 +849,9 @@ public:
                                                    bool use_quickbasic);
 
 private:
+  const double custom_electronic_coefficient_;
+  const double custom_electronic_exponent_;
+
   /*!
    * \brief Calculate the electronic stopping energy of ions in matter.
    *
@@ -1310,7 +1309,18 @@ public:
    * many other settings.
    */
     struct Settings {
-    enum class ScreeningModel { ThomasFermi = 0, QuickBasic = 1 };
+      enum class ScreeningModel {
+        ThomasFermi = 0,
+        QuickBasic = 1,
+        ZBL = 2,
+        Moliere = 3,
+        Custom = 4
+      };
+      enum class ElectronicStoppingModel {
+        ZBL = 0,
+        LSS = 1,
+        CustomPowerLaw = 2
+      };
     const energy_quantity electron_stopping_energy_; //!< Threshold electron stopping energy
     const size_t z_number_;        //!< The z number of the incident particle
     const size_t mass_number_;     //!< The mass number of the incident particle
@@ -1341,6 +1351,12 @@ public:
     const std::string electron_screening_parameters_path_;
     const std::string mott_scattering_parameters_path_;
     const ScreeningModel screening_model_;
+    const ElectronicStoppingModel electronic_stopping_model_;
+    const double custom_electronic_coefficient_;
+    const double custom_electronic_exponent_;
+    const double custom_recoil_electronic_coefficient_;
+    const double custom_recoil_electronic_exponent_;
+    const double custom_nuclear_screening_scale_;
 
     Settings() = delete; //!< Default constructor ensures initialization
 
@@ -1365,7 +1381,14 @@ public:
         bool save_per_bombardment_info = false,
         std::string per_bombardment_output_dir = "output/bombardments/",
          ScreeningModel screening_model = ScreeningModel::ThomasFermi,
-         std::string range_histogram_output_file = {});
+        std::string range_histogram_output_file = {},
+        ElectronicStoppingModel electronic_stopping_model =
+            ElectronicStoppingModel::ZBL,
+        double custom_electronic_coefficient = 1.0,
+        double custom_electronic_exponent = 100.0,
+            double custom_recoil_electronic_coefficient = 1.0,
+            double custom_recoil_electronic_exponent = 100.0,
+            double custom_nuclear_screening_scale = 1.0);
       Settings(energy_quantity electron_stopping_energy, size_t z_number,
          size_t mass_number, bool enable_damage_cascade,
          energy_quantity ion_stopping_energy,
@@ -1385,7 +1408,14 @@ public:
          std::string nuclear_energy_loss_histogram_output_file,
          std::string total_energy_loss_histogram_output_file,
          ScreeningModel screening_model,
-         std::string range_histogram_output_file = {});
+         std::string range_histogram_output_file = {},
+         ElectronicStoppingModel electronic_stopping_model =
+             ElectronicStoppingModel::ZBL,
+         double custom_electronic_coefficient = 1.0,
+         double custom_electronic_exponent = 100.0,
+             double custom_recoil_electronic_coefficient = 1.0,
+             double custom_recoil_electronic_exponent = 100.0,
+             double custom_nuclear_screening_scale = 1.0);
 
     Settings(energy_quantity electron_stopping_energy, size_t z_number,
          size_t mass_number, bool enable_damage_cascade,
@@ -1410,8 +1440,61 @@ public:
          std::string electron_screening_parameters_path,
          std::string mott_scattering_parameters_path,
          ScreeningModel screening_model = ScreeningModel::ThomasFermi,
-         std::string range_histogram_output_file = {});
+         std::string range_histogram_output_file = {},
+         ElectronicStoppingModel electronic_stopping_model =
+             ElectronicStoppingModel::ZBL,
+         double custom_electronic_coefficient = 1.0,
+         double custom_electronic_exponent = 100.0,
+             double custom_recoil_electronic_coefficient = 1.0,
+             double custom_recoil_electronic_exponent = 100.0,
+             double custom_nuclear_screening_scale = 1.0);
     };
+
+  using ElectronicStoppingFunction = energy_quantity (*)(
+      dimensionless_quantity, mass_quantity, energy_quantity,
+      number_density_quantity, length_quantity, const Particle::Properties &,
+      double, double);
+  using NuclearStoppingFunction = energy_quantity (*)(
+      mass_quantity, mass_quantity, energy_quantity, angle_quantity);
+  using NuclearScreeningFunction = dimensionless_quantity (*)(
+      dimensionless_quantity);
+  using NuclearScreeningLengthFunction = length_quantity (*)(
+      dimensionless_quantity, dimensionless_quantity, double);
+
+  static energy_quantity zbl_electronic_stopping(
+      dimensionless_quantity, mass_quantity, energy_quantity,
+      number_density_quantity, length_quantity,
+      const Particle::Properties &, double, double);
+  static energy_quantity lss_electronic_stopping(
+      dimensionless_quantity, mass_quantity, energy_quantity,
+      number_density_quantity, length_quantity,
+      const Particle::Properties &, double, double);
+  static energy_quantity custom_power_law_electronic_stopping(
+      dimensionless_quantity, mass_quantity, energy_quantity,
+      number_density_quantity, length_quantity,
+      const Particle::Properties &, double, double);
+  static energy_quantity binary_collision_nuclear_stopping(
+      mass_quantity, mass_quantity, energy_quantity, angle_quantity);
+  static dimensionless_quantity thomas_fermi_screening(
+      dimensionless_quantity);
+  static dimensionless_quantity zbl_screening(dimensionless_quantity);
+  static dimensionless_quantity moliere_screening(dimensionless_quantity);
+  static dimensionless_quantity thomas_fermi_screening_derivative(
+      dimensionless_quantity);
+  static dimensionless_quantity zbl_screening_derivative(
+      dimensionless_quantity);
+  static dimensionless_quantity moliere_screening_derivative(
+      dimensionless_quantity);
+  static length_quantity thomas_fermi_screening_length(
+      dimensionless_quantity, dimensionless_quantity, double);
+  static length_quantity custom_screening_length(
+      dimensionless_quantity, dimensionless_quantity, double);
+  static length_quantity firsov_screening_length(
+      dimensionless_quantity, dimensionless_quantity, double);
+  static length_quantity zbl_screening_length(
+      dimensionless_quantity, dimensionless_quantity, double);
+  static length_quantity moliere_screening_length(
+      dimensionless_quantity, dimensionless_quantity, double);
 
   Simulation() = delete;
 
@@ -1516,7 +1599,13 @@ public:
                            const std::string &value_label = "count") const;
 
 private:
+  friend class Ion;
   const Settings settings_;
+  const ElectronicStoppingFunction electronic_stopping_function_;
+  const NuclearStoppingFunction nuclear_stopping_function_;
+  const NuclearScreeningFunction nuclear_screening_function_;
+  const NuclearScreeningFunction nuclear_screening_derivative_function_;
+  const NuclearScreeningLengthFunction nuclear_screening_length_function_;
   Volume volume_;
   Tallies tallies_;
   mutable std::mutex tallies_mutex_;

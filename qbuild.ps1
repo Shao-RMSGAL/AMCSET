@@ -84,7 +84,8 @@ $CmakeBuildPreset = "conan-release"
 $CmakeFlags = @("--preset", "conan-$modeLower")
 $RunFlags = @("--minloglevel=3", "--gui=true")
 
-$TestDir = Join-Path $BuildDir "test"
+# $TestDir = Join-Path $BuildDir "test"
+$TestDir = "build\test"
 $env:TESTDIR = Join-Path $BuildDir "log"
 
 function Check-Status {
@@ -92,16 +93,6 @@ function Check-Status {
     if ($ExitCode -ne 0) {
         Write-Host "An error occurred"
         exit 1
-    }
-}
-
-function Copy-CompileCommands {
-    $src = Join-Path $BuildDir "compile_commands.json"
-    if (Test-Path $src) {
-        Copy-Item -Path $src -Destination (Join-Path $ProjectDir "compile_commands.json") -Force
-        Check-Status $LASTEXITCODE
-    } else {
-        Write-Host "Warning: compile_commands.json not found in $BuildDir"
     }
 }
 

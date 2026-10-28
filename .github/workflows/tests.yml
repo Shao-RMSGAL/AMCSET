@@ -1,0 +1,48 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: self-hosted
+    timeout-minutes: 180
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build and test
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\Launch-VsDevShell.ps1'
+          Set-Location $env:GITHUB_WORKSPACE
+
+          python -m pip install --disable-pip-version-check conan==2.7.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          conan remote update conancenter --url https://center2.conan.io
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          conan profile detect --force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          .\qbuild.ps1 -Conan
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          .\qbuild.ps1 -Build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          ctest --test-dir build/test --build-config Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        shell: powershell

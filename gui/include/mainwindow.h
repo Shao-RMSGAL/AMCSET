@@ -112,10 +112,12 @@ private:
   void browseOutputFile(QLineEdit *lineEdit, const QString &title,
                        const QString &defaultSuffix = QString());
   void populateResultCharts();
+  void saveProjection(Canvas *projection, const QString &fileName);
+  void saveGraphsToOutputDirectory();
   QString buildOutputPath(const QString &filename) const;
   void updateResultPane(const QString &message);
   void refreshSummaryView();
-  void refreshResultsPane();
+  void refreshResultsPane(bool refreshCharts);
   QGroupBox *createIncidentParticleForms(QWidget *parent = nullptr);
   QGroupBox *createLayerForms(QWidget *parent = nullptr);
   double calculateLayerDensity();
@@ -199,7 +201,6 @@ private:
   QLineEdit *nuclearOutputEdit = nullptr;
   QLineEdit *totalOutputEdit = nullptr;
   QLineEdit *rangeOutputEdit = nullptr;
-  QLineEdit *particleTreeEdit = nullptr;
   QLineEdit *perBombardmentOutputDirEdit = nullptr;
   QCheckBox *enableLoggingCheck = nullptr;
   QCheckBox *savePerBombardmentCheck = nullptr;
@@ -211,6 +212,12 @@ private:
   QLineEdit *electronScreeningParametersEdit = nullptr;
   QLineEdit *mottScatteringParametersEdit = nullptr;
   QComboBox *screeningModelCombo = nullptr;
+  QComboBox *electronicStoppingModelCombo = nullptr;
+  QDoubleSpinBox *customElectronicCoefficientSpinBox = nullptr;
+  QDoubleSpinBox *customElectronicExponentSpinBox = nullptr;
+  QDoubleSpinBox *customRecoilElectronicCoefficientSpinBox = nullptr;
+  QDoubleSpinBox *customRecoilElectronicExponentSpinBox = nullptr;
+  QDoubleSpinBox *customNuclearScreeningScaleSpinBox = nullptr;
   QComboBox *generationFilterCombo = nullptr;
   QLineEdit *customGenerationEdit = nullptr;
   QComboBox *themeModeCombo = nullptr;

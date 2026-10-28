@@ -524,6 +524,7 @@ void MainWindow::populateResultCharts() {
       const auto kind = detectHistogramKind(filePath);
       const auto csvBaseName = fileInfo.completeBaseName();
       auto *plotWidget = new HistogramPlotWidget(filePath, title, kind, target);
+      plotWidget->setProperty("graphFileName", csvBaseName);
       if (!fileInfo.exists() || !fileInfo.isFile()) {
         plotWidget->setHistogram(common::Histogram());
       }
@@ -531,7 +532,7 @@ void MainWindow::populateResultCharts() {
       auto *chartPage = new QWidget(target);
       auto *chartLayout = new QVBoxLayout(chartPage);
       auto *chartActions = new QHBoxLayout();
-      auto *saveButton = new QPushButton(tr("Save"), chartPage);
+      auto *saveButton = new QPushButton(tr("Save PNG"), chartPage);
       chartActions->addStretch();
       chartActions->addWidget(saveButton);
       chartLayout->addWidget(plotWidget, 1);
@@ -540,37 +541,38 @@ void MainWindow::populateResultCharts() {
 
       connect(saveButton, &QPushButton::clicked, this,
                 [this, plotWidget, csvBaseName]() {
-                const auto outputDir = outputDirectoryEdit
-                                           ? outputDirectoryEdit->text().trimmed()
-                                           : QStringLiteral("output");
+                auto outputDir = outputDirectoryEdit
+                                     ? outputDirectoryEdit->text().trimmed()
+                                     : QStringLiteral("output");
+                if (outputDir.isEmpty()) {
+                  outputDir = QStringLiteral("output");
+                }
+                if (!QDir().mkpath(outputDir)) {
+                  QMessageBox::warning(
+                      this, tr("Save graph"),
+                      tr("Unable to create output directory %1").arg(outputDir));
+                  return;
+                }
                 const auto suggestedPath =
-                  QDir(outputDir).filePath(csvBaseName + QStringLiteral(".png"));
+                    QDir(outputDir).absoluteFilePath(
+                        csvBaseName + QStringLiteral(".png"));
                 auto imagePath = QFileDialog::getSaveFileName(
                     this, tr("Save graph"), suggestedPath,
                     tr("PNG image (*.png)"));
                 if (imagePath.isEmpty()) {
                   return;
                 }
-                if (QFileInfo(imagePath).suffix().isEmpty()) {
-                  imagePath += QStringLiteral(".png");
+                const QFileInfo selectedFile(imagePath);
+                if (selectedFile.suffix().compare(QStringLiteral("png"),
+                                                  Qt::CaseInsensitive) != 0) {
+                  imagePath = selectedFile.dir().filePath(
+                      selectedFile.completeBaseName() + QStringLiteral(".png"));
                 }
                 if (!plotWidget->savePng(imagePath)) {
                   QMessageBox::warning(this, tr("Save graph"),
                                        tr("Unable to save graph to %1").arg(imagePath));
                 }
               });
-
-      if (saveAllGraphsCheck && saveAllGraphsCheck->isChecked()) {
-        const auto outputDir = outputDirectoryEdit
-                                   ? outputDirectoryEdit->text().trimmed()
-                                   : QStringLiteral("output");
-        QDir().mkpath(outputDir);
-        const auto imagePath =
-          QDir(outputDir).filePath(csvBaseName + QStringLiteral(".png"));
-        if (!plotWidget->savePng(imagePath)) {
-          updateResultPane(tr("Unable to save graph to %1").arg(imagePath));
-        }
-      }
     };
 
     const auto outputDirPath = outputDirectoryEdit ? outputDirectoryEdit->text().trimmed() : QStringLiteral("output");
@@ -649,6 +651,114 @@ void MainWindow::populateResultCharts() {
   }
 }
 
+void MainWindow::saveProjection(Canvas *projection, const QString &fileName) {
+  if (!projection) {
+    return;
+  }
+
+  auto outputDir = outputDirectoryEdit
+                       ? outputDirectoryEdit->text().trimmed()
+                       : QStringLiteral("output");
+  if (outputDir.isEmpty()) {
+    outputDir = QStringLiteral("output");
+  }
+  if (!QDir().mkpath(outputDir)) {
+    QMessageBox::warning(
+        this, tr("Save graph"),
+        tr("Unable to create output directory %1").arg(outputDir));
+    return;
+  }
+
+  auto imagePath = QFileDialog::getSaveFileName(
+      this, tr("Save graph"),
+      QDir(outputDir).absoluteFilePath(fileName), tr("PNG image (*.png)"));
+  if (imagePath.isEmpty()) {
+    return;
+  }
+  const QFileInfo selectedFile(imagePath);
+  if (selectedFile.suffix().compare(QStringLiteral("png"),
+                                    Qt::CaseInsensitive) != 0) {
+    imagePath = selectedFile.dir().filePath(
+        selectedFile.completeBaseName() + QStringLiteral(".png"));
+  }
+  if (!projection->savePng(imagePath)) {
+    QMessageBox::warning(this, tr("Save graph"),
+                         tr("Unable to save graph to %1").arg(imagePath));
+  }
+}
+
+void MainWindow::saveGraphsToOutputDirectory() {
+  auto outputDir = outputDirectoryEdit
+                       ? outputDirectoryEdit->text().trimmed()
+                       : QStringLiteral("output");
+  if (outputDir.isEmpty()) {
+    outputDir = QStringLiteral("output");
+  }
+  if (!QDir().mkpath(outputDir)) {
+    const auto message =
+        tr("Unable to create graph output directory %1").arg(outputDir);
+    updateResultPane(message);
+    QMessageBox::warning(this, tr("Save graphs"), message);
+    return;
+  }
+
+  QStringList failedImages;
+  int savedCount = 0;
+  auto saveProjectionIfEnabled =
+      [&](Canvas *projection, QCheckBox *check, const QString &fileName) {
+    if (!projection || !check || !check->isChecked()) {
+      return;
+    }
+    const auto imagePath = QDir(outputDir).filePath(fileName);
+    if (projection->savePng(imagePath)) {
+      ++savedCount;
+    } else {
+      failedImages.append(imagePath);
+    }
+  };
+  saveProjectionIfEnabled(xyCanvas, xyProjectionCheck,
+                          QStringLiteral("xy_projection.png"));
+  saveProjectionIfEnabled(yzCanvas, yzProjectionCheck,
+                          QStringLiteral("yz_projection.png"));
+  saveProjectionIfEnabled(xzCanvas, xzProjectionCheck,
+                          QStringLiteral("xz_projection.png"));
+
+  if (histogramTabs) {
+    for (int tabIndex = 0; tabIndex < histogramTabs->count(); ++tabIndex) {
+      auto *page = histogramTabs->widget(tabIndex);
+      auto *plotWidget =
+          page ? page->findChild<HistogramPlotWidget *>() : nullptr;
+      if (!plotWidget || !plotWidget->isEnabled()) {
+        continue;
+      }
+
+      auto graphFileName =
+          plotWidget->property("graphFileName").toString().trimmed();
+      if (graphFileName.isEmpty()) {
+        graphFileName = histogramTabs->tabText(tabIndex);
+      }
+      const auto imagePath =
+          QDir(outputDir).filePath(graphFileName + QStringLiteral(".png"));
+      if (plotWidget->savePng(imagePath)) {
+        ++savedCount;
+      } else {
+        failedImages.append(imagePath);
+      }
+    }
+  }
+
+  if (savedCount > 0) {
+    updateResultPane(
+        tr("Saved %1 graph PNG(s) to %2").arg(savedCount).arg(outputDir));
+  }
+  if (!failedImages.isEmpty()) {
+    const auto message =
+        tr("Unable to save graph images:\n%1").arg(failedImages.join('\n'));
+    updateResultPane(message);
+    QMessageBox::warning(this, tr("Save graphs"), message);
+  }
+}
+
 void MainWindow::refreshLiveHistograms(const common::Tallies &tallies,
                                       std::size_t bombardmentCount) {
   if (!histogramTabs) {
@@ -716,7 +826,7 @@ void MainWindow::refreshSummaryView() {
       layerModel ? static_cast<int>(layerModel->rowCount()) : 0));
 }
 
-void MainWindow::refreshResultsPane() {
+void MainWindow::refreshResultsPane(bool refreshCharts) {
   QStringList summaryPaths;
   summaryPaths << (displacementOutputEdit ? displacementOutputEdit->text().trimmed() : QString())
                << (electronicOutputEdit ? electronicOutputEdit->text().trimmed() : QString())
@@ -734,13 +844,14 @@ void MainWindow::refreshResultsPane() {
   summary << "Electronic loss histogram: " + summaryPaths.value(1, QString());
   summary << "Nuclear loss histogram: " + summaryPaths.value(2, QString());
   summary << "Total loss histogram: " + summaryPaths.value(3, QString());
-  summary << "Particle tree: " + (particleTreeEdit ? particleTreeEdit->text().trimmed() : QString());
   summary << "Log file: " + (logFileEdit ? logFileEdit->text().trimmed() : QString());
   summary << "Logging enabled: " + QString(enableLoggingCheck && enableLoggingCheck->isChecked() ? "Yes" : "No");
   summary << "Angle divisors: " + QString::number(angleDivisorSpinBox ? angleDivisorSpinBox->value() : 1000);
   summary << "Flying distances: " + QString::number(flyingDistanceSpinBox ? flyingDistanceSpinBox->value() : 1000);
   resultPane->setPlainText(summary.join("\n"));
-  populateResultCharts();
+  if (refreshCharts) {
+    populateResultCharts();
+  }
 }
 
 void MainWindow::createSettingsDialog() {
@@ -763,7 +874,8 @@ void MainWindow::createSettingsDialog() {
   histogramLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   histogramLayout->setLabelAlignment(Qt::AlignLeft);
 
-  auto *electronSettingsGroup = new QGroupBox("Electron transport", electronTab);
+  auto *electronSettingsGroup = new QGroupBox(tr("Stopping model options"),
+                                               electronTab);
   auto *electronSettingsLayout = new QFormLayout(electronSettingsGroup);
   electronSettingsLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
   electronSettingsLayout->setLabelAlignment(Qt::AlignLeft);
@@ -846,18 +958,6 @@ void MainWindow::createSettingsDialog() {
   if (perBombardmentOutputDirEdit) perBombardmentOutputDirEdit->setText("bombardments/");
   if (savePerBombardmentCheck) savePerBombardmentCheck->setChecked(false);
 
-  auto *particleTreeRow = new QWidget(generalTab);
-  auto *particleTreeLayout = new QHBoxLayout(particleTreeRow);
-  particleTreeLayout->setContentsMargins(0, 0, 0, 0);
-  particleTreeEdit = new QLineEdit("particle_tree.json", particleTreeRow);
-  auto *particleTreeBrowse = new QPushButton("Browse", particleTreeRow);
-  connect(particleTreeBrowse, &QPushButton::clicked, this, [this]() {
-    browseOutputFile(particleTreeEdit, "Select particle tree output file", "json");
-  });
-  particleTreeLayout->addWidget(particleTreeEdit);
-  particleTreeLayout->addWidget(particleTreeBrowse);
-  formLayout->addRow("Particle tree output file", particleTreeRow);
-
   auto addBinCount = [histogramsTab, histogramLayout](QSpinBox **field,
                                                        const QString &label) {
     *field = new QSpinBox(histogramsTab);
@@ -925,10 +1025,105 @@ void MainWindow::createSettingsDialog() {
   auto *screeningLayout = new QHBoxLayout(screeningRow);
   screeningLayout->setContentsMargins(0, 0, 0, 0);
   screeningModelCombo = new QComboBox(electronTab);
-  screeningModelCombo->addItem("Thomas-Fermi (default)");
-  screeningModelCombo->addItem("QuickBasic (ion.bas)");
+  screeningModelCombo->addItem(tr("Thomas-Fermi (default)"));
+  screeningModelCombo->addItem(tr("Firsov"));
+  screeningModelCombo->addItem(tr("ZBL"));
+  screeningModelCombo->addItem(tr("Molière"));
+  screeningModelCombo->addItem(tr("Custom Thomas-Fermi scale"));
+  screeningModelCombo->setToolTip(
+      tr("Selects the screened nuclear interaction used to calculate "
+         "scattering angles and recoil energy transfer."));
   screeningLayout->addWidget(screeningModelCombo);
-  electronSettingsLayout->addRow("Screening model", screeningRow);
+  electronSettingsLayout->addRow(tr("Nuclear stopping model"), screeningRow);
+
+  electronicStoppingModelCombo = new QComboBox(electronTab);
+  electronicStoppingModelCombo->addItem(tr("ZBL (current default)"));
+  electronicStoppingModelCombo->addItem(tr("LSS"));
+  electronicStoppingModelCombo->addItem(tr("Custom power law"));
+  electronSettingsLayout->addRow(tr("Electronic stopping model"),
+                                 electronicStoppingModelCombo);
+
+  customElectronicCoefficientSpinBox = new QDoubleSpinBox(electronTab);
+  customElectronicCoefficientSpinBox->setRange(1e-8, 1e12);
+  customElectronicCoefficientSpinBox->setDecimals(8);
+  customElectronicCoefficientSpinBox->setValue(1.0);
+  customElectronicCoefficientSpinBox->setToolTip(
+      tr("Ion C in Sₑ/N = C × E^(n/100), where Sₑ/N is in "
+         "10⁻¹⁸ keV·cm²/atom and E is in keV."));
+  electronSettingsLayout->addRow(tr("Custom ion C"),
+                                 customElectronicCoefficientSpinBox);
+
+  customElectronicExponentSpinBox = new QDoubleSpinBox(electronTab);
+  customElectronicExponentSpinBox->setRange(0.0, 1000.0);
+  customElectronicExponentSpinBox->setDecimals(4);
+  customElectronicExponentSpinBox->setValue(100.0);
+  customElectronicExponentSpinBox->setToolTip(
+      tr("Ion n in the custom power law; the energy exponent is n/100."));
+  electronSettingsLayout->addRow(tr("Custom ion n"),
+                                 customElectronicExponentSpinBox);
+
+  customRecoilElectronicCoefficientSpinBox = new QDoubleSpinBox(electronTab);
+  customRecoilElectronicCoefficientSpinBox->setRange(1e-8, 1e12);
+  customRecoilElectronicCoefficientSpinBox->setDecimals(8);
+  customRecoilElectronicCoefficientSpinBox->setValue(1.0);
+  customRecoilElectronicCoefficientSpinBox->setToolTip(
+      tr("Custom power-law coefficient for primary recoils."));
+  electronSettingsLayout->addRow(
+      tr("Custom recoil C"), customRecoilElectronicCoefficientSpinBox);
+
+  customRecoilElectronicExponentSpinBox = new QDoubleSpinBox(electronTab);
+  customRecoilElectronicExponentSpinBox->setRange(0.0, 1000.0);
+  customRecoilElectronicExponentSpinBox->setDecimals(4);
+  customRecoilElectronicExponentSpinBox->setValue(100.0);
+  customRecoilElectronicExponentSpinBox->setToolTip(
+      tr("Custom power-law n for primary recoils; energy exponent is n/100."));
+  electronSettingsLayout->addRow(
+      tr("Custom recoil n"), customRecoilElectronicExponentSpinBox);
+
+  customNuclearScreeningScaleSpinBox = new QDoubleSpinBox(electronTab);
+  customNuclearScreeningScaleSpinBox->setRange(1e-6, 1000.0);
+  customNuclearScreeningScaleSpinBox->setDecimals(6);
+  customNuclearScreeningScaleSpinBox->setValue(1.0);
+  customNuclearScreeningScaleSpinBox->setToolTip(
+      tr("Multiplier applied to the Thomas-Fermi screening length."));
+  electronSettingsLayout->addRow(tr("Custom nuclear screening scale"),
+                                 customNuclearScreeningScaleSpinBox);
+
+  auto updateStoppingModelFields = [this]() {
+    if (customElectronicCoefficientSpinBox) {
+      const bool customElectronic =
+          electronicStoppingModelCombo &&
+          electronicStoppingModelCombo->currentIndex() == 2;
+      customElectronicCoefficientSpinBox->setEnabled(customElectronic);
+      customElectronicExponentSpinBox->setEnabled(customElectronic);
+      customRecoilElectronicCoefficientSpinBox->setEnabled(customElectronic);
+      customRecoilElectronicExponentSpinBox->setEnabled(customElectronic);
+    }
+    if (customNuclearScreeningScaleSpinBox) {
+      customNuclearScreeningScaleSpinBox->setEnabled(
+          screeningModelCombo && screeningModelCombo->currentIndex() == 4);
+    }
+  };
+  connect(electronicStoppingModelCombo,
+          qOverload<int>(&QComboBox::currentIndexChanged), this,
+          [this, updateStoppingModelFields](int) {
+            updateStoppingModelFields();
+            saveState();
+          });
+  connect(screeningModelCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+          this, [this, updateStoppingModelFields](int) {
+            updateStoppingModelFields();
+            saveState();
+          });
+  for (auto *field : {customElectronicCoefficientSpinBox,
+                      customElectronicExponentSpinBox,
+                      customRecoilElectronicCoefficientSpinBox,
+                      customRecoilElectronicExponentSpinBox,
+                      customNuclearScreeningScaleSpinBox}) {
+    connect(field, qOverload<double>(&QDoubleSpinBox::valueChanged), this,
+            [this](double) { saveState(); });
+  }
+  updateStoppingModelFields();
 
   auto *preferencesGroup = new QGroupBox("Preferences", preferencesTab);
   auto *preferencesLayout = new QFormLayout(preferencesGroup);
@@ -952,7 +1147,11 @@ void MainWindow::createSettingsDialog() {
   preferencesLayout->addRow(tr("Color theme"), themeModeCombo);
 
   saveAllGraphsCheck = new QCheckBox(preferencesGroup);
-  preferencesLayout->addRow(tr("Save all graphs"), saveAllGraphsCheck);
+  saveAllGraphsCheck->setToolTip(
+      tr("Save a PNG for each enabled graph to the output directory after a "
+         "simulation completes."));
+  preferencesLayout->addRow(
+      tr("Automatically save graphs after simulation"), saveAllGraphsCheck);
 
   showLargeCsvWarningCheck = new QCheckBox(preferencesGroup);
   showLargeCsvWarningCheck->setChecked(!app_ || app_->showLargeCsvWarning());
@@ -979,7 +1178,7 @@ void MainWindow::createSettingsDialog() {
   preferencesTabLayout->addStretch();
   settingsTabs->addTab(generalTab, tr("General"));
   settingsTabs->addTab(histogramsTab, tr("Histograms"));
-  settingsTabs->addTab(electronTab, tr("Electron transport"));
+  settingsTabs->addTab(electronTab, tr("Stopping models"));
   settingsTabs->addTab(preferencesTab, tr("Preferences"));
 
   dialogLayout->addWidget(settingsTabs);
@@ -988,7 +1187,8 @@ void MainWindow::createSettingsDialog() {
                                        Qt::Horizontal, settingsDialog);
   connect(buttons, &QDialogButtonBox::accepted, settingsDialog, &QDialog::accept);
   connect(buttons, &QDialogButtonBox::rejected, settingsDialog, &QDialog::reject);
-  connect(buttons, &QDialogButtonBox::accepted, this, &MainWindow::refreshResultsPane);
+  connect(buttons, &QDialogButtonBox::accepted, this,
+          [this]() { refreshResultsPane(true); });
   dialogLayout->addWidget(buttons);
 
   resultPane = new QPlainTextEdit(settingsDialog);

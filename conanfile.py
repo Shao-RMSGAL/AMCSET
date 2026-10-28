@@ -1,3 +1,19 @@
+# Copyright 2025, Texas A&M University
+#
+# This file is part of AMCSET.
+#
+# AMCSET is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
+#
+# AMCSET is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+# A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with
+# AMCSET. If not, see <https://www.gnu.org/licenses/>.
+
 from conan import ConanFile
 from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout, CMakeDeps
 
@@ -51,7 +67,7 @@ class amcsetRecipe(ConanFile):
         self.requires("abseil/[=20260526.0]")
         self.requires("qt/[=6.11.1]")
         # libiconv 1.17 does not build with current MinGW/MSYS2 headers.
-        self.requires("libiconv/[=1.18]", override=True)
+        self.requires("libiconv/[=1.18]")
 
     def build_requirements(self):
         self.tool_requires("cmake/[=3.29]")
