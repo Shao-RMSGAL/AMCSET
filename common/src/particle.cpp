@@ -7,7 +7,7 @@
 
 #include "amcset_common.h"
 
-#include <glog/logging.h>
+#include <absl/log/log.h>
 
 #include <boost/math/constants/constants.hpp> 
 #include <boost/random/discrete_distribution.hpp> 
@@ -152,4 +152,3 @@ Particle &Particle::rotate_inplace(angle_quantity scattering_angle) {
 
 } // namespace common
 } // namespace amcset
-

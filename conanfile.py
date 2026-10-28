@@ -48,7 +48,7 @@ class amcsetRecipe(ConanFile):
         self.requires("boost/[=1.89.0]", transitive_headers=True)
         self.requires("gtest/[=1.15.0]")
         self.requires("gflags/[=2.2.2]")
-        self.requires("glog/[=0.7.1]")
+        self.requires("abseil/[=20260526.0]")
         self.requires("qt/[=6.11.1]")
         # libiconv 1.17 does not build with current MinGW/MSYS2 headers.
         self.requires("libiconv/[=1.18]", override=True)
@@ -72,6 +72,7 @@ class amcsetRecipe(ConanFile):
 
         # Use shared Qt libraries.
         self.options["qt"].shared = True
+        self.options["qt"].with_pq = False
 
         # Enable Vulkan support.
         self.options["qt"].with_vulkan = True
@@ -80,6 +81,12 @@ class amcsetRecipe(ConanFile):
         self.options["qt"].qt3d = True
         self.options["qt"].qtgraphs = True
         self.options["qt"].qtshadertools = True
+        # Qt Quick Controls styles are unused and generate paths beyond Windows MAX_PATH.
+        self.options["qt"].disabled_features = (
+            "quickcontrols2_basic quickcontrols2_fusion quickcontrols2_fluentwinui3 "
+            "quickcontrols2_imagine quickcontrols2_material quickcontrols2_stylekit "
+            "quickcontrols2_universal quickcontrols2_windows"
+        )
 
         # Wayland is a Linux build feature. The Windows xkbcommon package
         # does not expose the option required by Qt's Wayland validation.

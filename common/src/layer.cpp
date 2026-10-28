@@ -1,6 +1,6 @@
 // Layer implementation moved out of amcset_common.cpp
 #include "amcset_common.h"
-#include <glog/logging.h>
+#include <absl/log/log.h>
 
 #include <numeric>
 

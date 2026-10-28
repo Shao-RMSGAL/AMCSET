@@ -36,7 +36,8 @@
 #include <ctime>
 #include <filesystem>
 #include <iomanip>
-#include <glog/logging.h>
+#include <absl/log/initialize.h>
+#include <absl/log/log.h>
 
 #include "amcset_utilities.h"
 
@@ -56,8 +57,7 @@ protected:
   void SetUp() override {
     static bool logging_initialized = false;
     if (!logging_initialized) {
-      google::InitGoogleLogging("common-test");
-      FLAGS_logtostderr = 1;
+      absl::InitializeLog();
       ASSERT_NE(std::freopen("log.txt", "w", stderr), nullptr);
       logging_initialized = true;
     }

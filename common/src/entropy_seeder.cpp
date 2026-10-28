@@ -6,7 +6,7 @@
 #include <chrono>
 #include <random>
 #include <thread>
-#include <glog/logging.h>
+#include <absl/log/log.h>
 
 namespace amcset {
 namespace common {

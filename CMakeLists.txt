@@ -60,13 +60,10 @@ else()
 endif()
 target_compile_definitions(compiler_flags INTERFACE
     $<$<CONFIG:Release>:NDEBUG>
-    $<$<CONFIG:Release>:GOOGLE_STRIP_LOG=2>
+    $<$<CONFIG:Release>:ABSL_MIN_LOG_LEVEL=2>
     $<$<PLATFORM_ID:Windows>:_WIN32_WINNT=0x0A00>
     $<$<PLATFORM_ID:Windows>:_CRT_SECURE_NO_WARNINGS>
 )
-if(WIN32)
-    target_compile_definitions(compiler_flags INTERFACE GLOG_NO_ABBREVIATED_SEVERITIES)
-endif()
 target_link_options(compiler_flags INTERFACE
     $<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:MSVC>>:/LTCG>
     $<$<AND:$<CONFIG:Release>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-flto>
@@ -84,7 +81,7 @@ configure_file(${PROJECT_SOURCE_DIR}/common/include/config.h.in ${PROJECT_SOURCE
 # Packages
 find_package(Boost 1.86.0 REQUIRED)
 find_package(GTest 1.15.0 REQUIRED)
-find_package(glog 0.7.1 REQUIRED)
+find_package(absl REQUIRED CONFIG)
 find_package(gflags 2.2.2 REQUIRED)
 # find_package(OpenSSL REQUIRED CONFIG COMPONENTS filesystem)
 find_package(Qt6 6.11.1 COMPONENTS Core Gui Widgets Graphs 3DCore 3DExtras 3DRender 3DInput REQUIRED)
@@ -114,7 +111,11 @@ endif()
 # target_include_directories(amcset-common SYSTEM PUBLIC
 #     ${Boost_INCLUDE_DIRS}
 #     )
-target_link_libraries(amcset-common PUBLIC ${Boost_LIBRARIES} glog::glog)
+target_link_libraries(amcset-common PUBLIC
+    ${Boost_LIBRARIES}
+    absl::log
+    absl::log_initialize
+)
 
 
 # Allow link access for common library to gui

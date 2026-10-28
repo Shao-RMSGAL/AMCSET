@@ -76,9 +76,9 @@ $modeLower = "release"
 
 $ProjectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SrcDir = $ProjectDir
-$CmakeCmd = "cmake"
+$CmakeCmd = $null
 $BuildDir = Join-Path $ProjectDir "build\$mode"
-$CmakeConfigurePreset = "conan-default"
+$CmakeConfigurePreset = "conan-release"
 $CmakeBuildPreset = "conan-release"
 
 $CmakeFlags = @("--preset", "conan-$modeLower")
@@ -106,21 +106,23 @@ function Copy-CompileCommands {
 }
 
 function Test-ConanBuildFiles {
-    $generatorDir = Join-Path $ProjectDir "build\generators"
+    $generatorDir = Join-Path $BuildDir "generators"
     $toolchainPath = Join-Path $generatorDir "conan_toolchain.cmake"
     $presetPath = Join-Path $generatorDir "CMakePresets.json"
-    $legacyReleasePreset = Join-Path $ProjectDir "build\Release\generators\CMakePresets.json"
-    $legacyDebugPreset = Join-Path $ProjectDir "build\Debug\generators\CMakePresets.json"
+    $buildEnvPath = Join-Path $generatorDir "conanbuild.bat"
 
     if (-not (Test-Path $toolchainPath) -or
         -not (Test-Path $presetPath) -or
-        (Test-Path $legacyReleasePreset) -or
-        (Test-Path $legacyDebugPreset)) {
+        -not (Test-Path $buildEnvPath)) {
         return $false
     }
 
-    $preset = Get-Content -Raw $presetPath
-    if ($preset -match "/opt/conan/|/workspace/|/home/|/usr/bin/") {
+    $presets = Get-Content -Raw $presetPath | ConvertFrom-Json
+    $configurePreset = $presets.configurePresets |
+        Where-Object { $_.name -eq "conan-$modeLower" } |
+        Select-Object -First 1
+    if (-not $configurePreset -or
+        $configurePreset.toolchainFile -match "/opt/conan/|/workspace/|/home/|/usr/bin/") {
         return $false
     }
 
@@ -128,27 +130,43 @@ function Test-ConanBuildFiles {
 }
 
 function Invoke-Build {
-    if (-not (Test-ConanBuildFiles)) {
-        Write-Host "Conan build files are missing or stale; installing dependencies..."
-        Invoke-Conan
+    Push-Location $ProjectDir
+    try {
+        if (-not (Test-ConanBuildFiles)) {
+            Write-Host "Conan build files are missing or stale; installing dependencies..."
+            Invoke-Conan
+        }
+
+        $presetPath = Join-Path $BuildDir "generators\CMakePresets.json"
+        $presets = Get-Content -Raw $presetPath | ConvertFrom-Json
+        $configurePreset = $presets.configurePresets |
+            Where-Object { $_.name -eq "conan-$modeLower" } |
+            Select-Object -First 1
+        $CmakeCmd = $configurePreset.cmakeExecutable
+        if (-not $CmakeCmd -or -not (Test-Path $CmakeCmd)) {
+            $cmakeCommand = Get-Command cmake -ErrorAction SilentlyContinue
+            if (-not $cmakeCommand) {
+                throw "CMake executable was not found in the Conan preset or PATH."
+            }
+            $CmakeCmd = $cmakeCommand.Source
+        }
+
+        # Enable AddressSanitizer only for debug builds; keep Release fast
+        $asanFlag = "OFF"
+        if ($modeLower -eq "debug") {
+            $asanFlag = "ON"
+        }
+
+        $buildEnvPath = Join-Path $BuildDir "generators\conanbuild.bat"
+        $buildCommand = 'call "{0}" && "{1}" --fresh --preset {2} -DENABLE_ASAN={3} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE={4} && "{1}" --build --preset {5}' -f `
+            $buildEnvPath, $CmakeCmd, $CmakeConfigurePreset, $asanFlag, $mode, $CmakeBuildPreset
+        & $env:ComSpec /d /s /c $buildCommand 2>&1 | Out-Host
+        Check-Status $LASTEXITCODE
+
+        Copy-CompileCommands
+    } finally {
+        Pop-Location
     }
-
-    # Enable AddressSanitizer only for debug builds; keep Release fast
-    $asanFlag = "OFF"
-    if ($modeLower -eq "debug") {
-        $asanFlag = "ON"
-    }
-
-    & $CmakeCmd --fresh --preset $CmakeConfigurePreset `
-        "-DENABLE_ASAN=$asanFlag" `
-        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON" `
-        "-DCMAKE_BUILD_TYPE=$mode" 2>&1 | Out-Host
-    Check-Status $LASTEXITCODE
-
-    & $CmakeCmd --build --preset $CmakeBuildPreset 2>&1 | Out-Host
-    Check-Status $LASTEXITCODE
-
-    Copy-CompileCommands
 }
 
 function Invoke-Test {
@@ -176,6 +194,7 @@ function Invoke-Conan {
         & conan install . `
             "--settings=build_type=$mode" `
             "--settings=compiler.cppstd=20" `
+            "--conf=tools.cmake.cmaketoolchain:generator=Ninja" `
             "--build=missing" 2>&1 | Out-Host
         Check-Status $LASTEXITCODE
     } finally {

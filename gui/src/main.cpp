@@ -32,7 +32,9 @@
 #include <QTemporaryDir>
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
+#include <absl/log/globals.h>
+#include <absl/log/initialize.h>
+#include <absl/log/log.h>
 
 #include "amcset_common.h"
 #include "amcset_utilities.h"
@@ -41,6 +43,9 @@
 #include "mainwindow.h"
 
 DEFINE_bool(gui, true, "Enable or disable the graphical user interface (GUI)");
+DEFINE_int32(v, 0, "Set the maximum VLOG verbosity level.");
+DEFINE_int32(minloglevel, 0,
+             "Minimum log severity: 0=INFO, 1=WARNING, 2=ERROR, 3=FATAL.");
 
 using namespace amcset::common;
 // Wow
@@ -77,8 +82,7 @@ int main(int argc, char *argv[]) {
     qputenv("LANG", "C.UTF-8");
 
     // Initialize logger
-    google::InitGoogleLogging(argv[0]);
-    FLAGS_alsologtostderr = 1;
+    absl::InitializeLog();
 
     std::string usage_message = "AMCSET. Call " + std::string(argv[0]);
     gflags::SetUsageMessage(usage_message);
@@ -89,6 +93,13 @@ int main(int argc, char *argv[]) {
     gflags::SetVersionString(version.str());
     // Process flags
     gflags::ParseCommandLineFlags(&argc, &argv, true);
+    if (FLAGS_minloglevel < 0 || FLAGS_minloglevel > 3) {
+      LOG(ERROR) << "--minloglevel must be between 0 (INFO) and 3 (FATAL).";
+      return 1;
+    }
+    absl::SetMinLogLevel(
+        static_cast<absl::LogSeverityAtLeast>(FLAGS_minloglevel));
+    absl::SetGlobalVLogLevel(FLAGS_v);
 
     // PERF: Add an option to use GPU (Use Kokkos for cross-platform
     // compatability. Note that it is not available in conan. Either make a

@@ -19,13 +19,64 @@
 #include <QSet>
 
 #include <QDir>
+#include <QFile>
 #include <QMessageBox>
 #include <QThread>
 #include <QTimer>
-#include <glog/logging.h>
+#include <absl/log/log.h>
+#include <absl/log/log_entry.h>
+#include <absl/log/log_sink.h>
+#include <absl/log/log_sink_registry.h>
+
+#include <mutex>
 
 namespace amcset {
 namespace gui {
+namespace {
+
+class SimulationLogSink final : public absl::LogSink {
+public:
+  SimulationLogSink() { absl::AddLogSink(this); }
+
+  ~SimulationLogSink() override {
+    absl::RemoveLogSink(this);
+    std::lock_guard<std::mutex> lock(mutex_);
+    file_.close();
+  }
+
+  bool open(const QString &path) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    file_.close();
+    file_.setFileName(path);
+    return file_.open(QIODevice::WriteOnly | QIODevice::Append |
+                      QIODevice::Text);
+  }
+
+  void close() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    file_.close();
+  }
+
+  void Send(const absl::LogEntry &entry) override {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (file_.isOpen()) {
+      const auto message = entry.text_message_with_prefix_and_newline();
+      file_.write(message.data(), static_cast<qint64>(message.size()));
+      file_.flush();
+    }
+  }
+
+private:
+  std::mutex mutex_;
+  QFile file_;
+};
+
+SimulationLogSink &simulationLogSink() {
+  static SimulationLogSink sink;
+  return sink;
+}
+
+} // namespace
 
 QString MainWindow::formatSimulationError(const std::exception &e,
                                           std::size_t depth) {
@@ -132,22 +183,24 @@ void MainWindow::launchSimulationThread(
 void MainWindow::runSimulation() {
   if (enableLoggingCheck && enableLoggingCheck->isChecked()) {
     const auto outputDir = outputDirectoryEdit->text().trimmed();
-    const auto logFile = QDir(outputDir).absoluteFilePath(logFileEdit->text().trimmed());
+    const auto logFile =
+        QDir(outputDir).absoluteFilePath(logFileEdit->text().trimmed());
     QFileInfo logInfo(logFile);
-    if (!logInfo.absoluteDir().exists()) {
-      QDir().mkpath(logInfo.absoluteDir().absolutePath());
+    if (!logInfo.absoluteDir().exists() &&
+        !QDir().mkpath(logInfo.absoluteDir().absolutePath())) {
+      QMessageBox::warning(this, tr("Logging error"),
+                           tr("Could not create the log directory."));
+      return;
     }
-    const auto stdPath = logFile.toStdString();
-    google::SetLogDestination(google::GLOG_INFO, stdPath.c_str());
-    google::SetLogDestination(google::GLOG_WARNING, stdPath.c_str());
-    google::SetLogDestination(google::GLOG_ERROR, stdPath.c_str());
-    google::SetLogDestination(google::GLOG_FATAL, stdPath.c_str());
+    if (!simulationLogSink().open(logFile)) {
+      QMessageBox::warning(
+          this, tr("Logging error"),
+          tr("Could not open the log file: %1").arg(logFile));
+      return;
+    }
     updateResultPane(QString("Logging enabled to %1").arg(logFile));
   } else {
-    google::SetLogDestination(google::GLOG_INFO, "");
-    google::SetLogDestination(google::GLOG_WARNING, "");
-    google::SetLogDestination(google::GLOG_ERROR, "");
-    google::SetLogDestination(google::GLOG_FATAL, "");
+    simulationLogSink().close();
   }
 
   const auto outputDir = outputDirectoryEdit->text().trimmed();

@@ -23,7 +23,7 @@
 #include <QStyleFactory>
 
 // Logging libraries
-#include <glog/logging.h>
+#include <absl/log/log.h>
 
 // Local library includes
 #include "application.h"
