@@ -14,52 +14,97 @@
 # You should have received a copy of the GNU General Public License along with
 # AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
-set(CMAKE_AUTORCC ON)  # Automatically handle .qrc files
+# The AMCSET GUI: Qt Widgets, with the particle-path views drawn through QRhi
+# (Vulkan, Direct3D, Metal or OpenGL).
 
-add_executable(amcset-gui
-    ${PROJECT_SOURCE_DIR}/gui/src/main.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/application.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/mainwindow.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/mainwindow_actions.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/mainwindow_layers.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/mainwindow_results.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/mainwindow_simulation.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/layerwindow.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/layer_delegate.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/canvas.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/3dview.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/counter.cpp
-    ${PROJECT_SOURCE_DIR}/gui/src/simulation.cpp
-    ${PROJECT_SOURCE_DIR}/gui/include/application.h
-    ${PROJECT_SOURCE_DIR}/gui/include/mainwindow.h
-    ${PROJECT_SOURCE_DIR}/gui/include/layerwindow.h
-    ${PROJECT_SOURCE_DIR}/gui/include/layer_delegate.h
-    ${PROJECT_SOURCE_DIR}/gui/include/canvas.h
-    ${PROJECT_SOURCE_DIR}/gui/include/3dview.h
-    ${PROJECT_SOURCE_DIR}/gui/include/counter.h
-    ${PROJECT_SOURCE_DIR}/gui/include/simulation.h
-    ${PROJECT_SOURCE_DIR}/gui/resources/resources.qrc
-    )
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
-target_include_directories(amcset-gui PRIVATE
-    ${PROJECT_SOURCE_DIR}/gui/include/
-    )
+set(GUI_SOURCES
+    src/main.cpp
+    src/app/main_window.cpp src/app/main_window.h
+    src/app/guard.cpp src/app/guard.h
+    src/model/scenario.cpp src/model/scenario.h
+    src/model/target_models.cpp src/model/target_models.h
+    src/model/quantity_text.cpp src/model/quantity_text.h
+    src/run/run_controller.cpp src/run/run_controller.h
+    src/run/track_store.cpp src/run/track_store.h
+    src/run/datasets.cpp src/run/datasets.h
+    src/setup/form_binder.h
+    src/setup/ion_panel.cpp src/setup/ion_panel.h
+    src/setup/target_panel.cpp src/setup/target_panel.h
+    src/setup/calculation_panel.cpp src/setup/calculation_panel.h
+    src/setup/crystal_panel.cpp src/setup/crystal_panel.h
+    src/setup/output_panel.cpp src/setup/output_panel.h
+    src/setup/output_spec_dialog.cpp src/setup/output_spec_dialog.h
+    src/setup/periodic_table.cpp src/setup/periodic_table.h
+    src/views/axis_ticks.cpp src/views/axis_ticks.h
+    src/views/cell_view.cpp src/views/cell_view.h
+    src/views/plot_widget.cpp src/views/plot_widget.h
+    src/views/plots_panel.cpp src/views/plots_panel.h
+    src/views/tables_panel.cpp src/views/tables_panel.h
+    src/views/stats_panel.cpp src/views/stats_panel.h
+    src/views/track_view.cpp src/views/track_view.h
+    src/views/track_panel.cpp src/views/track_panel.h
+)
 
-target_link_libraries(amcset-gui PRIVATE compiler_flags)
+add_executable(amcset-gui WIN32 ${GUI_SOURCES})
+target_include_directories(amcset-gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(amcset-gui PRIVATE compiler_flags amcset-common Qt6::Core Qt6::Gui Qt6::Widgets)
 
-include(GoogleTest)
+# QRhi lives in Qt's semi-public GUI headers (<rhi/qrhi.h>, Qt::GuiPrivate).
+# Package managers that do not export Qt6::GuiPrivate still ship the headers
+# under include/QtGui/<version>/QtGui.
+if(TARGET Qt6::GuiPrivate)
+  target_link_libraries(amcset-gui PRIVATE Qt6::GuiPrivate)
+else()
+  get_target_property(_qt_gui_includes Qt6::Gui INTERFACE_INCLUDE_DIRECTORIES)
+  # Conan's CMakeDeps wraps the paths in generator expressions.
+  string(REGEX REPLACE "\\$<[^:>]*:" "" _qt_gui_includes "${_qt_gui_includes}")
+  string(REPLACE ">" "" _qt_gui_includes "${_qt_gui_includes}")
+  if(DEFINED qt_PACKAGE_FOLDER_RELEASE)
+    list(APPEND _qt_gui_includes "${qt_PACKAGE_FOLDER_RELEASE}/include" "${qt_PACKAGE_FOLDER_RELEASE}/include/QtGui")
+  endif()
+  set(_rhi_hints)
+  foreach(_dir IN LISTS _qt_gui_includes)
+    file(GLOB _found LIST_DIRECTORIES true "${_dir}/*/QtGui" "${_dir}/QtGui/*/QtGui")
+    list(APPEND _rhi_hints "${_dir}/${Qt6_VERSION}/QtGui" "${_dir}/QtGui/${Qt6_VERSION}/QtGui" ${_found})
+  endforeach()
+  find_path(AMCSET_QT_RHI_INCLUDE_DIR rhi/qrhi.h HINTS ${_rhi_hints} NO_DEFAULT_PATH)
+  if(NOT AMCSET_QT_RHI_INCLUDE_DIR)
+    message(FATAL_ERROR "Qt's QRhi headers (rhi/qrhi.h) were not found; set AMCSET_QT_RHI_INCLUDE_DIR "
+                        "to the folder include/QtGui/${Qt6_VERSION}/QtGui of the Qt installation.")
+  endif()
+  get_filename_component(_rhi_version_dir "${AMCSET_QT_RHI_INCLUDE_DIR}" DIRECTORY)
+  target_include_directories(amcset-gui PRIVATE "${AMCSET_QT_RHI_INCLUDE_DIR}" "${_rhi_version_dir}")
+endif()
+
+# Shaders: the pre-compiled .qsb files in shaders/baked are used by default,
+# because some machines block running qsb.exe (Device Guard). With
+# AMCSET_COMPILE_SHADERS=ON they are compiled at build time by Qt Shader Tools.
+# Regenerate the baked files with shaders/bake.sh after editing a shader.
+option(AMCSET_COMPILE_SHADERS "Compile the GUI shaders with qsb at build time" OFF)
+if(AMCSET_COMPILE_SHADERS AND COMMAND qt_add_shaders AND TARGET Qt6::qsb)
+  qt_add_shaders(amcset-gui "amcset_shaders"
+    PREFIX "/shaders"
+    BASE shaders
+    GLSL "100 es,120,150" HLSL 50 MSL 12
+    FILES shaders/tracks.vert shaders/tracks.frag)
+else()
+  target_sources(amcset-gui PRIVATE shaders/shaders.qrc)
+endif()
 
 if(WIN32)
-  # Find the windeployqt executable
+  # Copy the Qt runtime next to the executable (non-fatal; see
+  # gui/scripts/run_windeployqt.cmake).
   get_target_property(QT_QMAKE_EXECUTABLE Qt6::qmake IMPORTED_LOCATION)
   get_filename_component(QT_BIN_DIR "${QT_QMAKE_EXECUTABLE}" DIRECTORY)
   find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${QT_BIN_DIR}")
-
-  # Run windeployqt after build
   add_custom_command(TARGET amcset-gui POST_BUILD
-    COMMAND "${WINDEPLOYQT_EXECUTABLE}"
-            --no-translations
-            "$<TARGET_FILE:amcset-gui>"
+    COMMAND ${CMAKE_COMMAND} "-DWINDEPLOYQT=${WINDEPLOYQT_EXECUTABLE}"
+            "-DTARGET=$<TARGET_FILE:amcset-gui>"
+            -P "${PROJECT_SOURCE_DIR}/gui/scripts/run_windeployqt.cmake"
     COMMENT "Running windeployqt..."
+    VERBATIM
   )
 endif()

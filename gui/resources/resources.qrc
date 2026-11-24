@@ -1,5 +1,0 @@
-<RCC>
-    <qresource prefix="/resources">
-        <file>fonts.conf</file>
-    </qresource>
-</RCC>

@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/shaders">
+        <file alias="tracks.vert.qsb">baked/tracks.vert.qsb</file>
+        <file alias="tracks.frag.qsb">baked/tracks.frag.qsb</file>
+    </qresource>
+</RCC>

@@ -14,114 +14,153 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
-#include <iostream>
-#include <qboxlayout.h>
-#include <qlabel.h>
+/*! \file main.cpp
+ *  \brief Entry point of the AMCSET GUI.
+ *
+ * Usage: amcset-gui [scenario.json | TRIM.IN | results.json]
+ * The environment variable AMCSET_RHI (opengl, vulkan, d3d11, d3d12, metal)
+ * selects the graphics API of the path views.
+ */
 
-#include <thread>
-
-#include <boost/interprocess/ipc/message_queue.hpp>
-#include <boost/math/constants/constants.hpp>
+#include "app/guard.h"
+#include "app/main_window.h"
+#include "config.h"
+#include "diagnostics.h"
 
 #include <QApplication>
-#include <QDebug>
+#include <QCommandLineParser>
+#include <QDir>
 #include <QFile>
-#include <QFrame>
-#include <QLabel>
-#include <QMainWindow>
-#include <QTemporaryDir>
+#include <QFileInfo>
+#include <QMessageBox>
+#include <QSettings>
+#include <QStandardPaths>
 
-#include <gflags/gflags.h>
-#include <absl/log/globals.h>
-#include <absl/log/initialize.h>
-#include <absl/log/log.h>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <thread>
 
-#include "amcset_common.h"
-#include "amcset_utilities.h"
-#include "application.h"
-#include "config.h"
-#include "mainwindow.h"
+namespace {
 
-DEFINE_bool(gui, true, "Enable or disable the graphical user interface (GUI)");
-DEFINE_int32(v, 0, "Set the maximum VLOG verbosity level.");
-DEFINE_int32(minloglevel, 0,
-             "Minimum log severity: 0=INFO, 1=WARNING, 2=ERROR, 3=FATAL.");
+//! Qt's own warnings and errors go into the diagnostic log (and, as before,
+//! to stderr); a qFatal ends in a crash report.
+void qt_message(QtMsgType type, const QMessageLogContext &, const QString &msg) {
+  using amcset::diag::Level;
+  Level level = Level::info;
+  switch (type) {
+  case QtDebugMsg: level = Level::debug; break;
+  case QtInfoMsg: level = Level::info; break;
+  case QtWarningMsg: level = Level::warning; break;
+  case QtCriticalMsg:
+  case QtFatalMsg: level = Level::error; break;
+  }
+  const QByteArray text = msg.toLocal8Bit();
+  if (amcset::diag::enabled(level)) amcset::diag::write(level, "[Qt] " + text.toStdString());
+  if (type != QtDebugMsg) std::fprintf(stderr, "%s\n", text.constData());
+  if (type == QtFatalMsg) std::abort();
+}
 
-using namespace amcset::common;
-// Wow
+//! The GUI's log: <app data>/logs/amcset-gui.log, the previous one kept as
+//! amcset-gui.old.log once it passes 5 MB.
+std::filesystem::path gui_log_file() {
+  const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+                      QStringLiteral("/logs");
+  QDir().mkpath(dir);
+  const QString file = dir + QStringLiteral("/amcset-gui.log");
+  const QFileInfo info(file);
+  if (info.exists() && info.size() > 5 * 1024 * 1024) {
+    const QString old = dir + QStringLiteral("/amcset-gui.old.log");
+    QFile::remove(old);
+    QFile::rename(file, old);
+  }
+  return std::filesystem::path(file.toStdWString());
+}
+
+} // namespace
+
 int main(int argc, char *argv[]) {
-
-  // TODO: See how this behaves under Windows
-  QTemporaryDir tempDir;
-  if (tempDir.isValid()) {
-    // Extract fonts.conf from resources to temporary directory
-    QFile resFile(":resources/fonts.conf");
-    if (resFile.open(QIODevice::ReadOnly)) {
-      QString configPath = tempDir.filePath("fonts.conf");
-      QFile outFile(configPath);
-      if (outFile.open(QIODevice::WriteOnly)) {
-        outFile.write(resFile.readAll());
-        outFile.close();
-
-        // Set Fontconfig environment variables
-        qputenv("FONTCONFIG_FILE", configPath.toUtf8());
-        qputenv("FONTCONFIG_PATH", tempDir.path().toUtf8());
-      } else {
-        qWarning() << "Failed to write fonts.conf to temporary directory";
-      }
-    } else {
-      qWarning() << "Failed to open embedded fonts.conf resource";
-    }
-  } else {
-    qWarning() << "Failed to create temporary directory for Fontconfig";
+  // Crash reports from the very start (the log file follows below).
+  amcset::diag::install_crash_handlers(argc > 0 ? argv[0] : "amcset-gui");
+  // QApplication with an exception-catching notify() (app/guard.h).
+  amcset::gui::Application app(argc, argv);
+  QCoreApplication::setOrganizationName(QStringLiteral("AMCSET"));
+  QCoreApplication::setApplicationName(QStringLiteral("AMCSET"));
+  QCoreApplication::setApplicationVersion(QStringLiteral(AMCSET_VERSION));
+  {
+    amcset::diag::Options d;
+    d.program = "amcset-gui";
+    d.log_file = gui_log_file();
+    d.level = QSettings().value(QStringLiteral("diagnostics/detailed"), false).toBool()
+                  ? amcset::diag::Level::debug
+                  : amcset::diag::Level::info;
+    amcset::diag::initialize(argc > 0 ? argv[0] : "amcset-gui", d);
+    qInstallMessageHandler(qt_message);
+    QStringList args;
+    for (int i = 0; i < argc; ++i) args << QString::fromLocal8Bit(argv[i]);
+    AMCSET_LOG(info) << "amcset-gui " AMCSET_VERSION " started (Qt " << qVersion() << "): "
+                     << args.join(QLatin1Char(' ')).toStdString();
   }
 
-  try { // {{{
-    setlocale(LC_ALL, "C.UTF-8");
-    qputenv("LC_ALL", "C.UTF-8");
-    qputenv("LANG", "C.UTF-8");
+  QCommandLineParser parser;
+  parser.setApplicationDescription(QStringLiteral("AMCSET: Monte Carlo transport of ions and electrons in matter"));
+  parser.addHelpOption();
+  parser.addVersionOption();
+  parser.addPositionalArgument(QStringLiteral("file"),
+                               QStringLiteral("Scenario (.json), TRIM.IN or results.json to open"));
+  const QCommandLineOption run_opt(QStringLiteral("run"), QStringLiteral("Start the calculation at once."));
+  const QCommandLineOption shots_opt(QStringLiteral("screenshots"),
+                                     QStringLiteral("After the calculation, save images of the views to <dir>."),
+                                     QStringLiteral("dir"));
+  const QCommandLineOption quit_opt(QStringLiteral("quit"), QStringLiteral("Quit when the calculation ends."));
+  const QCommandLineOption timeout_opt(QStringLiteral("timeout"),
+                                       QStringLiteral("With --run: exit with code 3 after <seconds>."),
+                                       QStringLiteral("seconds"), QStringLiteral("0"));
+  parser.addOption(run_opt);
+  parser.addOption(timeout_opt);
+  parser.addOption(shots_opt);
+  parser.addOption(quit_opt);
+  parser.process(app);
 
-    // Initialize logger
-    absl::InitializeLog();
-
-    std::string usage_message = "AMCSET. Call " + std::string(argv[0]);
-    gflags::SetUsageMessage(usage_message);
-
-    std::ostringstream version;
-    version << amcset_VERSION_MAJOR << '.' << amcset_VERSION_MINOR << '.'
-            << amcset_VERSION_PATCH;
-    gflags::SetVersionString(version.str());
-    // Process flags
-    gflags::ParseCommandLineFlags(&argc, &argv, true);
-    if (FLAGS_minloglevel < 0 || FLAGS_minloglevel > 3) {
-      LOG(ERROR) << "--minloglevel must be between 0 (INFO) and 3 (FATAL).";
-      return 1;
+  const bool unattended = parser.isSet(run_opt) || parser.isSet(shots_opt);
+  const QString shots = parser.value(shots_opt);
+  int rc = 0;
+  // Exceptions in event handlers are caught by Application::notify and the
+  // slot guards; this catches what escapes building or closing the window.
+  try {
+    amcset::gui::MainWindow window;
+    window.show();
+    const QStringList files = parser.positionalArguments();
+    if (!files.isEmpty()) window.open_path(files.front());
+    if (unattended) window.run_unattended(shots, parser.isSet(quit_opt), parser.value(timeout_opt).toInt());
+    rc = app.exec();
+    if (unattended) {
+      qInfo().noquote() << QStringLiteral("Event loop ended (exit code %1); closing.").arg(rc);
+      // An unattended run must end: if closing the window and the graphics
+      // device takes longer than 60 s, say so and leave with code 10 + rc.
+      std::thread([rc] {
+        std::this_thread::sleep_for(std::chrono::seconds(60));
+        std::fprintf(stderr, "Shutdown did not finish within 60 s.\n");
+        std::fflush(stderr);
+        std::_Exit(10 + rc);
+      }).detach();
     }
-    absl::SetMinLogLevel(
-        static_cast<absl::LogSeverityAtLeast>(FLAGS_minloglevel));
-    absl::SetGlobalVLogLevel(FLAGS_v);
-
-    // PERF: Add an option to use GPU (Use Kokkos for cross-platform
-    // compatability. Note that it is not available in conan. Either make a
-    // conan recipe for it or use another installation method.
-
-    if (FLAGS_gui) {
-      LOG(INFO) << "Starting AMCSET GUI...";
-      QApplication app(argc, argv);
-      QCoreApplication::setOrganizationName("AMCSET");
-      QCoreApplication::setApplicationName("AMCSET");
-      amcset::gui::Application application;
-      VLOG(1) << "Initializing window";
-      amcset::gui::MainWindow mainWindow(&application);
-      VLOG(1) << "Executing application";
-      return app.exec();
-    } else {
-      LOG(INFO) << "Starting AMCSET in CLI mode...";
-      LOG(ERROR) << "CLI implemementation not complete";
-      LOG(INFO) << "...Quitting AMCSET CLI.";
-      return 0;
+  } catch (...) {
+    const QString text = amcset::gui::exception_text(std::current_exception());
+    AMCSET_LOG(error) << "amcset-gui failed: " << text.toStdString();
+    std::fprintf(stderr, "amcset-gui: %s\n", text.toLocal8Bit().constData());
+    if (!unattended) QMessageBox::critical(nullptr, QStringLiteral("AMCSET"), text);
+    rc = 2;
+  }
+  if (unattended) {
+    qInfo().noquote() << QStringLiteral("Window closed.");
+    // The exit code, for scripts that cannot read it from the process.
+    if (!shots.isEmpty()) {
+      QFile f(QDir(shots).filePath(QStringLiteral("exit_code.txt")));
+      if (f.open(QIODevice::WriteOnly | QIODevice::Text)) f.write(QByteArray::number(rc) + '\n');
     }
-  } catch (const std::exception &e) {
-    LOG(FATAL) << (e.what());
-  } // }}}
+  }
+  AMCSET_LOG(info) << "amcset-gui exits with code " << rc;
+  return rc;
 }
