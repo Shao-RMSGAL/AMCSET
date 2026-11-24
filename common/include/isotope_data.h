@@ -30,7 +30,11 @@
 
 // Standard library
 #include <array>
+#include <stdexcept>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 // AMCSET includes
 #include "amcset_utilities.h"
@@ -45,10 +49,19 @@ namespace common {
  * number.
  *
  * This class enables static access to isotopic data with minimal overhead. By
- * calling the IsotopeData::getIsotopicMass() function, one can access the exact
- * mass of any known isotope (As tabulated by NIST)
+ * calling IsotopeData::get_isotope_mass(), one can access the exact mass of
+ * any known isotope (as tabulated by NIST).
  *
- * This class also provides the natural isotopic abundances of various elements.
+ * This class also provides the natural isotopic abundances of the elements
+ * (get_relative_abundance()) and symbol <-> atomic number conversion.
+ *
+ * The table itself (\c database) is generated at build time from
+ * common/assets/isotope_data.txt by common/scripts/generate_isotope_data.py
+ * into common/generated/isotope_database.h, and is ordered by atomic number
+ * and then mass number.
+ *
+ * \warning Under clang the table is replaced by an empty array (see the
+ * bottom of this class), so every isotope lookup fails. Build with GCC/MSVC.
  */
 class IsotopeData {
 public:
@@ -80,7 +93,9 @@ public:
    * \param atomic_number The atomic (Z) number of the isotope. If this number
    * is zero and mass_number is 0, electron mass is returned.
    * \param mass_number The mass number of the isotope
-   * \return The exact mass of the corresponding isotope in Relative Atomic Mass
+   * \return The exact mass of the corresponding isotope (SI kg).
+   * \throws std::out_of_range for an invalid Z or A, or an isotope that is
+   * not in the table.
    */
   inline static constexpr mass_quantity
   get_isotope_mass(size_t atomic_number, size_t mass_number) try {
@@ -96,8 +111,8 @@ public:
     }
     if (mass_number == 0 || mass_number > MAX_A) {
       throw std::out_of_range(EXCEPTION_MESSAGE(
-          "Invalid mass number: " + std::to_string(atomic_number) +
-          ". Allowed range is 1 to " + std::to_string(MAX_Z) +
+          "Invalid mass number: " + std::to_string(mass_number) +
+          ". Allowed range is 1 to " + std::to_string(MAX_A) +
           " for non-electrons."));
     }
 
@@ -105,7 +120,6 @@ public:
         find_isotope(atomic_number_to_element(atomic_number), mass_number);
 
     mass_quantity mass = isotope->relative_atomic_mass * atomic_mass_unit;
-    // mass_quantity mass = isotopic_masses[atomic_number - 1][mass_number - 1];
 
     if (mass == double(0.0) * atomic_mass_unit) {
       throw std::invalid_argument(EXCEPTION_MESSAGE(
@@ -119,7 +133,8 @@ public:
   }
 
   /*!
-   * \brief A helper function for retrieving isotope data
+   * \brief Find the table entry for (symbol, mass number) by linear search.
+   * \throws std::out_of_range if no such isotope is tabulated.
    */
   inline static constexpr const Isotope *
   find_isotope(std::string_view atomic_symbol, size_t mass_number) {
@@ -134,7 +149,12 @@ public:
   }
 
   /*!
-   * \brief Return a material_vector of a natural sample of an element.
+   * \brief Natural isotopic composition of an element.
+   *
+   * \return (mass number, abundance) pairs normalized to sum to 1. For an
+   * element with no naturally occurring isotope, the lightest tabulated
+   * isotope is returned with abundance 1 (the caller is not told that this
+   * substitution happened). An unknown Z yields {(0, 1.0)}.
    */
   static inline
 
@@ -159,8 +179,8 @@ public:
         }
         if (entry.isotopic_composition != 0.0) {
           composition_sum += entry.isotopic_composition;
-          material_vector.emplace_back(
-              std::make_pair(entry.mass_number, entry.isotopic_composition));
+          material_vector.emplace_back(entry.mass_number,
+                                       entry.isotopic_composition);
         }
       }
     }
@@ -168,7 +188,7 @@ public:
     // If there is no isotopic compositions, just return the lowest-mass
     // isotope.
     if (material_vector.empty()) {
-      material_vector.emplace_back(std::make_pair(lowest_isotope, 1.0));
+      material_vector.emplace_back(lowest_isotope, 1.0);
       composition_sum = 1.0;
     }
 
@@ -179,13 +199,14 @@ public:
       }
     }
     return material_vector;
-
-    // TODO: The user should be notified, and a suggestion made to manually
-    // specify isotopes.
   }
 
   /*!
-   *    \brief Converts atomic symbol to atomic number.
+   * \brief Converts an IUPAC atomic symbol (case-sensitive, e.g. "Fe") to its
+   * atomic number. The legacy placeholder symbols Uut/Uuq/Uup/Uuh/Uus/Uuo
+   * are also accepted.
+   *
+   * \return The atomic number, or 0 if the symbol is not recognised.
    */
   inline static constexpr size_t
   element_to_atomic_number(std::string_view symbol) {
@@ -279,6 +300,8 @@ public:
           return 93; // Neptunium
         else if (second == 'o')
           return 102; // Nobelium
+        else if (second == 'h')
+          return 113; // Nihonium
       } else if (first == 'M') {
         if (second == 'g')
           return 12; // Magnesium
@@ -456,22 +479,10 @@ public:
       } else if (first == 'K') {
         if (second == 'r')
           return 36; // Krypton
-      } else if (first == 'J') {
-        if (second == 'b')
-          return 105; // Dubnium (alternative name Joliotium)
-      } else if (first == 'U') {
-        if (second == 'u')
-          return 113; // Nihonium (alternative name Ununtrium)
-        else if (second == 'u')
-          return 114; // Flerovium (alternative name Ununquadium)
-        else if (second == 'p')
-          return 115; // Moscovium (alternative name Ununpentium)
-        else if (second == 'h')
-          return 116; // Livermorium (alternative name Ununhexium)
       }
     }
 
-    // Handle three-letter symbols for newer elements or alternative names
+    // Handle the legacy three-letter placeholder symbols
     else if (symbol.length() == 3) {
       if (symbol == "Uut")
         return 113; // Nihonium (older name)
@@ -487,14 +498,12 @@ public:
         return 118; // Oganesson (older name)
     }
 
-    // std::ostringstream error_message;
-    // error_message << "Invalid atomic symbol " << symbol;
-    // throw std::logic_error(error_message.str());
-    return 0;
+    return 0; // Unknown symbol
   } // }}}
 
   /*!
-   * \brief Converts atomic number to atomic symbol
+   * \brief Converts an atomic number to its IUPAC symbol.
+   * \return The symbol, or an empty view for an unknown atomic number.
    */
   inline static constexpr std::string_view
   atomic_number_to_element(size_t atomic_number) {
@@ -736,24 +745,24 @@ public:
     case 118:
       return "Og"; // Oganesson
     default:
-      // std::ostringstream error_message;
-      // error_message << "Invalid atomic number " << atomic_number;
-      // throw std::logic_error(error_message.str());
-      return "";
+      return ""; // Unknown atomic number
     }
   } // }}}
 
-#ifdef __clang__ // Temporarily disable clang to suppress annoying error
+#ifdef __clang__
+  // HACK: the very large generated initializer caused errors under clang
+  // (the -fbracket-depth=3500 flag in CMakeLists.txt was an earlier
+  // workaround), so clang builds (e.g. clangd indexing) get an EMPTY table. Isotope lookups will throw at run time under clang.
+  // A proper fix is to generate a .cpp with a plain array instead of a
+  // macro-expanded constexpr std::array; see docs/ROADMAP.md.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Weverything"
-#warning                                                                       \
-    "Temporarily disable clang compilation to suppress annoying errors. Code will not behave properly."; // HACK: Fix this
+#warning "AMCSET: clang build uses an empty isotope table; isotope lookups will fail at run time."
 #pragma clang diagnostic pop
-  /*!
-   * An array that stores isotope data.
-   */
+  //! An (empty, clang-only) placeholder for the isotope table.
   inline static constexpr std::array<Isotope, 0> database = {}; // NOLINT
 #else
+  //! The NIST isotope table, ordered by atomic number then mass number.
   inline static constexpr std::array database = {
       GENERATE_ISOTOPE_DATA}; // NOLINT
 #endif

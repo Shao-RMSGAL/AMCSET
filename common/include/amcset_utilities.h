@@ -15,140 +15,48 @@
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
 /*! \file amcset_utilities.h
- *  \brief The utilites header file for the AMCSET common library
+ *  \brief The utilities header file for the AMCSET common library
  *
- * This file contains useful constructs and includes for AMCSET,
- * such as Boost.units definitions, custom units and quantities, as well as
- * other useful constants.
+ * This file contains useful constructs for AMCSET: it includes the
+ * dimensional-analysis header amcset_units.h and defines the exception
+ * helpers (EXCEPTION_MESSAGE, rethrow, print_exception).
+ *
+ * \note This header brings \c boost::units and
+ * \c boost::math::double_constants into namespace amcset::common with
+ * using-directives, so names such as \c pi, \c sqrt and \c pow are
+ * visible unqualified throughout the library.
+ *
+ * Units, quantity types and physical constants live in amcset_units.h
+ * (included here); see its file comment for the conventions.
  */
 
 #pragma once
 
 // Standard library
 #include <cmath>
-
-// Boost units
-#include <boost/mpl/list.hpp>
-#include <boost/units/base_units/angle/degree.hpp>
-#include <boost/units/base_units/cgs/gram.hpp>
-#include <boost/units/base_units/metric/angstrom.hpp>
-#include <boost/units/cmath.hpp>
-#include <boost/units/io.hpp>
-#include <boost/units/physical_dimensions/energy.hpp>
-#include <boost/units/physical_dimensions/mass.hpp>
-#include <boost/units/systems/cgs/length.hpp>
-#include <boost/units/systems/cgs/mass.hpp>
-#include <boost/units/systems/si/amount.hpp>
-#include <boost/units/systems/si/codata/electromagnetic_constants.hpp>
-#include <boost/units/systems/si/codata/electron_constants.hpp>
-#include <boost/units/systems/si/codata/physico-chemical_constants.hpp>
-#include <boost/units/systems/si/codata/universal_constants.hpp>
-#include <boost/units/systems/si/electric_potential.hpp>
-#include <boost/units/systems/si/length.hpp>
-#include <boost/units/systems/si/mass.hpp>
-#include <boost/units/systems/si/plane_angle.hpp>
-
-// Boost math
-#include <boost/math/constants/constants.hpp>
-#include <boost/units/unit.hpp>
+#include <cstddef>
+#include <exception>
 #include <iostream>
+#include <sstream>
+#include <stdexcept>
 #include <string>
+
+// Dimensional analysis (quantity types, unit constants, physical constants)
+#include "amcset_units.h"
+
+#include <boost/math/constants/constants.hpp>
 
 namespace amcset {
 namespace common {
 
-// Units definitions
+// The core library historically relies on unqualified Boost.Units functions
+// (sqrt, pow, root, exp, ...) and Boost math constants (pi). New code should
+// prefer the explicit names from amcset_units.h (pi_v, in_units, ...).
 using namespace boost::units;
-namespace si = boost::units::si;
-// namespace metric = boost::units::metric;
-namespace constants = boost::units::si::constants::codata;
-
 using namespace boost::math::double_constants;
 
-using length_quantity = quantity<si::length>; //!< SI type for length (meter)
-using energy_quantity = quantity<si::energy>; //!< SI type for energy (Joule)
-using angle_quantity =
-    quantity<si::plane_angle>;            //!< SI type for plane angle (Radian)
-using mass_quantity = quantity<si::mass>; //!< SI type for mass (Kilogram)
-using charge_quantity =
-    quantity<si::electric_charge>; //!< SI type for charge (Coulomb)
-using dimensionless_quantity =
-    quantity<si::dimensionless>; //!< Type for dimensionless quantity
-using volume_quantity = quantity<si::volume>; //!< Type for volume
-using mass_density_dimension = make_dimension_list<
-    boost::mpl::list2<dim<mass_base_dimension, static_rational<1>>,
-                      dim<length_base_dimension, static_rational<-3>>>>::
-    type; //!< Custom dimension for mass density
-using statcoulomb_dimension = make_dimension_list<
-    boost::mpl::list3<dim<length_base_dimension, static_rational<3, 2>>,
-                      dim<mass_base_dimension, static_rational<1, 2>>,
-                      dim<time_base_dimension, static_rational<-1>>>>::
-    type; //!< Custom dimension statcoulombs
-
-using mass_density_unit =
-    unit<mass_density_dimension, si::system>; //!< Unit for mass density
-using mass_density_quantity =
-    quantity<mass_density_unit>; //!< Type for mass density (kg/m^3)
-using number_density_unit =
-    divide_typeof_helper<si::amount, si::volume>::type; //!< Custom unit
-                                                        //!< for number density
-using velocity_unit =
-    divide_typeof_helper<si::length,
-                         si::time>::type; //!< Custom unit for velocity
-using voltage_unit =
-    divide_typeof_helper<si::energy,
-                         si::length>::type; //!< Custom unit for voltage
-using number_density_quantity =
-    quantity<number_density_unit>; //!< Unit for number density, (mol/m^3)
-using number_density_quantity =
-    quantity<number_density_unit>;                 //!< Number density
-using velocity_quantity = quantity<velocity_unit>; //!< Velocity
-using statcoulomb_quantity =
-    quantity<statcoulomb_dimension>;             //!< Unit for statcoulomb,
-                                                 //!< (m^(3/2)*kg^(1/2)/s)
-using voltage_quantity = quantity<voltage_unit>; //!< Voltage quantity
-
-constexpr auto electron_volt =
-    constants::e * si::volt; //!< Quantity for electron volt
-constexpr auto kilo_electron_volt =
-    1000.0 * electron_volt; //!< Quantity for kiloelectron volt
-
-constexpr auto angstrom = 1e-10 * si::meter; //!< Quantity for angstrom
-constexpr auto radian = 1.0 * si::radian;    //!< Quantity for radian
-constexpr auto degree = radian * pi / 180.0; //!< Quantity for degree
-constexpr auto atomic_mass_unit =
-    constants::m_u; //!< Quantity for atomic mass unit
-constexpr auto elementary_charge =
-    constants::e; //!< Quantity for the elementary charge
-constexpr mass_density_quantity kg_per_cubic_meter =
-    1.0 * si::kilogram /
-    pow<3>(si::meter); //!< Unit quantity for mass density (kg/m^3)
-constexpr number_density_quantity atoms_per_cubic_meter =
-    1.0 * si::mole / pow<3>(si::meter); //!< Unit quantity for number density
-                                        //!< (atoms/m^3)
-constexpr velocity_quantity meters_per_second =
-    1.0 * si::meter / si::second; //!< Unit quantity for velocity (m/s)
-
-constexpr auto fine_structure_constant =
-    si::constants::codata::e * si::constants::codata::e /
-    (2.0 * si::constants::codata::epsilon_0 * si::constants::codata::h *
-     si::constants::codata::c); //<! Fine structure constant
-
-constexpr auto reduced_planck_constant =
-    si::constants::codata::h / (2 * pi); //<! Reduced planck constant
-
-constexpr length_quantity bohr_radius =
-    reduced_planck_constant /
-    (si::constants::codata::m_e * si::constants::codata::c *
-     fine_structure_constant); //<! The bohr radius (m)
-
-// sqrt is constexpr as of C++26, but clangd does not recognize this. TODO:
-// Exchange const for constexpr when clang no longer complains about this. (Note
-// that this will compile under gcc regardless.
-const auto statcoulomb = 0.001 * pow<static_rational<3, 2>>(si::meter) *
-                         std::sqrt(1.0 / 1000.0) *
-                         pow<static_rational<1, 2>>(si::kilogram) / si::second;
-const auto e_statcoulomb = 4.80320425e-10 * statcoulomb;
+//! Force (energy per length). Used for derivatives of interatomic potentials.
+using force_quantity = boost::units::quantity<si::force>;
 
 /*!
  * \brief A macro to provide debugging details for exception messages.
@@ -169,6 +77,11 @@ const auto e_statcoulomb = 4.80320425e-10 * statcoulomb;
  *
  * Code taken from Richard Hodges:
  * https://stackoverflow.com/questions/37227300/why-doesnt-c-use-stdnested-exception-to-allow-throwing-from-destructor/37227893#37227893
+ *
+ * Must be called from inside a catch block. The currently handled exception
+ * is nested inside a new exception whose type mirrors it (invalid_argument,
+ * out_of_range and logic_error are preserved; anything else becomes
+ * runtime_error) and whose message is \p args joined with ", ".
  *
  * \param args Messages to include in the exception invocation.
  */
@@ -198,8 +111,7 @@ template <class... Args> [[noreturn]] void rethrow(Args &&...args) {
  *
  * \param e The exception to print out.
  *
- * \param depth The depth of exception messages. This starts out at for the
- * top-leve exception.
+ * \param depth The nesting depth of \p e (0 for the top-level exception).
  */
 inline void print_exception(const std::exception &e, std::size_t depth = 0) {
   std::cerr << "exception: " << std::string(depth, ' ') << e.what() << '\n';

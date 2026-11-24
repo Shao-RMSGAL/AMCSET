@@ -15,35 +15,19 @@
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
 /*! \file particle.cpp
- *  \brief Implements particle motion, rotation, and ion/electron interaction logic.
- *
- *  This module captures the runtime behavior of Particle and its derived types,
- *  including scattering, collision bookkeeping, and ion interaction helpers.
+ *  \brief Particle base-class behaviour shared by Ion and Electron:
+ *  construction, kinematics helpers, direction rotation and collision-point
+ *  bookkeeping.
  */
 
 #include "amcset_common.h"
 
 #include <absl/log/log.h>
 
-#include <boost/math/constants/constants.hpp> 
-#include <boost/random/discrete_distribution.hpp> 
-#include <boost/random/mersenne_twister.hpp>
-#include <boost/random/uniform_01.hpp>
 #include <boost/units/cmath.hpp>
 #include <boost/units/pow.hpp>
-#include <boost/units/static_rational.hpp>
-#include <boost/units/systems/si/amount.hpp>
-#include <boost/units/systems/si/codata/physico-chemical_constants.hpp>
-#include <boost/units/systems/si/energy.hpp>
-#include <boost/units/systems/si/length.hpp>
-#include <boost/units/systems/si/mass.hpp>
 
-#include <array>
 #include <cmath>
-#include <filesystem>
-#include <fstream>
-#include <mutex>
-#include <sstream>
 #include <stdexcept>
 
 namespace amcset {
@@ -70,8 +54,9 @@ Particle::Particle(size_t z_number, size_t mass_number,
       uniform_distribution_(uniform_distribution),
       random_number_generator_(random_number_generator), data_leaf_(data_leaf),
       bombardment_(bombardment) {
+  track_id_ = bombardment_.next_track_id();
   VLOG(1) << "Creating particle with velocity (" << velocity_.quaternion_.r_
-          << ", " << velocity_.quaternion_.z_ << ", "
+          << ", " << velocity_.quaternion_.x_ << ", "
           << velocity_.quaternion_.y_ << ", " << velocity_.quaternion_.z_
           << ").";
 } catch (...) {
@@ -82,6 +67,7 @@ void Particle::record_collision_point(CollisionPoint point,
                                       double delta_time_seconds) {
   elapsed_time_seconds_ += delta_time_seconds;
   point.time = current_time_seconds();
+  point.track = track_id_;
   bombardment_.add_collision_point(point);
 }
 
@@ -110,8 +96,10 @@ Particle &Particle::rotate_inplace(angle_quantity scattering_angle) {
   auto y = velocity_.quaternion_.y_;
   auto z = velocity_.quaternion_.z_;
 
+  // Recover from a NaN direction (e.g. from an upstream NaN scattering
+  // angle) by resetting it to +z, so one bad step does not poison the run.
   if (std::isnan(x) || std::isnan(y) || std::isnan(z)) {
-    LOG(ERROR) << "Nans detected in bombardment. Position (" << x << ", " << y
+    LOG(ERROR) << "NaNs detected in bombardment. Direction (" << x << ", " << y
                << ", " << z
                << "). Energy: " << velocity_.energy_ / electron_volt << " eV"
                << ". Bombardment ID: " << bombardment_.get_id();
@@ -125,6 +113,10 @@ Particle &Particle::rotate_inplace(angle_quantity scattering_angle) {
     throw std::invalid_argument("Input vector has zero length");
   }
 
+  // Axis for the polar (scattering-angle) rotation: any axis perpendicular
+  // to the direction (x, y, z). The general-case axis was (y, x, 0), which
+  // is not perpendicular (dot product 2xy); fixed to (-y, x, 0) in v0.1.0
+  // (physics fix P1, docs/KNOWN_ISSUES.md).
   Quaternion rotation_quaternion;
   if (x == 0 && y == 0) {
     rotation_quaternion = Quaternion(0.0, 0.0, 1.0, 0.0);
@@ -133,9 +125,10 @@ Particle &Particle::rotate_inplace(angle_quantity scattering_angle) {
   } else if (y == 0.0 && z == 0.0) {
     rotation_quaternion = Quaternion(0.0, 0.0, 0.0, 1.0);
   } else {
-    rotation_quaternion = Quaternion(0.0, y, x, 0.0);
+    rotation_quaternion = Quaternion(0.0, -y, x, 0.0);
   }
 
+  // Random azimuth in (-pi, pi] about the original direction.
   const auto alpha_angle =
       radian * 2.0 * pi * (0.5 - uniform_distribution_(random_number_generator_));
 
@@ -151,6 +144,8 @@ Particle &Particle::rotate_inplace(angle_quantity scattering_angle) {
       beta_scalar, rotation_quaternion.x_ * beta_pos,
       rotation_quaternion.y_ * beta_pos, rotation_quaternion.z_ * beta_pos);
 
+  // v' = alpha * (beta * v * beta^-1) * alpha^-1, then re-project to a pure
+  // unit quaternion to suppress round-off.
   velocity_.quaternion_ =
       (quaternion_alpha * (quaternion_beta * velocity_.quaternion_) *
        quaternion_beta.conjugate_copy()) *

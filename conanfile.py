@@ -20,7 +20,7 @@ from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout, CMakeDeps
 
 class amcsetRecipe(ConanFile):
     name = "amcset"
-    version = "0.0.1"
+    version = "0.1.0"
 
     package_type = "application"
 
@@ -34,11 +34,14 @@ class amcsetRecipe(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
 
     # Project sources
+    # Everything CMakeLists.txt needs (common/ always; cli/, gui/ and test/
+    # unless disabled with AMCSET_BUILD_CLI/GUI/TESTS=OFF).
     exports_sources = (
         "CMakeLists.txt",
+        "cli/*",
         "gui/*",
         "common/*",
-        "server/*",
+        "test/*",
     )
 
     def layout(self):
@@ -63,7 +66,6 @@ class amcsetRecipe(ConanFile):
     def requirements(self):
         self.requires("boost/[=1.89.0]", transitive_headers=True)
         self.requires("gtest/[=1.15.0]")
-        self.requires("gflags/[=2.2.2]")
         self.requires("abseil/[=20260526.0]")
         self.requires("qt/[=6.11.1]")
         # libiconv 1.17 does not build with current MinGW/MSYS2 headers.
@@ -93,7 +95,11 @@ class amcsetRecipe(ConanFile):
         # Enable Vulkan support.
         self.options["qt"].with_vulkan = True
 
-        # Enable Qt 3D and Graphs for 2D/3D plotting.
+        # The GUI needs only Qt Widgets and QRhi (part of Qt GUI); Qt Shader
+        # Tools compiles its shaders (pre-compiled copies are used without
+        # it). Qt 3D and Qt Graphs are no longer used; they stay enabled only
+        # so that an existing Qt package is reused instead of rebuilt from
+        # source (hours). Set both to False on a fresh setup.
         self.options["qt"].qt3d = True
         self.options["qt"].qtgraphs = True
         self.options["qt"].qtshadertools = True
@@ -116,7 +122,7 @@ class amcsetRecipe(ConanFile):
         cmake.build()
 
         # Create a convenient compile_commands.json symlink
-        # in the source directory.
+        # in the source directory. (qbuild.sh copies it instead.)
         import os
 
         compile_commands_path = os.path.join(

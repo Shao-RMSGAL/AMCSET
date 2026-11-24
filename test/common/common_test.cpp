@@ -34,12 +34,26 @@
  * \brief The testing code for the amcset_common library.
  *
  * This testing suite verifies the functionality and correctness of the AMCSET
- * library. It is designed for close to 100% code coverage.
+ * library.
+ *
+ * Tests run with the build's test directory as the working directory (see
+ * gtest_discover_tests in test/CMakeLists.txt); some tests write into
+ * ./output and the electron test needs ./common/assets to be reachable.
  */
 
+// Standard headers that are (transitively) included by amcset_common.h and
+// whose declarations break under the `private` -> `public` redefinition below
+// must be included first. <any> is pulled in by Boost.Asio.
 #include <any>
 #include <sstream>
 
+// HACK: expose private members (e.g. Simulation's selected model function
+// pointers, Ion's custom coefficients) to the tests. This is technically
+// undefined behaviour and also affects every header included below; prefer
+// adding narrow test accessors when touching these tests.
+// Exposes private data members to the tests. (Do not use it to reach
+// private or protected member functions: MSVC encodes access in mangled
+// names, so such calls would not link.)
 #define private public
 #include "amcset_common.h"
 #undef private
@@ -106,7 +120,7 @@ protected:
     return Layer(std::move(iron), depth, mass_density);
   } catch (const std::exception &e) {
     print_exception(e);
-    throw e;
+    throw;
   }
 
   /*!
@@ -142,7 +156,7 @@ protected:
     return Simulation(settings, std::move(volume));
   } catch (const std::exception &e) {
     print_exception(e);
-    throw e;
+    throw;
   }
 };
 
@@ -269,7 +283,8 @@ TEST_F(CommonTest, cancellation_skips_unstarted_bombardments) try {
 }
 
 TEST_F(CommonTest, electron_bombardment_runs) try {
-  GTEST_SKIP() << "Ion test not implemented";
+  GTEST_SKIP() << "Electron bombardment test disabled (needs ./common/assets "
+                  "in the working directory; see docs/TESTING.md)";
   auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
   size_t z_number = 26;
   size_t mass_number = 56;
@@ -351,7 +366,47 @@ TEST_F(CommonTest, isotope_data_get_isotope_mass_test) try {
   ASSERT_THROW(IsotopeData::get_isotope_mass(1, 100), std::out_of_range);
 } catch (const std::exception &e) {
   print_exception(e);
-  throw e;
+  FAIL();
+}
+
+//! Symbol <-> atomic number conversion must round-trip for every element.
+TEST_F(CommonTest, isotope_data_symbol_round_trip) {
+  for (size_t z = 1; z <= IsotopeData::MAX_Z; ++z) {
+    const auto symbol = IsotopeData::atomic_number_to_element(z);
+    ASSERT_FALSE(symbol.empty()) << "Z = " << z;
+    EXPECT_EQ(IsotopeData::element_to_atomic_number(symbol), z)
+        << "symbol " << symbol;
+  }
+  EXPECT_EQ(IsotopeData::element_to_atomic_number("Nh"), 113u);
+  EXPECT_EQ(IsotopeData::element_to_atomic_number("Uut"), 113u);
+  EXPECT_EQ(IsotopeData::element_to_atomic_number("Xx"), 0u);
+  EXPECT_EQ(IsotopeData::element_to_atomic_number(""), 0u);
+  EXPECT_TRUE(IsotopeData::atomic_number_to_element(0).empty());
+  EXPECT_TRUE(IsotopeData::atomic_number_to_element(119).empty());
+}
+
+//! Quaternion helpers.
+TEST_F(CommonTest, quaternion_test) {
+  const Quaternion q(1.0, 2.0, 3.0, 4.0);
+  EXPECT_NEAR(q.magnitude(), 1.0, 1e-15);
+
+  Quaternion raw;
+  raw.r_ = 0.0;
+  raw.x_ = 3.0;
+  raw.y_ = 0.0;
+  raw.z_ = 4.0;
+  const auto unit = raw.normalize_copy();
+  EXPECT_DOUBLE_EQ(raw.magnitude(), 5.0); // unchanged
+  EXPECT_NEAR(unit.magnitude(), 1.0, 1e-15);
+  EXPECT_DOUBLE_EQ(unit.x_, 0.6);
+  EXPECT_DOUBLE_EQ(unit.z_, 0.8);
+
+  // i * j = k
+  const Quaternion i(0.0, 1.0, 0.0, 0.0);
+  const Quaternion j(0.0, 0.0, 1.0, 0.0);
+  const auto k = i * j;
+  EXPECT_DOUBLE_EQ(k.z_, 1.0);
+  EXPECT_DOUBLE_EQ(k.r_, 0.0);
 }
 
 TEST_F(CommonTest, screening_length_quickbasic_equivalence) try {
@@ -399,8 +454,6 @@ TEST_F(CommonTest, screening_length_quickbasic_equivalence) try {
     EXPECT_LE(rel, 0.01);
   }
 } catch (const std::exception &e) {
-  print_exception(e);
-  FAIL();
   print_exception(e);
   FAIL();
 }
@@ -528,6 +581,12 @@ TEST_F(CommonTest, layer_test) try {
                std::invalid_argument);
   ASSERT_THROW(Layer(std::move(empty_vec), double(-1.0) * depth, mass_density),
                std::invalid_argument);
+  ASSERT_THROW(Layer({{0.0, Particle::Properties(1, 1)}}, depth, mass_density),
+               std::invalid_argument);
+  ASSERT_THROW(Layer({{-1.0, Particle::Properties(1, 1)},
+                      {2.0, Particle::Properties(8, 16)}},
+                     depth, mass_density),
+               std::invalid_argument);
 
   // Testing get_depth
   ASSERT_EQ(water_layer.get_depth(), length_quantity(1.0 * angstrom));
@@ -538,12 +597,12 @@ TEST_F(CommonTest, layer_test) try {
   // Testing get_mass_density
   ASSERT_EQ(water_layer.get_mass_density(), mass_density);
 
-  // Testing get_number_density
-  ASSERT_EQ(water_layer.get_number_density(),
-            mass_density /
-                (((2.0 / 3.0) * IsotopeData::get_isotope_mass(1, 1) +
-                  (1.0 / 3.0) * IsotopeData::get_isotope_mass(8, 16)) *
-                 constants::N_A));
+  // Testing get_number_density (atoms per volume = density / mean atom mass)
+  const auto expected_density =
+      mass_density / ((2.0 / 3.0) * IsotopeData::get_isotope_mass(1, 1) +
+                      (1.0 / 3.0) * IsotopeData::get_isotope_mass(8, 16));
+  ASSERT_NEAR((water_layer.get_number_density() / expected_density).value(),
+              1.0, 1e-12);
 
   // Testing discrete distibution
   auto iron_layer = create_iron_layer(500.0 * angstrom);
@@ -572,7 +631,11 @@ TEST_F(CommonTest, volume_test) try {
   // Test constructor
   ASSERT_THROW(Volume({water_layer_2, iron_layer, water_layer_1}),
                std::invalid_argument);
-  // ASSERT_THROW(Volume(std::vector<Layer>()), std::invalid_argument);
+  // Out-of-order middle layer (only detectable by comparing each layer with
+  // its predecessor rather than with the first layer).
+  ASSERT_THROW(Volume({water_layer_1, water_layer_2, iron_layer}),
+               std::invalid_argument);
+  ASSERT_THROW(Volume(std::vector<Layer>{}), std::invalid_argument);
 
   // Test get_layer
   ASSERT_EQ(
@@ -603,6 +666,7 @@ TEST_F(CommonTest, volume_test) try {
   ASSERT_EQ(
       volume.get_layer(length_quantity(501.0 * angstrom)).first->get_depth(),
       volume.get_layer(2).get_depth());
+  ASSERT_THROW(volume.get_layer(size_t{3}), std::out_of_range);
 } catch (const std::exception &e) {
   print_exception(e);
   FAIL();
@@ -806,8 +870,9 @@ TEST_F(CommonTest, ion_test) try {
 
 //! Electronic stopping energy test
 TEST_F(CommonTest, electronic_stopping_energy_test) try {
+  // TODO: This test constructs an Ion but asserts nothing; the reference
+  // value below was never re-established after the stopping-model refactor.
   auto simulation = create_simulation();
-  std::cout << "Simulation created" << std::endl; // TODO: Remove
 
   // Populate discrete distribution with iron layer composition
   boost::random::discrete_distribution<size_t, double> discrete_distribution(
@@ -831,8 +896,7 @@ TEST_F(CommonTest, electronic_stopping_energy_test) try {
   // auto mass = silicon_28_mass;
   // auto energy = energy_quantity(50.0 * kilo_electron_volt);
   auto layer = simulation.get_volume().get_layer(1);
-  std::cout << "In-test substrate charge value: "
-            << layer.get_property(0).charge_ << std::endl;
+  EXPECT_EQ(layer.get_property(0).charge_, 26);
   // auto final_energy = test.electronic_stopping_energy(
   //     charge, mass, energy, layer.get_number_density(),
   //     layer.get_property(0));
@@ -841,6 +905,150 @@ TEST_F(CommonTest, electronic_stopping_energy_test) try {
 
   // ASSERT_EQ(7.9853010195075595e-15 * si::joule, final_energy);
 
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
+// ---------------------------------------------------------------------------
+// Physics fixes of v0.1.0 (docs/KNOWN_ISSUES.md P1-P6)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+double direction_angle(const Quaternion &a, const Quaternion &b) {
+  const double na = std::sqrt(a.x_ * a.x_ + a.y_ * a.y_ + a.z_ * a.z_);
+  const double nb = std::sqrt(b.x_ * b.x_ + b.y_ * b.y_ + b.z_ * b.z_);
+  const double c = (a.x_ * b.x_ + a.y_ * b.y_ + a.z_ * b.z_) / (na * nb);
+  return std::acos(std::clamp(c, -1.0, 1.0));
+}
+
+} // namespace
+
+//! P1: rotation by the scattering angle must turn the direction by exactly
+//! that angle, for any initial direction (the old axis (y, x, 0) was not
+//! perpendicular to the direction).
+TEST_F(CommonTest, rotation_turns_direction_by_scattering_angle) try {
+  auto simulation = create_simulation();
+  boost::random::uniform_01<double> uniform_distribution;
+  boost::random::mt19937 random_number_generator(3);
+  ParticleDataLeaf data;
+  Bombardment bombardment(simulation, 0);
+  Ion ion(14, 28, simulation, uniform_distribution, random_number_generator, data, bombardment);
+  const std::vector<std::array<double, 3>> directions{
+      {0.0, 0.0, 1.0}, {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.6, 0.0, 0.8},
+      {0.48, 0.6, 0.64}, {-0.3, 0.9, 0.316}, {0.7071, -0.7071, 0.0}};
+  for (const auto &d : directions) {
+    for (double theta : {0.01, 0.3, 1.0, 2.5}) {
+      ion.set_velocity(Velocity(Quaternion(0.0, d[0], d[1], d[2]), 1.0 * kilo_electron_volt));
+      const Quaternion before = ion.get_velocity().quaternion_;
+      ion.rotate_inplace(theta * amcset::common::radian);
+      const Quaternion after = ion.get_velocity().quaternion_;
+      EXPECT_NEAR(direction_angle(before, after), theta, 1e-6)
+          << "direction (" << d[0] << "," << d[1] << "," << d[2] << ") theta " << theta;
+      EXPECT_NEAR(std::sqrt(after.x_ * after.x_ + after.y_ * after.y_ + after.z_ * after.z_), 1.0, 1e-9);
+    }
+  }
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
+//! P2: the centre-of-mass energy is (1/2) mu v^2 with the reduced mass mu.
+TEST_F(CommonTest, center_of_mass_energy_uses_reduced_mass) try {
+  auto simulation = create_simulation();
+  boost::random::uniform_01<double> uniform_distribution;
+  boost::random::mt19937 random_number_generator(3);
+  ParticleDataLeaf data;
+  Bombardment bombardment(simulation, 0);
+  Ion ion(26, 56, simulation, uniform_distribution, random_number_generator, data, bombardment);
+  const mass_quantity m1 = 55.935 * atomic_mass_unit;
+  const mass_quantity m2 = 55.935 * atomic_mass_unit;
+  const auto mu = ion.reduced_mass(m1, m2);
+  EXPECT_NEAR(in_units(mu, atomic_mass_unit), 55.935 / 2.0, 1e-9);
+  const energy_quantity e_lab = 100.0 * kilo_electron_volt;
+  const auto v = ion.speed_from_energy(e_lab, m1);
+  // Equal masses: E_cm = E_lab / 2.
+  EXPECT_NEAR(in_units(ion.cm_energy(mu, v), kilo_electron_volt), 50.0, 1e-6);
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
+//! P3: laboratory angle of the projectile from the full CM angle. Equal
+//! masses: theta_lab = theta_cm / 2.
+TEST_F(CommonTest, laboratory_angle_from_cm_angle) try {
+  auto simulation = create_simulation();
+  boost::random::uniform_01<double> uniform_distribution;
+  boost::random::mt19937 random_number_generator(3);
+  ParticleDataLeaf data;
+  Bombardment bombardment(simulation, 0);
+  Ion ion(26, 56, simulation, uniform_distribution, random_number_generator, data, bombardment);
+  const mass_quantity m = 55.935 * atomic_mass_unit;
+  for (double cm : {0.1, 1.0, 2.0, 3.0}) {
+    EXPECT_NEAR(ion.laboratory_scattering_angle(cm * amcset::common::radian, m, m).value(), cm / 2.0, 1e-9);
+  }
+  // A light projectile on a heavy target: theta_lab ~ theta_cm.
+  const mass_quantity light = 1.008 * atomic_mass_unit;
+  const mass_quantity heavy = 1.0e6 * atomic_mass_unit;
+  EXPECT_NEAR(ion.laboratory_scattering_angle(1.0 * amcset::common::radian, light, heavy).value(), 1.0, 1e-5);
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
+//! P4: the screening functions are normalized, phi(0) = 1, so the potential
+//! is Coulombic at short distance.
+TEST_F(CommonTest, screening_functions_are_normalized) try {
+  for (auto f : {&Simulation::thomas_fermi_screening, &Simulation::zbl_screening,
+                 &Simulation::moliere_screening}) {
+    EXPECT_NEAR(f(amcset::common::dimensionless_quantity(0.0)).value(), 1.0, 1e-3);
+  }
+  const double h = 1e-6;
+  for (double x : {0.1, 1.0, 5.0}) {
+    const double num = (Simulation::zbl_screening(amcset::common::dimensionless_quantity(x + h)).value() -
+                        Simulation::zbl_screening(amcset::common::dimensionless_quantity(x - h)).value()) /
+                       (2 * h);
+    EXPECT_NEAR(Simulation::zbl_screening_derivative(amcset::common::dimensionless_quantity(x)).value(), num, 1e-6);
+    const double num_tf = (Simulation::thomas_fermi_screening(amcset::common::dimensionless_quantity(x + h)).value() -
+                           Simulation::thomas_fermi_screening(amcset::common::dimensionless_quantity(x - h)).value()) /
+                          (2 * h);
+    EXPECT_NEAR(Simulation::thomas_fermi_screening_derivative(amcset::common::dimensionless_quantity(x)).value(),
+                num_tf, 1e-6);
+  }
+} catch (const std::exception &e) {
+  print_exception(e);
+  FAIL();
+}
+
+//! P6: electron stopping powers in the right units. NIST ESTAR, aluminium,
+//! 1 MeV: collision stopping 1.465 MeV cm^2/g.
+TEST_F(CommonTest, electron_collision_stopping_matches_estar) try {
+  auto simulation = create_simulation();
+  boost::random::uniform_01<double> uniform_distribution;
+  boost::random::mt19937 random_number_generator(3);
+  ParticleDataLeaf data;
+  Bombardment bombardment(simulation, 0);
+  Electron electron(0, 0, simulation, uniform_distribution, random_number_generator, data, bombardment);
+  const auto rho = 2.699 * gram_per_cubic_centimeter;
+  const mass_quantity m_al = 26.98 * atomic_mass_unit;
+  const number_density_quantity n = rho / m_al;
+  const auto s = electron.ionization_stopping_power(1.0 * mega_electron_volt, 13.0, n);
+  const double mass_stopping = in_units(s / rho, mega_electron_volt * square_centimeter / gram);
+  EXPECT_NEAR(mass_stopping, 1.465, 0.08);
+  // Radiative stopping is small at 1 MeV and grows ~linearly with energy.
+  const auto r1 = electron.bremsstrahlung_stopping_power(1.0 * mega_electron_volt, 13.0, n);
+  const auto r10 = electron.bremsstrahlung_stopping_power(10.0 * mega_electron_volt, 13.0, n);
+  EXPECT_LT(r1, 0.1 * s);
+  EXPECT_GT(r10 / r1, 8.0);
+  // Mean free path from a cross section: 1/(N sigma), plus one atomic spacing.
+  const area_quantity sigma = 1.0e-16 * square_centimeter;
+  double mean = 0.0;
+  for (int i = 0; i < 2000; ++i) mean += in_units(electron.generate_flying_distance(sigma, n), angstrom);
+  mean /= 2000.0;
+  const double expected = in_units(1.0 / (n * sigma), angstrom);
+  EXPECT_GT(mean, 0.8 * expected);
+  EXPECT_LT(mean, 1.3 * expected + 5.0);
 } catch (const std::exception &e) {
   print_exception(e);
   FAIL();

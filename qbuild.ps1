@@ -22,16 +22,16 @@
        - Conan (https://conan.io/)
        - CMake
        - A supported compiler toolchain (e.g. MSVC / Visual Studio Build Tools)
-    2. Run `conan profile detect`, then modify the generated default profile
-       (usually at $env:USERPROFILE\.conan2\profiles\default) to use C++23.
-       (Set compiler.cppstd=23)
-       Example:
+    2. Run `conan profile detect`. The -Conan step overrides
+       compiler.cppstd=20 and build_type=Release on the command line, so the
+       profile (usually at $env:USERPROFILE\.conan2\profiles\default) mainly
+       needs the right compiler. Example:
 
        [settings]
            arch=x86_64
-           build_type=Debug
+           build_type=Release
            compiler=msvc
-           compiler.cppstd=23
+           compiler.cppstd=20
            compiler.runtime=dynamic
            compiler.version=193
            os=Windows
@@ -70,23 +70,25 @@ if ($PSVersionTable.PSVersion.Major -ge 7) {
     $PSNativeCommandUseErrorActionPreference = $false
 }
 
-# Control whether to run in debug or release mode. Debug seems to be broken.
+# Only Release is supported (see qbuild.sh).
 $mode = "Release"
 $modeLower = "release"
 
 $ProjectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$SrcDir = $ProjectDir
 $CmakeCmd = $null
 $BuildDir = Join-Path $ProjectDir "build\$mode"
 $CmakeConfigurePreset = "conan-release"
 $CmakeBuildPreset = "conan-release"
 
-$CmakeFlags = @("--preset", "conan-$modeLower")
 $RunFlags = @("--minloglevel=3", "--gui=true")
 
-# $TestDir = Join-Path $BuildDir "test"
-$TestDir = "build\test"
-$env:TESTDIR = Join-Path $BuildDir "log"
+# NOTE: This differs from qbuild.sh (build/Release/test) and from $BuildDir
+# above; the CI workflow (.github/workflows/tests.yml) also uses build/test.
+# Unverified which one the Windows toolchain actually produces -- see
+# docs/KNOWN_ISSUES.md. (Was a path relative to the current directory; it is
+# now anchored at the repository root, which is identical when the script is
+# run from the root as documented.)
+$TestDir = Join-Path $ProjectDir "build\test"
 
 function Check-Status {
     param([int]$ExitCode)

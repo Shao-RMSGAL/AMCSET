@@ -14,7 +14,10 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
-// Volume implementation moved out of amcset_common.cpp
+/*! \file volume.cpp
+ *  \brief Volume: ordered layer stack and depth -> layer lookup.
+ */
+
 #include "amcset_common.h"
 #include <absl/log/log.h>
 
@@ -28,23 +31,25 @@ Volume::Volume(std::vector<Layer> &&layers) try : layers_(std::move(layers)) {
         "Vector cannot be empty to Volume constructor.");
   }
 
-  auto prev_depth = layers_.at(0).get_depth();
+  // Layer depths are cumulative (bottom boundary of each layer), so they must
+  // be non-decreasing from the surface down.
+  auto prev_depth = layers_.front().get_depth();
   for (const auto &layer : layers_) {
     if (layer.get_depth() < prev_depth) {
       throw std::invalid_argument(EXCEPTION_MESSAGE(
-          "Provided vector of layers contains a layer which has a "
-          "smaller "
+          "Provided vector of layers contains a layer which has a smaller "
           "depth than the previous layer. Depth: " +
           to_string(layer.get_depth()) +
           ". Previous depth: " + to_string(prev_depth)));
     }
+    prev_depth = layer.get_depth();
   }
 } catch (...) {
   rethrow();
 }
 
 const Layer &Volume::get_layer(size_t index) const try {
-  if (index > layers_.size()) {
+  if (index >= layers_.size()) {
     throw std::out_of_range(EXCEPTION_MESSAGE(
         "Index out of range. Index: " + std::to_string(index) +
         ". Vector size: " + std::to_string(layers_.size())));
@@ -69,7 +74,8 @@ Volume::get_layer(length_quantity depth) const try {
         "Depth: " + to_string(depth) + " is deeper than the deepest layer."));
   }
 
-  // Rely on the ordering of the layers (depths are strictly increasing)
+  // Rely on the ordering of the layers (depths are non-decreasing). A depth
+  // exactly on a boundary belongs to the upper layer.
   for (size_t i = 0; i < layers_.size(); i++) {
     VLOG(3) << "Checking layer " << i << " with depth "
             << layers_[i].get_depth();
@@ -82,7 +88,7 @@ Volume::get_layer(length_quantity depth) const try {
 
   // There is a logic error if this is reached
   throw std::logic_error(
-      EXCEPTION_MESSAGE("End of layer vector vector reached. Maximum depth: " +
+      EXCEPTION_MESSAGE("End of layer vector reached. Maximum depth: " +
                         to_string(layers_.back().get_depth()) +
                         ". Provided depth: " + to_string(depth)));
 } catch (...) {

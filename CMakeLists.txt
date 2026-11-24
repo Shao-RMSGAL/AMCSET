@@ -16,12 +16,23 @@
 
 cmake_minimum_required(VERSION 3.23)
 
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
-# set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
-# set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
-# set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
+# Configure through the Conan presets (see qbuild.sh / qbuild.ps1). Targets:
+#   amcset-common  static library with the simulation core (common/)
+#   amcset         command-line front end (cli/), no Qt needed
+#   amcset-gui     Qt 6 desktop application (gui/)
+#   common-test    GoogleTest suite (test/)
+#
+# Options:
+#   AMCSET_BUILD_GUI    build the Qt GUI (needs Qt 6.7+ with QtGraphs and Qt3D)
+#   AMCSET_BUILD_CLI    build the command-line program
+#   AMCSET_BUILD_TESTS  build the GoogleTest suite
 
-project(amcset VERSION 0.0.1)
+# Keep in sync with conanfile.py's version.
+project(amcset VERSION 0.1.0)
+
+option(AMCSET_BUILD_GUI "Build the Qt GUI" ON)
+option(AMCSET_BUILD_CLI "Build the command-line program" ON)
+option(AMCSET_BUILD_TESTS "Build the test suite" ON)
 
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 if(ENABLE_ASAN)
@@ -34,10 +45,6 @@ if(ENABLE_ASAN)
     endif()
 endif()
 
-# Use the conanfile.py version number
-if(NOT DEFINED PROJECT_VERSION)
-    message(FATAL_ERROR "Version components not defined! Are you running through Conan?")
-endif()
 # For clangd lsp
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -56,24 +63,39 @@ target_compile_options(compiler_flags INTERFACE
   "$<${msvc_cxx}:$<BUILD_INTERFACE:-W3>>"
 )
 
-# Performance: tune Release flags for maximum runtime performance
+# Performance: tune Release flags for maximum runtime performance.
+# NOTE: -march=native makes Release binaries specific to the build machine's
+# CPU, and these options are applied twice (via CMAKE_CXX_FLAGS_RELEASE and
+# via compiler_flags); harmless but redundant.
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
         set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
 endif()
 
 if(MSVC)
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /GL /DNDEBUG")
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG")
+    # /Zi + /DEBUG write a PDB next to each executable (no effect on the
+    # generated code; /OPT:REF,ICF keep the Release linker defaults). The
+    # crash handler and profilers need it for readable stack traces.
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /GL /DNDEBUG /Zi")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG /DEBUG /OPT:REF /OPT:ICF")
     target_compile_options(compiler_flags INTERFACE
         $<$<CONFIG:Release>:/O2;/GL>
     )
 else()
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -flto -funroll-loops -pipe -DNDEBUG")
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto")
+    # GCC: -flto=auto runs the link-time code generation on every core (plain
+    # -flto runs it serially and warns about it).
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(AMCSET_LTO_LINK_FLAG "-flto=auto")
+    else()
+        set(AMCSET_LTO_LINK_FLAG "-flto")
+    endif()
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} ${AMCSET_LTO_LINK_FLAG}")
     target_compile_options(compiler_flags INTERFACE
         $<$<CONFIG:Release>:-O3;-march=native;-flto;-funroll-loops;-pipe>
     )
 endif()
+# ABSL_MIN_LOG_LEVEL=2 compiles out LOG(INFO) and LOG(WARNING) in Release, so
+# Release log files only contain errors.
 target_compile_definitions(compiler_flags INTERFACE
     $<$<CONFIG:Release>:NDEBUG>
     $<$<CONFIG:Release>:ABSL_MIN_LOG_LEVEL=2>
@@ -82,69 +104,70 @@ target_compile_definitions(compiler_flags INTERFACE
 )
 target_link_options(compiler_flags INTERFACE
     $<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:MSVC>>:/LTCG>
-    $<$<AND:$<CONFIG:Release>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-flto>
+    $<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:GNU>>:-flto=auto>
+    $<$<AND:$<CONFIG:Release>,$<NOT:$<CXX_COMPILER_ID:MSVC,GNU>>>:-flto>
 )
 
-# Build shared libraries
+# Put every artifact directly in the build directory (e.g. build/Release).
+# BUILD_SHARED_LIBS only affects PIC for amcset-common, which is always a
+# STATIC library.
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
 
-# Pass version number to compiler
+# Pass version number to compiler (writes into the source tree; config.h is
+# git-ignored).
 configure_file(${PROJECT_SOURCE_DIR}/common/include/config.h.in ${PROJECT_SOURCE_DIR}/common/include/config.h)
 
 # Packages
-find_package(Boost 1.86.0 REQUIRED)
-find_package(GTest 1.15.0 REQUIRED)
+find_package(Boost 1.83 REQUIRED)
 find_package(absl REQUIRED CONFIG)
-find_package(gflags 2.2.2 REQUIRED)
-# find_package(OpenSSL REQUIRED CONFIG COMPONENTS filesystem)
-find_package(Qt6 6.11.1 COMPONENTS Core Gui Widgets Graphs 3DCore 3DExtras 3DRender 3DInput REQUIRED)
-if (Qt6_FOUND)
+find_package(Threads REQUIRED)
+if(AMCSET_BUILD_TESTS)
+    find_package(GTest REQUIRED)
+endif()
+if(AMCSET_BUILD_GUI)
+    # Qt Widgets for the application, QRhi (Qt::GuiPrivate) for the GPU views.
+    # Qt Shader Tools is optional: without it the pre-compiled shaders in
+    # gui/shaders/baked are used.
+    find_package(Qt6 6.7 COMPONENTS Core Gui Widgets REQUIRED)
+    # The path views use QRhi, whose headers belong to GuiPrivate; the
+    # executable is tied to the Qt version it was built with, which windeployqt
+    # ships alongside it, so the private-module warning is silenced.
+    set(QT_NO_PRIVATE_MODULE_WARNING ON)
+    find_package(Qt6 6.7 QUIET COMPONENTS GuiPrivate ShaderTools)
     qt_standard_project_setup()
-endif ()
-
-# Configure subdirectories
-add_subdirectory(common)
-add_subdirectory(gui)
-add_subdirectory(test)
-
-if(WIN32)
-    # Keep the project standard aligned with the Conan profile.
-    set(CMAKE_CXX_STANDARD 20)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-    set(CMAKE_CXX_EXTENSIONS OFF)
-
-    # Optionally set compile options for MSVC
-    if(MSVC)
-        add_compile_options(/W4)  # High warning level
-    endif()
-
 endif()
 
-# Add package includes and link common
-# target_include_directories(amcset-common SYSTEM PUBLIC
-#     ${Boost_INCLUDE_DIRS}
-#     )
-target_link_libraries(amcset-common PUBLIC
-    ${Boost_LIBRARIES}
-    absl::log
-    absl::log_initialize
-)
+add_subdirectory(common)
+if(AMCSET_BUILD_CLI)
+    add_subdirectory(cli)
+endif()
+if(AMCSET_BUILD_GUI)
+    add_subdirectory(gui)
+endif()
 
-
-# Allow link access for common library to gui
-target_include_directories(amcset-gui PRIVATE)
-target_link_libraries(amcset-gui PRIVATE 
-    amcset-common
-    Qt6::Core
-    Qt6::Widgets
-    Qt6::Gui
-    Qt6::Graphs
-    Qt6::3DCore
-    Qt6::3DExtras
-    Qt6::3DRender
-    Qt6::3DInput
-    gflags::gflags
-)
+# Profile-guided optimisation of the command-line program (MSVC; see
+# docs/DEVELOPMENT.md "Compilers and flags"): configure with
+# -DAMCSET_PGO=generate, build, run the training cases, then reconfigure with
+# -DAMCSET_PGO=use and build again. The profile goes to AMCSET_PGO_DIR.
+set(AMCSET_PGO "" CACHE STRING "Profile-guided optimisation of amcset: empty, generate or use")
+set(AMCSET_PGO_DIR "${PROJECT_BINARY_DIR}/pgo" CACHE PATH "Directory of the PGO profile")
+if(AMCSET_PGO AND AMCSET_BUILD_CLI)
+    if(NOT MSVC)
+        message(FATAL_ERROR "AMCSET_PGO is implemented for MSVC only")
+    endif()
+    file(MAKE_DIRECTORY ${AMCSET_PGO_DIR})
+    if(AMCSET_PGO STREQUAL "generate")
+        target_link_options(amcset PRIVATE /GENPROFILE:PGD=${AMCSET_PGO_DIR}/amcset.pgd)
+    elseif(AMCSET_PGO STREQUAL "use")
+        target_link_options(amcset PRIVATE /USEPROFILE:PGD=${AMCSET_PGO_DIR}/amcset.pgd)
+    else()
+        message(FATAL_ERROR "AMCSET_PGO must be empty, generate or use")
+    endif()
+endif()
+if(AMCSET_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(test)
+endif()

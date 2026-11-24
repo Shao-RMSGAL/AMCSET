@@ -14,7 +14,11 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
-// Layer implementation moved out of amcset_common.cpp
+/*! \file layer.cpp
+ *  \brief Layer construction: composition normalization, number density and
+ *  the isotope-selection distribution.
+ */
+
 #include "amcset_common.h"
 #include <absl/log/log.h>
 
@@ -35,6 +39,13 @@ Layer::Layer(material_vector &&material, length_quantity depth,
         double sum = std::accumulate(relative_compositions.begin(),
                                      relative_compositions.end(), 0.0);
         VLOG(2) << "Sum of compositions is " << sum;
+        // Guard against NaN fractions (0/0) when the material is non-empty
+        // but every fraction is zero. An empty material is rejected below.
+        if (!material.empty() && !(sum > 0.0)) {
+          throw std::invalid_argument(EXCEPTION_MESSAGE(
+              "Relative compositions must sum to a positive value. Sum: " +
+              std::to_string(sum)));
+        }
 
         for (auto &pair : material) {
           if (pair.first < 0) {
@@ -44,24 +55,18 @@ Layer::Layer(material_vector &&material, length_quantity depth,
           }
           VLOG(3) << "Initial composition is " << pair.first;
           pair.first /= sum;
-          VLOG(3) << "Final composition is "
-                  << pair.first;        }
+          VLOG(3) << "Final composition is " << pair.first;
+        }
 
         return std::move(material);
       }()),
       depth_(depth), mass_density_(mass_density), number_density_([&]() {
-        VLOG(2) << "Calculating mass density using " << mass_density;
-        return mass_density /
-               (std::accumulate(material_.begin(), material_.end(),
-                                mass_quantity(0),
-                                [](const mass_quantity &sum, const auto &mat) {
-                                  VLOG(3)
-                                      << "Number density calculation. Sum of "
-                                      << sum << ", fraction " << mat.first
-                                      << ", and mass of " << mat.second.mass_;
-                                  return sum + mat.first * mat.second.mass_;
-                                }) *
-                constants::N_A);
+        // Atoms per volume: mass density / mean atomic mass.
+        mass_quantity mean_mass = 0.0 * si::kilogram;
+        for (const auto &component : material_) {
+          mean_mass += component.first * component.second.mass_;
+        }
+        return mass_density / mean_mass;
       }()) {
   VLOG(1) << "Created Layer with " << material_.size()
           << " components, depth of " << depth << ", density of "
@@ -86,13 +91,22 @@ Layer::Layer(material_vector &&material, length_quantity depth,
   rethrow();
 }
 
+void Layer::set_displacement_energies(std::vector<energy_quantity> energies) {
+  if (!energies.empty() && energies.size() != material_.size()) {
+    throw std::invalid_argument(EXCEPTION_MESSAGE(
+        "Expected " + std::to_string(material_.size()) +
+        " displacement energies, got " + std::to_string(energies.size())));
+  }
+  displacement_energies_ = std::move(energies);
+}
+
 auto Layer::get_relative_compositions() const
     -> decltype(std::declval<const material_vector &>() |
                 std::views::keys) try {
   VLOG(2) << "Getting relative compositions for layer with " << material_.size()
           << " components";
   return material_ | std::views::keys;
-} catch (...) { //!<
+} catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
 }
 

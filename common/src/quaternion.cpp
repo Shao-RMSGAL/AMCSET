@@ -14,7 +14,10 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
-// Quaternion implementations moved out of amcset_common.cpp
+/*! \file quaternion.cpp
+ *  \brief Quaternion arithmetic used for particle direction rotation.
+ */
+
 #include "amcset_common.h"
 
 #include <cmath>
@@ -32,10 +35,6 @@ Quaternion &Quaternion::operator+=(const Quaternion &b) {
 
 Quaternion Quaternion::operator+(const Quaternion &b) const {
   return Quaternion(*this) += b;
-}
-
-Quaternion operator+(const Quaternion &a, const Quaternion &b) {
-  return Quaternion(a) += b;
 }
 
 Quaternion &Quaternion::operator*=(const Quaternion &b) {
@@ -87,13 +86,13 @@ Quaternion Quaternion::operator/(const double b) const {
   return Quaternion(*this) /= b;
 }
 
-Quaternion operator/(const Quaternion &a, double b) {
-  return Quaternion(a) /= b;
-}
-
 Quaternion &Quaternion::normalize_inplace() {
   *this /= (this->magnitude());
   return *this;
+}
+
+Quaternion Quaternion::normalize_copy() const {
+  return Quaternion(*this).normalize_inplace();
 }
 
 Quaternion &Quaternion::conjugate_inplace() {

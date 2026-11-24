@@ -15,38 +15,20 @@
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
 /*! \file simulation.cpp
- *  \brief Implements the multi-bombardment simulation lifecycle and tally output.
- *
- *  This module contains the Simulation and Bombardment runtime logic that was
- *  split out from the monolithic common implementation to keep the public API
- *  and behavior stable while reducing file size and improving maintainability.
+ *  \brief Simulation::Settings validation, model selection, the
+ *  multi-bombardment run loop, tally aggregation/output, and Bombardment.
  */
 
 #include "amcset_common.h"
+#include "diagnostics.h"
+#include "element_data.h"
 
 #include <absl/log/log.h>
 
-#include <boost/math/constants/constants.hpp>
-#include <boost/random/discrete_distribution.hpp>
-#include <boost/random/mersenne_twister.hpp>
-#include <boost/random/uniform_01.hpp>
-#include <boost/units/cmath.hpp>
-#include <boost/units/pow.hpp>
-#include <boost/units/static_rational.hpp>
-#include <boost/units/systems/si/amount.hpp>
-#include <boost/units/systems/si/codata/physico-chemical_constants.hpp>
-#include <boost/units/systems/si/energy.hpp>
-#include <boost/units/systems/si/length.hpp>
-#include <boost/units/systems/si/mass.hpp>
-
-#include <algorithm>
-#include <chrono>
 #include <cmath>
+#include <exception>
 #include <filesystem>
 #include <fstream>
-#include <numeric>
-#include <random>
-#include <ranges>
 #include <sstream>
 #include <stdexcept>
 
@@ -54,6 +36,9 @@ namespace amcset {
 namespace common {
 
 namespace {
+// Map the Settings enums to the static model functions. The function
+// pointers are stored in the Simulation so the transport loop never
+// switches on the enums.
 Simulation::ElectronicStoppingFunction select_electronic_stopping_function(
     Simulation::Settings::ElectronicStoppingModel model) {
   switch (model) {
@@ -63,6 +48,11 @@ Simulation::ElectronicStoppingFunction select_electronic_stopping_function(
     return &Simulation::lss_electronic_stopping;
   case Simulation::Settings::ElectronicStoppingModel::CustomPowerLaw:
     return &Simulation::custom_power_law_electronic_stopping;
+  case Simulation::Settings::ElectronicStoppingModel::BetheBloch:
+  case Simulation::Settings::ElectronicStoppingModel::Builtin:
+  case Simulation::Settings::ElectronicStoppingModel::SrimTable:
+    // Evaluated through Simulation::stopping_curve() (see Ion).
+    return nullptr;
   }
   throw std::invalid_argument("Unsupported electronic stopping model.");
 }
@@ -79,7 +69,7 @@ Simulation::NuclearScreeningFunction select_nuclear_screening_function(
   case Simulation::Settings::ScreeningModel::Moliere:
     return &Simulation::moliere_screening;
   }
-  throw std::invalid_argument("Unsupported nuclear stopping model.");
+  throw std::invalid_argument("Unsupported nuclear screening model.");
 }
 
 Simulation::NuclearScreeningFunction
@@ -95,7 +85,7 @@ select_nuclear_screening_derivative_function(
   case Simulation::Settings::ScreeningModel::Moliere:
     return &Simulation::moliere_screening_derivative;
   }
-  throw std::invalid_argument("Unsupported nuclear stopping model.");
+  throw std::invalid_argument("Unsupported nuclear screening model.");
 }
 
 Simulation::NuclearScreeningLengthFunction
@@ -113,7 +103,7 @@ select_nuclear_screening_length_function(
   case Simulation::Settings::ScreeningModel::Moliere:
     return &Simulation::moliere_screening_length;
   }
-  throw std::invalid_argument("Unsupported nuclear stopping model.");
+  throw std::invalid_argument("Unsupported nuclear screening model.");
 }
 
 const char *nuclear_model_name(Simulation::Settings::ScreeningModel model) {
@@ -141,12 +131,19 @@ const char *electronic_model_name(
     return "LSS";
   case Simulation::Settings::ElectronicStoppingModel::CustomPowerLaw:
     return "Custom power law";
+  case Simulation::Settings::ElectronicStoppingModel::BetheBloch:
+    return "Bethe-Bloch";
+  case Simulation::Settings::ElectronicStoppingModel::Builtin:
+    return "Built-in (Lindhard-Scharff / Bethe-Bloch)";
+  case Simulation::Settings::ElectronicStoppingModel::SrimTable:
+    return "SRIM-2013 tables";
   }
   return "Unknown";
 }
 } // namespace
 
-// Full constructor (matches header second declaration) including electron/mott paths
+// Settings overload (3): the full constructor. Overloads (1) and (2) below
+// delegate here. This is the only place arguments are validated.
 Simulation::Settings::Settings(
   energy_quantity electron_stopping_energy, size_t z_number,
   size_t mass_number, bool enable_damage_cascade,
@@ -175,7 +172,8 @@ Simulation::Settings::Settings(
   double custom_electronic_exponent,
   double custom_recoil_electronic_coefficient,
   double custom_recoil_electronic_exponent,
-  double custom_nuclear_screening_scale) try
+  double custom_nuclear_screening_scale,
+  std::string srim_stopping_table_path) try
   : electron_stopping_energy_(electron_stopping_energy), z_number_(z_number),
     mass_number_(mass_number),
     incident_particle_properties_(Particle::Properties(z_number, mass_number)),
@@ -217,7 +215,8 @@ Simulation::Settings::Settings(
     custom_recoil_electronic_coefficient_(
         custom_recoil_electronic_coefficient),
     custom_recoil_electronic_exponent_(custom_recoil_electronic_exponent),
-    custom_nuclear_screening_scale_(custom_nuclear_screening_scale) {
+    custom_nuclear_screening_scale_(custom_nuclear_screening_scale),
+    srim_stopping_table_path_(std::move(srim_stopping_table_path)) {
   if (incident_energy <= energy_quantity(0.0 * kilo_electron_volt)) {
     throw std::invalid_argument(
         EXCEPTION_MESSAGE("Incident energy should be greater than 0. Value: " +
@@ -263,26 +262,32 @@ Simulation::Settings::Settings(
        custom_recoil_electronic_coefficient_ <= 0.0 ||
        !std::isfinite(custom_recoil_electronic_exponent_) ||
        custom_recoil_electronic_exponent_ < 0.0)) {
-    throw std::invalid_argument(
-        "Custom electronic stopping coefficient must be positive and its "
-        "exponent must be finite and non-negative.");
+    throw std::invalid_argument(EXCEPTION_MESSAGE(
+        "Custom electronic stopping coefficients must be finite and positive "
+        "and their exponents must be finite and non-negative."));
+  }
+  if (electronic_stopping_model_ == ElectronicStoppingModel::SrimTable &&
+      srim_stopping_table_path_.empty()) {
+    throw std::invalid_argument(EXCEPTION_MESSAGE(
+        "The SRIM-table electronic stopping model needs the path of the SRIM "
+        "stopping tables."));
   }
   if (!std::isfinite(custom_nuclear_screening_scale_) ||
       custom_nuclear_screening_scale_ <= 0.0) {
-    throw std::invalid_argument(
-        "Custom nuclear screening scale must be finite and positive.");
+    throw std::invalid_argument(EXCEPTION_MESSAGE(
+        "Custom nuclear screening scale must be finite and positive."));
   }
-    if (displacement_bin_count == 0 || electronic_energy_loss_bin_count == 0 ||
+  if (displacement_bin_count == 0 || electronic_energy_loss_bin_count == 0 ||
       nuclear_energy_loss_bin_count == 0 || total_energy_loss_bin_count == 0 ||
       range_bin_count == 0) {
     throw std::invalid_argument(
         EXCEPTION_MESSAGE("Histogram bin counts must be greater than 0"));
   }
-  (void)save_per_bombardment_info_; // silence unused warnings for const
 } catch (...) {
   rethrow();
 }
 
+// Settings overload (1): optional per-bombardment output, default asset paths.
 Simulation::Settings::Settings(
   energy_quantity electron_stopping_energy, size_t z_number,
   size_t mass_number, bool enable_damage_cascade,
@@ -310,7 +315,8 @@ Simulation::Settings::Settings(
   double custom_electronic_exponent,
   double custom_recoil_electronic_coefficient,
   double custom_recoil_electronic_exponent,
-  double custom_nuclear_screening_scale)
+  double custom_nuclear_screening_scale,
+  std::string srim_stopping_table_path)
   : Settings(electron_stopping_energy, z_number, mass_number,
          enable_damage_cascade, ion_stopping_energy,
          ion_displacement_energy,
@@ -331,8 +337,10 @@ Simulation::Settings::Settings(
          screening_model, std::move(range_histogram_output_file),
          electronic_stopping_model, custom_electronic_coefficient,
          custom_electronic_exponent, custom_recoil_electronic_coefficient,
-         custom_recoil_electronic_exponent, custom_nuclear_screening_scale) {}
+         custom_recoil_electronic_exponent, custom_nuclear_screening_scale,
+         std::move(srim_stopping_table_path)) {}
 
+// Settings overload (2): per-bombardment output disabled, default asset paths.
 Simulation::Settings::Settings(
   energy_quantity electron_stopping_energy, size_t z_number,
   size_t mass_number, bool enable_damage_cascade,
@@ -358,7 +366,8 @@ Simulation::Settings::Settings(
   double custom_electronic_exponent,
   double custom_recoil_electronic_coefficient,
   double custom_recoil_electronic_exponent,
-  double custom_nuclear_screening_scale)
+  double custom_nuclear_screening_scale,
+  std::string srim_stopping_table_path)
   : Settings(electron_stopping_energy, z_number, mass_number,
          enable_damage_cascade, ion_stopping_energy,
          ion_displacement_energy,
@@ -379,10 +388,10 @@ Simulation::Settings::Settings(
          screening_model, std::move(range_histogram_output_file),
          electronic_stopping_model, custom_electronic_coefficient,
          custom_electronic_exponent, custom_recoil_electronic_coefficient,
-         custom_recoil_electronic_exponent, custom_nuclear_screening_scale) {}
+         custom_recoil_electronic_exponent, custom_nuclear_screening_scale,
+         std::move(srim_stopping_table_path)) {}
 
-Simulation::Simulation(const Settings settings, Volume &&volume,
-                       DrawFunction draw_function) try
+Simulation::Simulation(const Settings settings, Volume &&volume) try
     : settings_(settings),
       electronic_stopping_function_(
           select_electronic_stopping_function(
@@ -402,9 +411,52 @@ Simulation::Simulation(const Settings settings, Volume &&volume,
                settings.electronic_energy_loss_bin_count_,
                settings.nuclear_energy_loss_bin_count_,
                settings.total_energy_loss_bin_count_),
-      thread_pool_(settings.thread_count_), draw_function_(draw_function) {
+      thread_pool_(settings.thread_count_) {
   LOG(INFO) << "Creating simulation with settings:\n"
             << Simulation::print_settings();
+  // Curve-based electronic stopping: one curve per (projectile, element).
+  if (!settings_.is_electron_ && electronic_stopping_function_ == nullptr) {
+    using Model = Settings::ElectronicStoppingModel;
+    std::shared_ptr<const physics::SrimStoppingDatabase> db;
+    physics::ElectronicStoppingModel model = physics::ElectronicStoppingModel::builtin;
+    switch (settings_.electronic_stopping_model_) {
+    case Model::BetheBloch: model = physics::ElectronicStoppingModel::bethe_bloch; break;
+    case Model::SrimTable:
+      model = physics::ElectronicStoppingModel::srim_tables;
+      db = physics::SrimStoppingDatabase::load(settings_.srim_stopping_table_path_);
+      break;
+    default: break;
+    }
+    // Projectiles: the incident ion and every target isotope (recoils).
+    std::vector<std::pair<unsigned, mass_quantity>> projectiles;
+    projectiles.emplace_back(static_cast<unsigned>(settings_.z_number_),
+                             settings_.incident_particle_properties_.mass_);
+    std::vector<unsigned> elements;
+    for (size_t li = 0; li < volume_.get_layer_count(); ++li) {
+      const auto &layer = volume_.get_layer(li);
+      for (size_t c = 0; c < layer.get_number_of_components(); ++c) {
+        const auto &p = layer.get_property(c);
+        const auto z = static_cast<unsigned>(p.charge_.value());
+        projectiles.emplace_back(z, p.mass_);
+        if (std::find(elements.begin(), elements.end(), z) == elements.end()) {
+          elements.push_back(z);
+        }
+      }
+    }
+    for (const auto &[z1, m1] : projectiles) {
+      for (unsigned z2 : elements) {
+        const auto key = std::make_tuple(
+            z1, std::llround((m1 / atomic_mass_unit).value() * 1e6), z2);
+        if (stopping_curves_.count(key)) continue;
+        // Representative atomic density of the element (only the
+        // Bethe-Bloch density effect depends on it).
+        const auto density = Element::by_z(z2).solid_atomic_density();
+        stopping_curves_.emplace(
+            key, physics::StoppingCurve(model, db.get(), z1, m1, {{z2, 1.0}}, false,
+                                        1.0, density));
+      }
+    }
+  }
   std::vector<Bombardment> bombardments;
   bombardments.reserve(settings.bombardment_count_);
 
@@ -414,27 +466,51 @@ Simulation::Simulation(const Settings settings, Volume &&volume,
   }
   bombardments_ = std::move(bombardments);
   LOG(INFO) << settings.bombardment_count_ << " Bombardments Created";
-  LOG(INFO) << "Tallies created";
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
 }
 
+const physics::StoppingCurve *Simulation::stopping_curve(unsigned z1, mass_quantity m1,
+                                                       unsigned z2) const {
+  const auto it = stopping_curves_.find(
+      std::make_tuple(z1, std::llround((m1 / atomic_mass_unit).value() * 1e6), z2));
+  return it == stopping_curves_.end() ? nullptr : &it->second;
+}
+
 int Simulation::run_simulation() try {
   LOG(INFO) << "Starting Simulation...";
+  AMCSET_LOG(info) << "native engine run: " << bombardments_.size() << " bombardments, "
+                   << settings_.thread_count_ << " threads";
+  // An exception must not leave a pool thread (asio would let it reach
+  // std::terminate and end the program): the first one is kept, the other
+  // bombardments are cancelled, and it is rethrown after the join.
+  std::exception_ptr worker_error;
+  std::mutex worker_error_mutex;
   for (auto &bombardment : bombardments_) {
-    boost::asio::post(thread_pool_, [this, &bombardment]() {
+    boost::asio::post(thread_pool_, [this, &bombardment, &worker_error, &worker_error_mutex]() {
       if (cancellation_requested_.load(std::memory_order_acquire)) {
         return;
       }
-      VLOG(1) << "Starting Bombardment...";
-      bombardment.run_bombardment();
-      increment_completed_bombardment_count();
-      VLOG(1) << "...Bombardment Complete! Completed: "
-              << get_completed_bombardment_count() << "/"
-              << settings_.bombardment_count_;
+      try {
+        VLOG(1) << "Starting Bombardment...";
+        bombardment.run_bombardment();
+        increment_completed_bombardment_count();
+        VLOG(1) << "...Bombardment Complete! Completed: "
+                << get_completed_bombardment_count() << "/"
+                << settings_.bombardment_count_;
+      } catch (...) {
+        std::lock_guard<std::mutex> lock(worker_error_mutex);
+        if (!worker_error) worker_error = std::current_exception();
+        cancellation_requested_.store(true, std::memory_order_release);
+      }
     });
   }
   thread_pool_.join();
+  if (worker_error) {
+    AMCSET_LOG(error) << "native engine run failed after " << get_completed_bombardment_count()
+                      << " bombardments";
+    std::rethrow_exception(worker_error);
+  }
   if (is_cancelled()) {
     LOG(INFO) << "...Simulation cancelled after "
               << get_completed_bombardment_count() << "/"
@@ -443,8 +519,14 @@ int Simulation::run_simulation() try {
     LOG(INFO) << "...Simulation complete";
   }
   try {
-    const std::filesystem::path output_root = "output";
+    // tallies.json goes next to the histogram files (the directory of the
+    // displacement histogram; "output" if that path has no directory).
+    std::filesystem::path output_root =
+        std::filesystem::path(settings_.displacement_histogram_output_file_).parent_path();
+    if (output_root.empty()) output_root = "output";
     std::filesystem::create_directories(output_root);
+    // Remove the collisions.csv written by older versions so the GUI does not
+    // display stale data.
     std::filesystem::remove(output_root / "collisions.csv");
 
     auto write_histogram_with_log = [this](const std::string &label,
@@ -487,9 +569,9 @@ int Simulation::run_simulation() try {
     }
     tally_stream << get_tallies().to_json();
   } catch (const std::exception &e) {
-    VLOG(1) << "Failed to write simulation output: " << e.what();
+    LOG(ERROR) << "Failed to write simulation output: " << e.what();
   } catch (...) {
-    VLOG(1) << "Failed to write simulation output";
+    LOG(ERROR) << "Failed to write simulation output";
   }
 
   return 0;
@@ -547,9 +629,9 @@ std::string Simulation::print_settings() const try {
      << settings_.electronic_energy_loss_bin_count_ << std::endl;
   ss << "Nuclear loss histogram bins: "
      << settings_.nuclear_energy_loss_bin_count_ << std::endl;
-    ss << "Total loss histogram bins: "
+  ss << "Total loss histogram bins: "
      << settings_.total_energy_loss_bin_count_ << std::endl;
-    ss << "Range histogram bins: " << settings_.range_bin_count_ << std::endl;
+  ss << "Range histogram bins: " << settings_.range_bin_count_ << std::endl;
   ss << "Nuclear stopping model: "
      << nuclear_model_name(settings_.screening_model_) << std::endl;
   ss << "Electronic stopping model: "
@@ -565,6 +647,10 @@ std::string Simulation::print_settings() const try {
        << settings_.custom_recoil_electronic_coefficient_ << std::endl;
     ss << "Custom recoil electronic stopping n: "
        << settings_.custom_recoil_electronic_exponent_ << std::endl;
+  }
+  if (settings_.electronic_stopping_model_ ==
+      Settings::ElectronicStoppingModel::SrimTable) {
+    ss << "SRIM stopping tables: " << settings_.srim_stopping_table_path_ << std::endl;
   }
   if (settings_.screening_model_ == Settings::ScreeningModel::Custom) {
     ss << "Custom nuclear screening scale: "
@@ -593,18 +679,22 @@ void Simulation::write_histogram_csv(const std::string &output_file,
   if (output_file.empty()) {
     throw std::invalid_argument("Histogram output file path cannot be empty.");
   }
+  common::write_histogram_csv(std::filesystem::path(output_file), histogram, value_label);
+}
 
-  const std::filesystem::path output_path(output_file);
+void write_histogram_csv(const std::filesystem::path &output_path, const Histogram &histogram,
+                         const std::string &value_label) {
   if (!output_path.parent_path().empty()) {
     std::filesystem::create_directories(output_path.parent_path());
   }
 
   std::ofstream output(output_path);
   if (!output.is_open()) {
-    throw std::runtime_error("Failed to open histogram output: " + output_file);
+    throw std::runtime_error("Failed to open histogram output: " + output_path.string());
   }
 
-  const auto left_to_angstrom = [](double meters) {
+  // Histogram limits are stored in metres.
+  const auto meters_to_angstrom = [](double meters) {
     return (length_quantity(meters * si::meter) / angstrom).value();
   };
 
@@ -618,13 +708,30 @@ void Simulation::write_histogram_csv(const std::string &output_file,
   for (size_t i = 0; i < histogram.bins.size(); ++i) {
     const auto left = histogram.min + width * double(i) / double(histogram.bins.size());
     const auto right = histogram.min + width * double(i + 1) / double(histogram.bins.size());
-    output << left_to_angstrom(left) << "," << left_to_angstrom(right) << "," << histogram.bins[i] << "\n";
+    output << meters_to_angstrom(left) << "," << meters_to_angstrom(right) << "," << histogram.bins[i] << "\n";
   }
   output.flush();
   LOG(INFO) << "Histogram written to " << output_path.string() << " with "
             << histogram.bins.size() << " bins";
 }
 
+void write_tallies_files(const std::filesystem::path &directory, const Tallies &tallies) {
+  std::filesystem::create_directories(directory);
+  write_histogram_csv(directory / "displacement_histogram.csv", tallies.displacement_histogram, "count");
+  write_histogram_csv(directory / "range_histogram.csv", tallies.range_histogram, "count");
+  write_histogram_csv(directory / "electronic_loss_histogram.csv",
+                      tallies.electronic_energy_loss_histogram, "energy_loss_eV");
+  write_histogram_csv(directory / "nuclear_loss_histogram.csv",
+                      tallies.nuclear_energy_loss_histogram, "energy_loss_eV");
+  write_histogram_csv(directory / "total_loss_histogram.csv",
+                      tallies.total_energy_loss_histogram, "energy_loss_eV");
+  std::ofstream json(directory / "tallies.json");
+  if (!json) throw std::runtime_error("Failed to open " + (directory / "tallies.json").string());
+  json << tallies.to_json();
+}
+
+// The depth histogram is a legacy combined histogram: it receives both the
+// incident particle's final depth and every displacement depth.
 void Bombardment::record_incident(double range_meters) {
   local_tallies_.incidents += 1;
   local_tallies_.range_stats.add((long double)range_meters);
@@ -663,8 +770,8 @@ Bombardment::Bombardment(Simulation &simulation, size_t id) try
               simulation.get_settings(&Simulation::Settings::total_energy_loss_bin_count_)),
       random_number_generator_(EntropySeeder::generate()),
       uniform_distribution_(), id_(id), data_leaf_() {
-  VLOG(1) << "Attempting random number: "
-          << uniform_distribution_(random_number_generator_);
+  // Note: a former VLOG(1) here drew a random number, so enabling verbose
+  // logging silently changed the random stream. It was removed.
 } catch (...) {
   rethrow(EXCEPTION_MESSAGE(""));
 }
@@ -692,10 +799,13 @@ void Bombardment::run_bombardment() try {
             << incident_particle_->get_velocity().quaternion_.z_ << ")."
             << " and energy " << incident_particle_->get_velocity().energy_;
   incident_particle_->fire();
-  std::this_thread::yield();
   VLOG(1) << "...Bombardment complete.";
 
   try {
+    // Range = depth of the incident particle's last recorded coordinate.
+    // For ions that is the position before the final free flight; for
+    // electrons the position after the last step. Sputtered and escaped
+    // histories are included.
     auto &coords = incident_particle_->get_coordinates();
     if (!coords.empty()) {
       auto last_z = coords.back().z_.value();
@@ -708,7 +818,9 @@ void Bombardment::run_bombardment() try {
   simulation_.merge_tallies(local_tallies_);
 
   try {
-    // Before publishing collision points, if enabled write per-bombardment CSV
+    // Before publishing collision points, optionally write them to
+    // <per_bombardment_output_dir>/bombardment_<id>.csv. The column order is
+    // relied upon by scripts/animate_cascade.py and scripts/julia.
     auto pts = take_collision_points();
     if (simulation_.get_settings(&Simulation::Settings::save_per_bombardment_info_)) {
       try {
@@ -727,7 +839,7 @@ void Bombardment::run_bombardment() try {
           ofs.flush();
         }
       } catch (...) {
-        VLOG(1) << "Failed to write per-bombardment CSV for id " << id_;
+        LOG(WARNING) << "Failed to write per-bombardment CSV for id " << id_;
       }
     }
     simulation_.push_bombardment_results(std::move(pts));

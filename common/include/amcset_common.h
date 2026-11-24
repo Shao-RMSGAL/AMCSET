@@ -15,44 +15,46 @@
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
 /*! \file amcset_common.h
- *  \brief The main include file for AMCSET
+ *  \brief The main include file for the AMCSET common (simulation) library.
  *
- *  This file contains all of the major structs and classes in AMCSET.
- *  This includes objects for simulation, as well as objects used for
- *  interfacing with the front-end gui.
+ *  This header declares every public type of the simulation core:
+ *
+ *  - Plain data: Coordinate, CollisionPoint, Quaternion, Velocity.
+ *  - Per-history output: ParticleDataLeaf (a tree of particle tracks).
+ *  - Transport: Particle (abstract), Electron, Ion.
+ *  - Geometry / materials: Layer, Volume.
+ *  - Orchestration: Bombardment (one incident particle history) and
+ *    Simulation (many bombardments run on a thread pool, plus tallies and
+ *    output files).
+ *  - EntropySeeder (RNG seeding helper).
+ *
+ *  Units: all physical quantities are Boost.Units SI quantities (see
+ *  amcset_utilities.h). Note that "number density" is stored in mol/m^3 and
+ *  is multiplied by Avogadro's number wherever an atom density is needed.
  */
 
 #pragma once
 
 // Includes{{{
 
-#include <boost/units/systems/si/length.hpp>
-#include <iomanip>
-#include <memory>
-#include <sstream>
-
-// Detects the platform and sets the DECLSPEC macro for exporting symbols from a
-// DLL on Windows.
-#if defined(_WIN32)
-#if defined(EXPORTING_AMCSET)
-#define DECLSPEC __declspec(dllexport)
-#else
-#define DECLSPEC __declspec(dllimport)
-#endif
-#else // non windows
-#define DECLSPEC
-#endif
-
 // Standard library
+#include <array>
 #include <atomic>
-#include <mutex>
-#include <ranges>
-#include <shared_mutex>
-#include <string>
-#include <unordered_map>
-#include <variant>
-#include <vector>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
+#include <functional>
+#include <map>
+#include <tuple>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ranges>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 // Boost random numbers
 #include <boost/random/discrete_distribution.hpp>
@@ -60,16 +62,18 @@
 #include <boost/random/uniform_01.hpp>
 
 // Boost units
-#include <boost/random/discrete_distribution.hpp>
 #include <boost/units/static_rational.hpp>
+#include <boost/units/systems/si/length.hpp>
 
-// Boost asio
-#include <boost/asio.hpp>
-#include <boost/lockfree/spsc_queue.hpp>
+// Boost asio (thread pool used by Simulation)
+#include <boost/asio/post.hpp>
+#include <boost/asio/thread_pool.hpp>
 
 // Local includes
 #include "amcset_utilities.h"
 #include "isotope_data.h"
+#include "physics/stopping.h"
+#include "simulation_engine.h"
 #include "tallies.h"
 
 // }}}
@@ -87,27 +91,28 @@ namespace amcset {
  */
 namespace common {
 
-using namespace amcset::common;
-using namespace amcset::common;
+// Forward declarations
+class Simulation;
+class Bombardment;
 
 // Struct declarations and definitions{{{
 
-//! A struct to store 3D coordinate data
+/*!
+ * \brief A 3D position.
+ *
+ * The coordinate system has its origin at the bombarded surface; +z points
+ * into the target (depth), x and y are lateral. Values are SI lengths
+ * (meters); divide by \c angstrom to obtain angstroms.
+ */
 struct Coordinate {
-  length_quantity x_; //!< X position in angstroms
-  length_quantity y_; //!< Y position in angstroms
-  length_quantity z_; //!< Z position in angstroms
+  length_quantity x_; //!< Lateral x position
+  length_quantity y_; //!< Lateral y position
+  length_quantity z_; //!< Depth below the surface
 
   Coordinate() = delete;
 
-  // Assignment copy operator
-  // Coordinate operator=(const Coordinate &a) { return Coordinate(a); };
-
   /*!
-   * \brief Construct a Coordinate struct with \c double parameters.
-   *
-   * Pass three parameters to describe a 3D coordinate in terms of
-   * angstroms.
+   * \brief Construct a Coordinate from three lengths.
    *
    * \param x The value to set to x_
    * \param y The value to set to y_
@@ -118,32 +123,84 @@ struct Coordinate {
       : x_(x), y_(y), z_(z) {}
 };
 
-//! A struct to hold a single collision point including velocity and generation
+/*!
+ * \brief One recorded collision event of one particle in a bombardment.
+ *
+ * Collision points are accumulated by the owning Bombardment, optionally
+ * written to a per-bombardment CSV, and pushed to the Simulation's result
+ * queue for the GUI to draw.
+ */
 struct CollisionPoint {
-  Coordinate coordinate;    //!< Position where nuclear energy lost
-  double vx = 0.0;         //!< Velocity x-component (derived from quaternion & energy)
-  double vy = 0.0;         //!< Velocity y-component
-  double vz = 0.0;         //!< Velocity z-component
-  size_t generation = 0;   //!< Generation number: 0 = incident, 1 = primary knock-on, ...
-  size_t z_number = 0;     //!< Atomic number (Z) of the particle that generated this point
+  Coordinate coordinate;    //!< Position of the collision
+  double vx = 0.0;          //!< Velocity x-component (m/s, after the collision's energy loss)
+  double vy = 0.0;          //!< Velocity y-component (m/s)
+  double vz = 0.0;          //!< Velocity z-component (m/s)
+  size_t generation = 0;    //!< Generation number: 0 = incident, 1 = primary knock-on, ...
+  size_t z_number = 0;      //!< Atomic number (Z) of the particle that generated this point
   double atomic_mass_number = 0.0; //!< Mass number of the particle (dimensionless)
-  double time = 0.0;       //!< Time since incident particle first hit (seconds)
-  double energy_eV = 0.0;  //!< Particle energy at collision (eV)
+  /*!
+   * \brief Time since the incident particle entered the target (s). SRIM
+   * mode (trim2013 transport) fills it from the flight lengths and speeds
+   * (an estimate: TRIM has no time); otherwise 0.
+   */
+  double time = 0.0;
+  double energy_eV = 0.0;   //!< Particle energy after the collision (eV)
+  /*!
+   * \brief Path the point belongs to, within one incident particle's
+   * trajectory: 0 for the incident particle, one number per moving recoil.
+   * Consecutive points of the same track are joined by straight segments.
+   */
+  std::uint32_t track = 0;
+
+  // --- SRIM mode, trim2013 transport (0 / defaults elsewhere) ---------------
+  //! What the point is.
+  enum class Kind : std::uint8_t {
+    collision = 0, //!< End of a flight (a collision there, unless the next point says otherwise)
+    birth = 1,     //!< First point of a track: the ion's entry, a recoil's site
+    stop = 2,      //!< The particle came to rest here (last point of its track)
+    exit = 3       //!< The particle left the target here (last point of its track)
+  };
+  Kind kind = Kind::collision;
+  static constexpr std::uint32_t no_parent = 0xffffffffu; //!< parent_track/parent_point of a root
+  std::uint64_t ion = 0;          //!< 1-based number of the incident particle (0: not set)
+  std::uint32_t point_index = 0;  //!< Index of this point in its ion's trajectory
+  //! Track and point (index) of the collision that set this track's atom in
+  //! motion (no_parent for the incident particle or a source recoil).
+  std::uint32_t parent_track = no_parent;
+  std::uint32_t parent_point = no_parent;
+  //! At a collision: energy just before it, energy given to the struck
+  //! atom, and electronic loss over the flight that led to it (eV).
+  double energy_before_eV = 0.0;
+  double energy_transferred_eV = 0.0;
+  double electronic_loss_eV = 0.0;
 };
 
+/*!
+ * \brief A minimal quaternion type used to store and rotate direction vectors.
+ *
+ * Directions are stored as pure quaternions (r_ == 0, (x_, y_, z_) a unit
+ * vector). Rotations are applied as q * v * q^-1 in Particle::rotate_inplace.
+ *
+ * \warning The four-argument constructor *normalizes* its input, so it
+ * cannot be used to build a non-unit quaternion, and passing all zeros yields
+ * NaNs. conjugate_copy() goes through that constructor and therefore also
+ * returns a normalized quaternion.
+ */
 struct Quaternion {
-  double r_; //!< The scalar portion of a quaterion.
-  double x_; //!< The x portion of a quaterion.
-  double y_; //!< The y portion of a quaterion.
-  double z_; //!< The z portion of a quaterion.
+  double r_; //!< The scalar portion of a quaternion.
+  double x_; //!< The x portion of a quaternion.
+  double y_; //!< The y portion of a quaternion.
+  double z_; //!< The z portion of a quaternion.
 
   /*!
-   * \brief Uninitialized constructor. Use with caution.
+   * \brief Uninitialized constructor. Members are left indeterminate; assign
+   * before reading.
    */
   Quaternion() {};
 
   /*!
-   * \brief Constructor for a quaternion using direct values
+   * \brief Construct a quaternion from components and normalize it to unit
+   * magnitude.
    */
   Quaternion(double r, double x, double y, double z) {
     double sum = std::sqrt(r * r + x * x + y * y + z * z);
@@ -153,7 +210,7 @@ struct Quaternion {
     z_ = z / sum;
   }
 
-  // Compiler-generated copy and move constructors is sufficient.
+  // Compiler-generated copy and move constructors are sufficient.
 
   /*!
    * \brief += operator.
@@ -196,7 +253,7 @@ struct Quaternion {
   Quaternion operator/(double b) const;
 
   /*!
-   * \brief Noramlize the Quaternion.
+   * \brief Normalize the Quaternion in place.
    */
   Quaternion &normalize_inplace();
 
@@ -221,201 +278,43 @@ struct Quaternion {
   double magnitude() const;
 };
 
-Quaternion operator+(const Quaternion &a, const Quaternion &b);
-// Quaternion operator*(const Quaternion &a, const Quaternion &b);
+//! Scalar-on-the-left multiplication (the member overload handles q * s).
 Quaternion operator*(double a, const Quaternion &b);
-Quaternion operator/(const Quaternion &a, double b);
 
-/*! \brief A struct for storing velocity information.
+/*! \brief Direction of travel plus kinetic energy of a particle.
  *
- * A Quaternion is used to represent the orientation information
- * of the velocity:
- *
- * (scalar, x, y, z)
- *
- * where the scalar is related to the rotation of the vector around
- * the x,y,z vector. See (https://en.wikipedia.org/wiki/Quaternion) for more
- * information.
- *
- * The quaternion should be normalized, or close to normalized, while the energy
- * is used to represent the speed of the particle.
+ * The direction is stored as a pure unit quaternion (0, x, y, z); the
+ * kinetic energy determines the speed (see Particle::speed_from_energy).
  */
 struct Velocity {
-  Quaternion quaternion_;
-  energy_quantity energy_; //!< Energy of the particle in keV
+  Quaternion quaternion_;  //!< Direction of travel as (0, x, y, z), unit length
+  energy_quantity energy_; //!< Kinetic energy (SI joules; divide by electron_volt for eV)
 
   Velocity() = delete;
 
   /*!
-   * \brief Construct a Velocity struct with \c double parameters
+   * \brief Construct a Velocity from a direction and a kinetic energy.
    *
-   * Pass three parameters, two angle parameters (in radians) and one
-   * energy (in kiloelectron volts) parameter, to describe velocity.
-   *
-   * \param x_angle The value to set to x_angle_
-   * \param z_angle The value to set to z_angle_
-   * \param energy The value to set to energy_
+   * \param quaternion Direction of travel (should be a unit pure quaternion).
+   * \param energy Kinetic energy of the particle.
    */
   Velocity(Quaternion quaternion, energy_quantity energy) noexcept
       : quaternion_(quaternion), energy_(energy) {};
 };
 
 /*!
- * \brief A class for storing data generated during a history. This includes
- * coordinate data. TODO: Add other types of raw data to track.
+ * \brief Tree of per-particle track data for one bombardment.
  *
- * This class holds coordinate data, as well as pointers to ParticleDataLeafs
- * of generated knock-on particles.
+ * Each node stores the coordinates visited by one particle and (optionally)
+ * labelled state samples; knock-on particles are stored as children. The
+ * tree can be serialized with to_json().
+ *
+ * \note Not thread-safe; each Bombardment owns its own tree and fills it
+ * from a single worker thread.
  */
-template <typename... Types> class DataFrame {
-public:
-  //!< For batch read operations
-  class ReadLock {
-  private:
-    std::shared_lock<std::shared_mutex> lock;
-
-  public:
-    /**
-     * @brief Construct a read guard for a DataFrame.
-     *
-     * Locks the underlying mutex for shared (read) access for the lifetime
-     * of this object.
-     * @param df The DataFrame being read.
-     */
-    explicit ReadLock(const DataFrame &df) : lock(df.frame_mutex) {}
-  };
-
-  //!< For batch write operations
-  class WriteLock {
-  private:
-    std::unique_lock<std::shared_mutex> lock;
-
-  public:
-    /**
-     * @brief Construct a write guard for a DataFrame.
-     *
-     * Locks the underlying mutex for exclusive (write) access for the
-     * lifetime of this object.
-     * @param df The DataFrame being written to.
-     */
-    explicit WriteLock(const DataFrame &df) : lock(df.frame_mutex) {}
-  };
-
-  /**
-   * @brief Read-only access to a named column.
-   *
-   * The caller must hold a `ReadLock` while accessing the returned
-   * reference.
-   * @tparam T Column element type.
-   * @param column_name Name of the column to access.
-   * @param _lock A `ReadLock` instance that keeps the frame locked.
-   * @return Const reference to the column vector.
-   */
-  template <typename T>
-  const std::vector<T> &get_column(const std::string &column_name,
-                                   const ReadLock &) const {
-    return std::get<std::vector<T>>(columns.at(column_name));
-  }
-
-  /**
-   * @brief Read-write access to a named column.
-   *
-   * The caller must hold a `WriteLock` while accessing the returned
-   * reference.
-   * @tparam T Column element type.
-   * @param column_name Name of the column to access.
-   * @param _lock A `WriteLock` instance that keeps the frame locked.
-   * @return Reference to the column vector.
-   */
-  template <typename T>
-  std::vector<T> &get_column(const std::string &column_name,
-                             const WriteLock &) {
-    return std::get<std::vector<T>>(columns.at(column_name));
-  }
-
-  /**
-   * @brief Add a new column to the DataFrame.
-   *
-   * The new column will be default-initialized for existing rows.
-   * @tparam T Column element type.
-   * @param name Column name.
-   */
-  template <typename T> void add_column(const std::string &name) {
-    std::unique_lock lock(frame_mutex);
-    columns[name] = std::vector<T>(num_rows);
-  }
-
-  /**
-   * @brief Read a single cell value.
-   *
-   * Acquires a shared lock for the duration of the operation.
-   * @tparam T Cell type.
-   * @param column_name Column name.
-   * @param row Row index.
-   * @return Copy of the requested cell value.
-   */
-  template <typename T>
-  T read_cell(const std::string &column_name, size_t row) {
-    std::shared_lock lock(frame_mutex);
-    auto &column = std::get<std::vector<T>>(columns[column_name]);
-    return column[row];
-  }
-
-  /**
-   * @brief Write a value to a single cell.
-   *
-   * Acquires an exclusive lock for the duration of the operation.
-   * @tparam T Cell type.
-   * @param column_name Column name.
-   * @param row Row index.
-   * @param value Value to store.
-   */
-  template <typename T>
-  void write_cell(const std::string &column_name, size_t row, T value) {
-    std::unique_lock lock(frame_mutex);
-    auto &column = std::get<std::vector<T>>(columns[column_name]);
-    column[row] = value;
-  }
-
-  /**
-   * @brief Append a new (default-initialized) row to the DataFrame.
-   */
-  void add_row() {
-    std::unique_lock lock(frame_mutex);
-    for (auto &[_, column] : columns) {
-      std::visit([](auto &vec) { vec.push_back({}); }, column);
-    }
-    num_rows++;
-  }
-
-  /**
-   * @brief Return the number of rows in the DataFrame.
-   * @return Row count.
-   */
-  size_t size() const {
-    std::shared_lock lock(frame_mutex);
-    return num_rows;
-  }
-
-  /**
-   * @brief Increment the per-frame sputtered atom counter.
-   * @param count Number of sputtered atoms to add.
-   */
-  void add_sputtered(size_t count) {
-    std::unique_lock lock(frame_mutex);
-    sputtered_count += count;
-  }
-
-private:
-  using ColumnData = std::variant<std::vector<Types>...>;
-  std::unordered_map<std::string, ColumnData> columns;
-  mutable std::shared_mutex frame_mutex;
-  size_t num_rows = 0;
-  size_t sputtered_count = 0;
-};
-
 class ParticleDataLeaf {
 public:
+  //! A labelled snapshot of position, direction and energy.
   struct Sample {
     double x_m = 0.0;
     double y_m = 0.0;
@@ -429,6 +328,7 @@ public:
 
   ParticleDataLeaf() = default;
 
+  //! Set identifying metadata (currently unused by the transport code).
   void set_identity(std::string id, std::string parent_id,
                     std::string particle_type, size_t z_number,
                     size_t mass_number) {
@@ -445,13 +345,16 @@ public:
     return particle_type_;
   }
 
+  //! Append a visited coordinate to this particle's track.
   void add_coordinate(const Coordinate &coordinate) { data.push_back(coordinate); }
 
+  //! Append a knock-on particle's subtree.
   void add_child(ParticleDataLeaf &&child) { children.emplace_back(std::move(child)); }
 
   const std::vector<Coordinate> &get_data() const { return data; }
   std::vector<ParticleDataLeaf> &get_children() { return children; }
 
+  //! Record a labelled sample; the stored velocity is the unit direction.
   void add_sample(const Coordinate &coordinate, const Velocity &velocity,
                   std::string label = "state") {
     Sample sample;
@@ -471,9 +374,10 @@ public:
     samples.push_back(sample);
   }
 
-  void sputter() { sputtered = true; }
-  void escape() { escaped = true; }
+  void sputter() { sputtered = true; } //!< Mark: particle left through the surface
+  void escape() { escaped = true; }    //!< Mark: particle passed the deepest layer
 
+  //! Serialize this node and all children to (pretty-printed) JSON.
   std::string to_json(size_t indent = 0) const {
     std::ostringstream ss;
     const auto pad = std::string(indent, ' ');
@@ -529,47 +433,34 @@ private:
   bool escaped = false;
 };
 
-/*!
- * \brief A class for storing various tallies that are collected across
- * simulations.
- *
- * A Simulation object will have several
- */
-
 // }}}
-
-class Simulation;
-class Volume;
-class Layer;
 
 // Particle class declarations{{{
 
-class ParticleDataLeaf;
-class Bombardment;
-
 /*!
- * \brief A class for representing simulation particles.
+ * \brief Abstract base class for a transported particle.
  *
- * A Particle will store its velocity, current coordinate, and a vector with
- * all the coordinates that it has occupied throughout a simulation. In
- * addition, it also contains a Properties struct that stores information
- * about the properties of the particle, including the charge and the mass of
- * the particle.
+ * A Particle stores its current position and direction/energy, the list of
+ * coordinates it has visited, and its Properties (charge, mass, mass
+ * number). It borrows (by reference) the RNG, the owning Bombardment and a
+ * ParticleDataLeaf from the caller; those must outlive the Particle.
+ *
+ * Particles start at the origin travelling at Settings::incident_angle_
+ * from the surface normal (in the x-z plane) with Settings::incident_energy_.
+ * Knock-on ions override position/velocity after construction.
  */
 class Particle {
 public:
   /*!
    * \struct Properties
-   * \brief A struct for storing property information associated with a
-   * particle.
+   * \brief Charge, exact isotopic mass and mass number of a particle species.
    *
-   * A particle has two pieces of information of interest, a charge (Z number)
-   * and a mass. Both of these pieces of information are stored as
+   * Used both for the projectile and for each isotope in a Layer.
    */
-  struct Properties { // TODO: Store mass number as well.
+  struct Properties {
     const dimensionless_quantity
-        charge_; //!< The atomic number of the particle (dimensionless)
-    const mass_quantity mass_; //!< The exact mass of the particle (amu)
+        charge_; //!< The atomic number (Z) of the particle; -1 for an electron
+    const mass_quantity mass_; //!< The exact isotopic mass (SI kg; NIST table)
     const dimensionless_quantity
         mass_number_; //!< The mass number of the particle (dimensionless)
 
@@ -579,14 +470,12 @@ public:
      * \brief Constructs a Properties struct using a z number and mass
      * number.
      *
-     * This constructor uses the z number and mass number to determine the
-     * charge number and exact isotopic mass to the  charge_ and mass_
-     * fields in the Properties struct. This can also represent an electron
-     * if the z_number and mass_number as specified as 0.
+     * The exact mass is looked up in IsotopeData. Passing (0, 0) creates an
+     * electron (charge -1, electron rest mass).
      *
-     * \param z_number The atomic (Z) number of the particle. If z_number is
-     * 0, an electron is specified. \param mass_number The mass number of
-     * the particle. If mass_number is 0, an electron is specified.
+     * \param z_number The atomic (Z) number of the particle (0 for electron).
+     * \param mass_number The mass number of the particle (0 for electron).
+     * \throws std::out_of_range if the isotope is not in the database.
      */
     constexpr Properties(size_t z_number, size_t mass_number) try
         : charge_(z_number > 0
@@ -610,16 +499,22 @@ public:
   Particle &operator=(const Particle &) = delete;
   Particle &operator=(Particle &&) = delete;
   /*!
-   * \brief construct a Particle by passing a reference to a Simulation
-   * object.
+   * \brief Construct a Particle.
    *
-   * All the information needed to create the particle is stored in the
-   * Simulation object, hence no other parameters are needed.
+   * \param z_number Atomic number of the particle (0 for an electron).
+   * \param mass_number Mass number of the particle (0 for an electron).
+   * \param simulation Source of settings, volume and model functions.
+   * \param uniform_distribution U(0,1) distribution shared within a bombardment.
+   * \param random_number_generator RNG shared within a bombardment.
+   * \param data_leaf Track-data node this particle writes into.
+   * \param bombardment Owning bombardment (receives tallies and collision points).
+   * \param generation 0 for the incident particle, n+1 for knock-ons of generation n.
+   * \param birth_time_seconds Simulation time at which this particle was created.
    */
   Particle(size_t z_number, size_t mass_number, const Simulation &simulation,
            boost::random::uniform_01<double> &uniform_distribution,
            boost::random::mt19937 &random_number_generator,
-           ParticleDataLeaf &data_leaf, Bombardment &bomardment,
+           ParticleDataLeaf &data_leaf, Bombardment &bombardment,
            size_t generation = 0, double birth_time_seconds = 0.0);
 
   /*!
@@ -661,12 +556,9 @@ public:
    */
   virtual Velocity get_velocity() const { return velocity_; };
   
-  /*!
-   * \brief Calculate velocity from energy.
-   */
   /**
-   * @brief Convert kinetic energy to a velocity quantity for a particle of
-   * the given mass.
+   * @brief Convert kinetic energy to a (non-relativistic) speed for a
+   * particle of the given mass: v = sqrt(2E/m).
    * @param energy Particle kinetic energy.
    * @param mass Particle mass.
    * @return Velocity quantity corresponding to the supplied energy.
@@ -674,10 +566,8 @@ public:
   virtual velocity_quantity speed_from_energy(energy_quantity energy,
                                               mass_quantity mass) const;
 
-protected:
-  /*!
-   * \brief Calculate reduced mass.
-   */
+  // Kinematics helpers (public so that the physics can be unit tested).
+
   /**
    * @brief Compute the reduced mass of two masses.
    * @param mass_1 First mass.
@@ -686,9 +576,6 @@ protected:
    */
   virtual mass_quantity reduced_mass(mass_quantity mass_1,
                                      mass_quantity mass_2) const;
-  /*!
-   * \brief Calculate kinetic energy for center of mass coordinates.
-   */
   /**
    * @brief Compute center-of-mass kinetic energy from reduced mass and
    * velocity.
@@ -699,16 +586,16 @@ protected:
   virtual energy_quantity cm_energy(mass_quantity reduced_mass,
                                     velocity_quantity velocity) const;
 
-  /*!
-   * \brief Rotate a particle.
-   *
-   * Rotates a particle around an axis perpendicular to its velocity
-   * vector to apply a scattering angle, as well as a randomized azimuthal
-   * rotation between 0 and 2pi.
-   */
   /**
-   * @brief Apply a scattering rotation to the particle in-place.
-   * @param scattering_angle The scattering angle to apply.
+   * @brief Apply a scattering rotation to the particle's direction in place.
+   *
+   * Deflects the direction by \p scattering_angle about an axis
+   * perpendicular to it, then rotates about the original direction by a
+   * uniformly random azimuth in (-pi, pi]. Consumes one random number.
+   * (Before v0.1.0 the polar axis was not perpendicular to the direction;
+   * physics fix P1.)
+   *
+   * @param scattering_angle The (laboratory-frame) scattering angle to apply.
    * @return Reference to this Particle after rotation.
    */
   virtual Particle &rotate_inplace(angle_quantity scattering_angle);
@@ -726,27 +613,31 @@ protected:
     coordinate_ = coordinate;
   };
 
-
+protected:
   Properties properties_; //!< Properties of the particle
-  // std::vector<std::unique_ptr<Particle>>
-  //     particles_; //!< List of cascade particles // TODO: Remove permanently
   std::vector<Coordinate>
       coordinates_; //!< List of coordinates of the current particle
   const Simulation &simulation_; //!< Reference to the simulation object
   Velocity velocity_;            //!< Current velocity of the particle
   Coordinate coordinate_;        //!< Current coordinate of the particle
   size_t generation_ = 0;        //!< Generation (0 incident, >0 knock-ons)
-  double birth_time_seconds_ = 0.0;
-  double elapsed_time_seconds_ = 0.0;
+  double birth_time_seconds_ = 0.0;   //!< Simulation time this particle was created
+  double elapsed_time_seconds_ = 0.0; //!< Time accumulated along this particle's own path
+  std::uint32_t track_id_ = 0;        //!< Path number of this particle within its history
   boost::random::uniform_01<double>
       &uniform_distribution_; //!< Reference to uniform distribution between 0
                               //!< and 1 for various uses.
   boost::random::mt19937
       &random_number_generator_; //!< Reference to random number generator
   ParticleDataLeaf &data_leaf_;  //!< Reference to a ParticleDataLeaf
-  Bombardment &bombardment_;     //!< Particle bombardment_
+  Bombardment &bombardment_;     //!< Owning bombardment
 
+  /*!
+   * \brief Advance this particle's clock by \p delta_time_seconds, stamp
+   * \p point with the resulting time and hand it to the Bombardment.
+   */
   void record_collision_point(CollisionPoint point, double delta_time_seconds);
+  //! Absolute simulation time of this particle (birth + elapsed).
   double current_time_seconds() const noexcept {
     return birth_time_seconds_ + elapsed_time_seconds_;
   }
@@ -756,19 +647,25 @@ protected:
 // Electron class declarations{{{
 
 /*!
- *  \brief A class to represent electrons.
+ *  \brief An electron transported with a Mott elastic-scattering /
+ *  continuous-slowing-down model.
  *
- *  This class contains functions specific to electron bombardment simulation.
+ *  Elastic scattering uses tabulated Mott cross-section parameters and
+ *  electron screening parameters (CSV files, see
+ *  Settings::mott_scattering_parameters_path_ and
+ *  Settings::electron_screening_parameters_path_). Inelastic losses
+ *  (ionization, bremsstrahlung) are applied continuously along each step.
+ *  Electrons do not generate knock-on cascades.
+ *
+ *  The parameter tables are process-global and loaded once (std::call_once)
+ *  on the first Electron::fire(); later simulations with different paths
+ *  reuse the first tables.
  */
 class Electron : public Particle {
 public:
   /*!
-   * \brief Construct an electron.
-   *
-   * Accepts a Simulation reference and calls the Particle default
-   * constructor. Immediately fires Electron once created.
-   *
-   * \param simulation The reference to the Simulation object
+   * \brief Construct an electron. See Particle::Particle for parameters.
+   * The particle is not fired until fire() is called.
    */
   Electron(size_t z_number, size_t mass_number, const Simulation &simulation,
            boost::random::uniform_01<double> &uniform_distribution,
@@ -780,55 +677,71 @@ public:
                  birth_time_seconds) {};
 
   /*!
-   * \brief Fire an electron
+   * \brief Transport the electron until its energy drops to
+   * Settings::electron_stopping_energy_ or it leaves the target.
    *
-   * Fires an electron using electron-specific energy loss functions.
+   * \throws std::runtime_error if the parameter tables cannot be opened.
    */
   void fire() override;
 
-private:
-  static void initialize_tables();
+  // Physics helpers (public so that the physics can be unit tested).
+
+  //! Load the Mott/screening tables once per process (relative paths are
+  //! resolved against the current working directory).
   static void initialize_tables(const std::string &screening_path,
                                const std::string &mott_path);
+  //! Angle of the i-th node of the logarithmic angular grid in (0, pi].
   static double find_angle(size_t i, size_t divisor_count);
-  static const std::vector<std::array<double, 6>> &screening_table_for(size_t z_number);
-  static const std::vector<std::array<double, 6>> &mott_table_for(size_t z_number);
 
-  double mott_differential_cross_section(double theta_rad, double substrate_charge,
-                                         double energy_keV) const;
-  double mott_total_cross_section(double energy_keV, double substrate_charge,
+  //! Mott differential elastic cross section dsigma/dOmega (per steradian).
+  area_quantity mott_differential_cross_section(double theta_rad,
+                                                double substrate_charge,
+                                                energy_quantity energy) const;
+  //! Total elastic cross section integrated over the angular grid.
+  area_quantity mott_total_cross_section(energy_quantity energy,
+                                         double substrate_charge,
+                                         size_t divisor_count) const;
+  //! Sample a polar scattering angle (radians) from the Mott distribution.
+  double sample_scattering_angle(area_quantity total_cross_section,
+                                 double substrate_charge, energy_quantity energy,
                                  size_t divisor_count) const;
-  double sample_scattering_angle(double total_cross_section,
-                                 double substrate_charge, double energy_keV,
-                                 size_t divisor_count) const;
-  double elastic_energy_loss(double scattering_angle_rad, double energy_keV,
-                            double substrate_mass_number) const;
-  double ionization_energy_loss(double energy_keV, double substrate_charge,
-                               double substrate_density_kg_m3) const;
-  double bremsstrahlung_loss(double energy_keV, double substrate_charge,
-                            double substrate_density_kg_m3) const;
-  double generate_flying_distance(double total_cross_section,
-                                 double number_density_m3_inv) const;
+  //! Relativistic recoil energy given to a target nucleus of mass \p target_mass.
+  energy_quantity elastic_energy_loss(double scattering_angle_rad,
+                                      energy_quantity energy,
+                                      mass_quantity target_mass) const;
+  //! Collision (ionization) stopping power, relativistic Bethe form with the
+  //! Joy-Luo low-energy correction of the mean ionization energy.
+  stopping_power_quantity ionization_stopping_power(
+      energy_quantity energy, double substrate_charge,
+      number_density_quantity atomic_density) const;
+  //! Radiative (bremsstrahlung) stopping power, high-energy Bethe-Heitler form.
+  stopping_power_quantity bremsstrahlung_stopping_power(
+      energy_quantity energy, double substrate_charge,
+      number_density_quantity atomic_density) const;
+  //! Flight length: exponential with mean 1/(N sigma) plus one interatomic spacing.
+  length_quantity generate_flying_distance(area_quantity total_cross_section,
+                                           number_density_quantity atomic_density) const;
 }; // }}}
-
-class Volume;
 
 // Ion class declarations{{{
 
 /*!
- * \brief A class to represent ions.
+ * \brief An ion transported with a binary-collision (BCA) model.
  *
- * This class contains functions specific to proton bombardment simulation.
+ * Each step: continuous electronic loss over one interatomic spacing, a
+ * binary nuclear collision with a randomly chosen target isotope (scattering
+ * angle from the ZBL "magic formula" with the selected screening model),
+ * optional recursive knock-on (recoil) transport, then a free flight.
+ *
+ * Generation-0 ions use Settings::custom_electronic_coefficient_/exponent_;
+ * recoils (generation >= 1) use the custom_recoil_* values (only relevant for
+ * the CustomPowerLaw electronic stopping model).
  */
 class Ion : public Particle {
 public:
   /*!
-   * \brief Construct an electron.
-   *
-   * Accepts a Simulation reference and calls the Particle default
-   * constructor. Immediately fires Ion once created.
-   *
-   * \param simulation The reference to the Simulation object
+   * \brief Construct an ion. See Particle::Particle for parameters.
+   * The particle is not fired until fire() is called.
    */
   Ion(size_t z_number, size_t mass_number, const Simulation &simulation,
       boost::random::uniform_01<double> &uniform_distribution,
@@ -837,32 +750,35 @@ public:
       size_t generation = 0, double birth_time_seconds = 0.0);
 
   /*!
-   * \brief Fire an ion
-   *
-   * Fires an ion using ion-specific energy loss functions
+   * \brief Transport the ion (and, if enabled, its recoil cascade) until it
+   * stops (Settings::ion_stopping_energy_), is sputtered (z < 0) or escapes
+   * below the deepest layer.
    */
   void fire() override;
 
-  // Public helper: compute screening length for a chosen model (testable)
+  /*!
+   * \brief Screening length for testing: Firsov/QuickBasic form when
+   * \p use_quickbasic is true, otherwise the "Thomas-Fermi" form used by
+   * Simulation::thomas_fermi_screening_length.
+   */
   static length_quantity screening_length_for_model(dimensionless_quantity z_1,
                                                    dimensionless_quantity z_2,
                                                    bool use_quickbasic);
 
 private:
-  const double custom_electronic_coefficient_;
-  const double custom_electronic_exponent_;
+  const double custom_electronic_coefficient_; //!< C for the custom power law (primary or recoil)
+  const double custom_electronic_exponent_;    //!< n for the custom power law (primary or recoil)
 
   /*!
-   * \brief Calculate the electronic stopping energy of ions in matter.
+   * \brief Electronic energy loss over one interatomic spacing, using the
+   * Simulation's selected electronic stopping model.
    *
-   * Using the charge, mass, depth, and substrate volume, this function
-   * calculates the electronic stopping energy.
-   *
-   * \param charge The charge of the particle
-   * \param mass The mass of the particle
-   * \param depth The depth of the particle
-   * \param volume The volume in which the particle is traveling.
-   * \return The energy lost from electronic ion interaction with matter.
+   * \param charge Projectile atomic number.
+   * \param mass Projectile mass.
+   * \param energy Projectile kinetic energy.
+   * \param number_density Layer number density (mol/m^3).
+   * \param properties Target atom properties.
+   * \return The energy lost to electrons over the step.
    */
   energy_quantity
   electronic_stopping_energy(dimensionless_quantity charge, mass_quantity mass,
@@ -873,42 +789,38 @@ private:
   /*!
    * \brief Returns the interatomic spacing, depending on the current layer.
    *
-   * \param The number density of the substance in moles of atoms/m^3.
+   * \param number_density Layer number density in mol/m^3 (converted to
+   * atoms/m^3 internally).
    *
-   * \return The average interatomic spacing
+   * \return The mean interatomic spacing N^(-1/3).
    */
   length_quantity
   interatomic_spacing(number_density_quantity number_density) const;
 
   /*!
-   * \brief Screening potential.
+   * \brief Screened Coulomb potential V(r) = Z1 Z2 e^2/(4 pi eps0 r) * phi(r/a)
+   * using the Simulation's selected screening function and length.
    */
   energy_quantity screening_potential(length_quantity radius,
                                       dimensionless_quantity z_1,
                                       dimensionless_quantity z_2) const;
 
   /*!
-   * \brief Derivative of screening potential with respect to distance.
+   * \brief dV/dr of the screened Coulomb potential.
    */
-  voltage_quantity
+  force_quantity
   screening_potential_derivative(length_quantity radius,
                                  dimensionless_quantity z_1,
                                  dimensionless_quantity z_2) const;
 
   /*!
-   * \brief Universal screening function.
-   */
-  dimensionless_quantity
-  screening_function(dimensionless_quantity reduced_radius) const;
-
-  /*!
-   * \brief Universal screening length.
+   * \brief Screening length for the Simulation's selected screening model.
    */
   length_quantity screening_length(dimensionless_quantity z_1,
                                    dimensionless_quantity z_2) const;
 
   /*!
-   * \brief Reduced energy.
+   * \brief Reduced (dimensionless) energy eps = a * E_cm / (Z1 Z2 e^2).
    */
   dimensionless_quantity reduced_energy(length_quantity screening_length,
                                         energy_quantity cm_energy,
@@ -916,7 +828,11 @@ private:
                                         dimensionless_quantity z_2) const;
 
   /*!
-   * \brief free_flying_path_length
+   * \brief Free-flight path length between collisions.
+   *
+   * Currently always the mean interatomic spacing N^(-1/3); the mass,
+   * reduced-energy and screening-length arguments are unused (a
+   * high-energy path-length model is not implemented).
    */
   length_quantity
   free_flying_path_length(mass_quantity m_1, mass_quantity m_2,
@@ -924,14 +840,18 @@ private:
                           length_quantity screening_length,
                           number_density_quantity number_density) const;
   /*!
-   * \brief Impact parameter
+   * \brief Sample an impact parameter (consumes one random number).
+   *
+   * For reduced energy > 10: b = sqrt(-ln(R) / (pi N L)); otherwise
+   * b = sqrt(R / (pi N^(2/3))), with N in atoms/m^3.
    */
   length_quantity impact_parameter(number_density_quantity number_density,
                                    length_quantity length,
                                    dimensionless_quantity reduced_energy) const;
 
   /*!
-   * \brief Collision diameter.
+   * \brief Classical collision diameter 4 Z1 Z2 e^2 / (m_c v^2).
+   * \note Currently unused.
    */
   length_quantity collision_diameter(dimensionless_quantity z_1,
                                      dimensionless_quantity z_2,
@@ -939,7 +859,9 @@ private:
                                      velocity_quantity v_0) const;
 
   /*!
-   * \brief Calculate the closest approach distance of an ion.
+   * \brief Distance of closest approach r0, solving
+   * 1 - V(r0)/E_cm - (b/r0)^2 = 0 by Newton iteration with a bisection
+   * fallback when a sign change is detected.
    */
   length_quantity closest_approach(dimensionless_quantity z_1,
                                    dimensionless_quantity z_2,
@@ -947,7 +869,7 @@ private:
                                    length_quantity impact_param) const;
 
   /*!
-   * \brief Radius of curvature
+   * \brief Radius of curvature of the trajectory at \p radius (magic formula).
    */
   length_quantity radius_of_curvature(length_quantity radius,
                                       energy_quantity cm_energy,
@@ -955,14 +877,20 @@ private:
                                       dimensionless_quantity z_2) const;
 
   /*!
-   * \brief Magic formula correction parameter.
+   * \brief Correction term Delta of the ZBL magic formula.
    */
   dimensionless_quantity magic_formula_correction_parameter(
       dimensionless_quantity reduced_energy, length_quantity impact_parameter,
       length_quantity screening_length, length_quantity closest_approach) const;
 
   /*!
-   * \brief Magic formula scattering angle.
+   * \brief ZBL magic-formula angle: returns acos((B + Rc + Delta) / (R0 + Rc)).
+   *
+   * \note In the ZBL magic formula this quantity is theta_cm / 2 (half the
+   * center-of-mass angle). The energy-transfer formula used downstream
+   * (Tmax * sin^2(angle)) is consistent with that, but
+   * laboratory_scattering_angle() treats the value as the full theta_cm.
+   * See docs/KNOWN_ISSUES.md.
    */
   angle_quantity
   magic_formula_scattering_angle(length_quantity impact_parameter,
@@ -972,28 +900,20 @@ private:
                                  length_quantity screening_distance) const;
 
   /*!
-   * \brief Nuclear energy loss.
+   * \brief Energy transferred to the target atom (binary elastic collision).
    */
   energy_quantity nuclear_energy_loss(mass_quantity atom_mass,
                                       mass_quantity target_mass,
                                       energy_quantity incident_energy,
                                       angle_quantity scattering_angle) const;
 
+public:
   /*!
-   * \brief Laboratory scattering angle
+   * \brief Convert a center-of-mass scattering angle to the laboratory frame.
    */
   angle_quantity laboratory_scattering_angle(angle_quantity cm_scattering_angle,
                                              mass_quantity atom_mass,
                                              mass_quantity target_mass) const;
-
-  // /*! TODO: Likely to remove
-  //  * \brief Convert relative angle to absolute angle.
-  //  */
-  // std::array<angle_quantity, 4>
-  // relative_to_absolute_angle(angle_quantity initial_altitude,
-  //                            angle_quantity initial_azimuth,
-  //                            angle_quantity incident_deflection,
-  //                            angle_quantity target_deflection) const;
 }; // }}}
 
 // Layer class declarations{{{
@@ -1017,19 +937,17 @@ public:
   Layer() = delete;
 
   /*!
-   * \brief Constructor for a Layer that accepts a material_vector
+   * \brief Construct a Layer from (relative fraction, isotope) pairs.
    *
-   * Accepts a vector and efficiently moves it into the material member.
-   * Maximum depth of the layer is also specified.
+   * Fractions are normalized to sum to 1. The number density (mol/m^3) is
+   * derived from the mass density and the fraction-weighted isotopic mass.
    *
-   * \param material the material_vector containing the Layer information
-   * of interest.
-   *
-   * \param depth The maximum depth the layer extends into the material.
-   * This is not the thickness of the material, but rather the maximum
-   * depth that the layer extends from the bombardment surface of the
-   * volume.
-   *
+   * \param material The (fraction, Properties) pairs; moved from.
+   * \param depth The depth of the *bottom* of the layer measured from the
+   * surface (cumulative), not the layer thickness.
+   * \param density Mass density of the layer.
+   * \throws std::invalid_argument if \p material is empty, a fraction is
+   * negative, the fractions sum to zero, or \p depth is negative.
    */
   Layer(material_vector &&material, length_quantity depth,
         mass_density_quantity density);
@@ -1103,34 +1021,46 @@ public:
     return number_density_;
   }
 
-  // TODO: Return by reference
   /*!
-   * \brief Return the discrete distribution used for selecting material
-   * interaction
+   * \brief Return the discrete distribution used for selecting the target
+   * isotope of a collision.
    *
-   * \return Return the discrete distribution corresponding to the relative
-   * composition of atoms in the layer
+   * boost::random::discrete_distribution::operator()(URNG&) is const, so a
+   * const reference is sufficient for sampling.
    */
-  boost::random::discrete_distribution<size_t, double> &
+  const boost::random::discrete_distribution<size_t, double> &
   get_discrete_distribution() const noexcept {
-    // Cannot return a const reference because calling a distribution is not
-    // const. However, this program does not really care what happens internally
-    // to discrete_distribution, so this non-const behavior is accepted, and
-    // distribution is marked 'mutable'
     return discrete_distribution_;
   }
 
-  // TODO: Allow for the use of any random number generator
   /*!
-   * \brief Return a random index using the random number generator reference
-   * passed as an argument.
+   * \brief Sample a component index weighted by relative composition.
    *
-   * \param random_number_generator The random number generator to select the
-   * index. Currently only mt19937.
+   * \param random_number_generator The RNG used for sampling.
+   *
+   * \note Thread-safe: sampling only reads the distribution's alias table
+   * (operator() is const), so one Layer may be shared by all worker threads
+   * as long as each thread passes its own RNG.
    */
   size_t
   get_random_index(boost::random::mt19937 &random_number_generator) const {
     return discrete_distribution_(random_number_generator);
+  }
+
+  /*!
+   * \brief Set the displacement energy of each component (same order as the
+   * material). A negative value means "use the simulation-wide value".
+   * \throws std::invalid_argument if the size does not match.
+   */
+  void set_displacement_energies(std::vector<energy_quantity> energies);
+
+  //! Displacement energy of component \p index, if one was set.
+  std::optional<energy_quantity> get_displacement_energy(size_t index) const {
+    if (index < displacement_energies_.size() &&
+        displacement_energies_[index] >= 0.0 * electron_volt) {
+      return displacement_energies_[index];
+    }
+    return std::nullopt;
   }
 
 private:
@@ -1138,18 +1068,18 @@ private:
   const length_quantity depth_;
   const mass_density_quantity mass_density_;
   const number_density_quantity number_density_;
-  mutable boost::random::discrete_distribution<size_t, double>
-      discrete_distribution_;
+  boost::random::discrete_distribution<size_t, double> discrete_distribution_;
+  std::vector<energy_quantity> displacement_energies_; //!< Per component; empty = global
 }; // }}}
 
 // Volume class declarations{{{
 
 /*!
- * \brief A class for representing the simulation environment.
+ * \brief The simulated target: an ordered stack of Layers.
  *
- * This class allows for one or more layers of materials to be
- * simulated. A material is composed of relatiave fractions of one or more
- * isotopes of any element.
+ * Layers are stored top (surface) to bottom; each Layer's depth is the
+ * cumulative depth of its lower boundary. A particle deeper than the last
+ * layer's depth has escaped the target.
  */
 class Volume final {
 public:
@@ -1158,28 +1088,20 @@ public:
   /*!
    * \brief Constructor for a Volume.
    *
-   * Builds a Volume from a std::vector<Layer>. The constructor ensures that
-   * the layers are provided in order. i.e. the depth of each subsequent layer
-   * is strictly greater than the previous one.
-   *
-   * \param layers An rvalue reference to a vector of layers. Each layer must
-   * have a  greater depth value than the previous one.
+   * \param layers Layers ordered from the surface down. Each layer's depth
+   * must be greater than or equal to the previous layer's depth.
+   * \throws std::invalid_argument if \p layers is empty or out of order.
    */
   Volume(std::vector<Layer> &&layers);
 
-  // TODO: Improve performance by returning a reference/pointer to Layer
-  // instead
   /*!
-   * \brief A function to retrieve the layer corresponding to the depth
-   * provided.
+   * \brief Find the layer containing \p depth (linear search).
    *
-   * Provides a reference to the layer corresponding to the provided depth.
+   * A depth exactly on a boundary belongs to the upper layer.
    *
-   * \param depth The depth at which to return the corresponding layer.
-   *
-   * \return A pair with the first item being a reference to the Layer at
-   *          which depth falls into, and the second being the index of the
-   *          layer in the layers_ vector.
+   * \return (pointer to the Layer, index of the layer).
+   * \throws std::invalid_argument if depth < 0.
+   * \throws std::out_of_range if depth is below the deepest layer.
    */
   const std::pair<const Layer *, size_t> get_layer(length_quantity depth) const;
 
@@ -1189,8 +1111,12 @@ public:
    * \param index The index of the layer to return
    *
    * \return A constant reference to the Layer of interest
+   * \throws std::out_of_range if \p index >= number of layers.
    */
   const Layer &get_layer(size_t index) const;
+
+  //! Number of layers.
+  size_t get_layer_count() const noexcept { return layers_.size(); }
 
   /*!
    * \brief Get the total depth of a volume
@@ -1204,20 +1130,20 @@ private:
 // Bombardment class declarations{{{
 
 /*!
- * \brief Representation of a single particle bombardment.
+ * \brief One incident-particle history (and its cascade).
  *
- * This class represents a bombardment of a single particle incident on a
- * volume. It initiates a particle bombardment and manages IO of the
- * bombardment information, including what information is sent to the front
- * end, and what is saved to a file on disk.
+ * A Bombardment owns its own RNG (seeded by EntropySeeder), its own
+ * thread-local Tallies and the collision points produced during the
+ * history. run_bombardment() fires the incident particle, merges the local
+ * tallies into the Simulation, optionally writes a per-bombardment CSV, and
+ * pushes the collision points onto the Simulation's result queue.
+ *
+ * Each Bombardment is run by exactly one worker thread.
  */
 class Bombardment {
 public:
   /*!
    * \brief Construct a Bombardment.
-   *
-   * The Simulation reference contains all the needed information for a
-   * bombardment run, so it is the only required parameter.
    *
    * \param simulation The simulation which the Bombardment belongs to.
    * Simulation parameters are extracted from this.
@@ -1226,19 +1152,28 @@ public:
   Bombardment(Simulation &simulation, size_t id);
 
   /*!
-   * \brief Run a bombardment;
-   *
-   * Depending on the simulation parameters, runs a ion or electron
-   * bombardment in the Volume contained in the Simulation object.
+   * \brief Run the bombardment: create and fire an Ion or Electron
+   * (Settings::is_electron_), then publish tallies and collision points.
    */
   void run_bombardment();
 
-  // Tally recording helpers (used by Particle implementations)
+  //! Which energy-loss histogram a record_energy_loss() call feeds.
   enum class EnergyLossType { electronic, nuclear, total };
 
+  // Tally recording helpers (called by Particle implementations).
+
+  //! Record the final depth of the incident particle (range statistics).
   void record_incident(double range_meters);
+  //! Record one displacement (knock-on above threshold) at a depth.
   void record_displacement(double depth_meters);
+  //! Record one particle leaving through the surface.
   void record_sputtered();
+  /*!
+   * \brief Record an energy deposit at a depth.
+   *
+   * Every call (of any \p type) also feeds Tallies::energy_loss_stats, so
+   * that running mean mixes electronic, nuclear and total entries.
+   */
   void record_energy_loss(long double energy_joules,
                          double depth_meters = 0.0,
                          EnergyLossType type = EnergyLossType::total);
@@ -1250,13 +1185,20 @@ public:
    */
   size_t get_id() const noexcept { return id_; }
 
-  /*! Add a collision point with its particle-specific timestamp. */
+  //! Add a collision point (already stamped with its particle-specific time).
   void add_collision_point(const CollisionPoint &pt) {
     collision_points_.push_back(pt);
   }
 
-  /*! Move-out full collision vector and clear internal storage. */
-  std::vector<CollisionPoint> take_collision_points() { std::vector<CollisionPoint> tmp = std::move(collision_points_); collision_points_.clear(); return tmp; }
+  //! A new path number for a particle of this history (0 for the first).
+  std::uint32_t next_track_id() noexcept { return next_track_++; }
+
+  //! Move out all collision points recorded so far and clear the buffer.
+  std::vector<CollisionPoint> take_collision_points() {
+    std::vector<CollisionPoint> tmp = std::move(collision_points_);
+    collision_points_.clear();
+    return tmp;
+  }
 
   /*!
    * \brief Returns a reference to the ParticleDataLeaf.
@@ -1274,193 +1216,238 @@ public:
 
 private:
   Simulation &simulation_;
-  std::vector<CollisionPoint> collision_points_;
-  amcset::common::Tallies local_tallies_;
+  std::vector<CollisionPoint> collision_points_; //!< Points recorded during the history
+  std::uint32_t next_track_ = 0;                 //!< Path numbers handed out so far
+  amcset::common::Tallies local_tallies_;        //!< Merged into the Simulation at the end
+  //! The incident particle. Kept alive after the run (together with its
+  //! coordinate list), so memory grows with the total number of steps.
   std::unique_ptr<Particle> incident_particle_;
-  boost::random::mt19937 random_number_generator_;
+  boost::random::mt19937 random_number_generator_; //!< Seeded by EntropySeeder
   boost::random::uniform_01<double> uniform_distribution_;
   size_t id_;
-  ParticleDataLeaf data_leaf_; //!< A structure for holding data generated
-                               //!< during a particle history
+  ParticleDataLeaf data_leaf_; //!< Track tree of the incident particle and its cascade
 }; // }}}
 
 // Simulation class declarations{{{
 
 /*!
- * \brief A class for initiating, running, and terminating a multi-bombardment
- * simulation.
+ * \brief A multi-bombardment simulation: settings, target, model selection,
+ * thread pool, aggregated tallies and output files.
  *
- * This simulation class manages particle simulations. It accepts a number of
- * settings for a simulation, and then performs those simulations, before
- * reporting the results to the front end. For example, the front end may
- * request a 1,000 electron bombardment in Iron, which will cause the back-end
- * to construct a new Simulation with the requested settings (1,000 electrons
- * into Iron) and run it, before returning the results to the front end.
+ * Lifecycle:
+ *  1. Construct from a Settings and a Volume. All Bombardment objects
+ *     (Settings::bombardment_count_) are created up front.
+ *  2. run_simulation() posts every bombardment to a Boost.Asio thread pool
+ *     with Settings::thread_count_ workers and blocks until all finish (or
+ *     until request_cancel() causes not-yet-started bombardments to be
+ *     skipped), then writes the histogram CSVs and \c output/tallies.json.
+ *  3. While running, another thread (the GUI) may poll
+ *     get_completed_bombardment_count(), snapshot_tallies() and
+ *     try_pop_bombardment_results().
+ *
+ * Physics models are chosen once at construction and stored as plain
+ * function pointers (see the *_function_ members), so the hot loop does not
+ * branch on the model enums.
  */
-class Simulation final {
+class Simulation final : public SimulationEngine {
 public:
   /*!
-   * \brief A struct for storing settings information for instantiation of a
-   * Simulation.
+   * \brief Immutable configuration of a Simulation.
    *
-   * The Settings struct is used to determine a variety of properties of a
-   * simulation, including settings such as the incident particle properties,
-   * the incident energy, the substrate composition, cascade information, and
-   * many other settings.
+   * Three constructors are provided for backward compatibility; they differ
+   * only in which trailing parameters are accepted:
+   *  - (1) ..., histogram paths, [save_per_bombardment_info,
+   *    per_bombardment_output_dir], [screening_model, ...] -- every parameter
+   *    after \c thread_count has a default.
+   *  - (2) ..., histogram paths, screening_model, ... -- per-bombardment
+   *    output disabled.
+   *  - (3) ..., histogram paths, save_per_bombardment_info,
+   *    per_bombardment_output_dir, electron_screening_parameters_path,
+   *    mott_scattering_parameters_path, [screening_model, ...] -- the full
+   *    form; (1) and (2) delegate to it with the default asset paths
+   *    "common/assets/electron_screening_parameters.csv" and
+   *    "common/assets/mott_scattering_parameters.csv".
+   *
+   * All constructors validate their arguments and throw
+   * std::invalid_argument (wrapped by rethrow()) on bad input.
+   *
+   * Relative paths are resolved against the process working directory.
    */
-    struct Settings {
-      enum class ScreeningModel {
-        ThomasFermi = 0,
-        QuickBasic = 1,
-        ZBL = 2,
-        Moliere = 3,
-        Custom = 4
-      };
-      enum class ElectronicStoppingModel {
-        ZBL = 0,
-        LSS = 1,
-        CustomPowerLaw = 2
-      };
-    const energy_quantity electron_stopping_energy_; //!< Threshold electron stopping energy
-    const size_t z_number_;        //!< The z number of the incident particle
-    const size_t mass_number_;     //!< The mass number of the incident particle
-    const struct Particle::Properties incident_particle_properties_; //!< Properties of the incident particle
-    const bool enable_damage_cascade_; //!< Control whether damage cascade is enabled
-    const energy_quantity ion_stopping_energy_; //!< Energy at which ions stop
-    const energy_quantity ion_displacement_energy_; //!< Energy to displace ions
-    const size_t divisor_angle_number_; //!< Angle segment count
-    const size_t flying_distance_number_; //!< Number of flying distances per group
-    const length_quantity range_;    //!< Maximum range of particles
-    const size_t bombardment_count_; //!< Number of bombardments to simulate
-    const bool is_electron_; //!< Determines if bombardment is for an electron
-    const energy_quantity incident_energy_; //!< Incident particle energy
-    const size_t thread_count_; //!< The number of threads to use in the simulation
-    const angle_quantity incident_angle_; //!< The incident angle of the particle
-    const size_t displacement_bin_count_;
-    const size_t electronic_energy_loss_bin_count_;
-    const size_t nuclear_energy_loss_bin_count_;
-    const size_t total_energy_loss_bin_count_;
-    const size_t range_bin_count_;
-    const std::string displacement_histogram_output_file_;
-    const std::string electronic_energy_loss_histogram_output_file_;
-    const std::string nuclear_energy_loss_histogram_output_file_;
-    const std::string total_energy_loss_histogram_output_file_;
-    const std::string range_histogram_output_file_;
-    const bool save_per_bombardment_info_;
-    const std::string per_bombardment_output_dir_;
-    const std::string electron_screening_parameters_path_;
-    const std::string mott_scattering_parameters_path_;
-    const ScreeningModel screening_model_;
-    const ElectronicStoppingModel electronic_stopping_model_;
-    const double custom_electronic_coefficient_;
-    const double custom_electronic_exponent_;
-    const double custom_recoil_electronic_coefficient_;
-    const double custom_recoil_electronic_exponent_;
-    const double custom_nuclear_screening_scale_;
-
-    Settings() = delete; //!< Default constructor ensures initialization
-
-    Settings(energy_quantity electron_stopping_energy, size_t z_number,
-         size_t mass_number, bool enable_damage_cascade,
-         energy_quantity ion_stopping_energy,
-         energy_quantity ion_displacement_energy,
-         size_t divisor_angle_number,
-         size_t flying_distance_number, length_quantity range,
-         size_t bombardment_count, bool is_electron,
-         energy_quantity incident_energy, size_t thread_count,
-         angle_quantity incident_angle = 0.0 * radian,
-         size_t displacement_bin_count = 100,
-         size_t electronic_energy_loss_bin_count = 100,
-         size_t nuclear_energy_loss_bin_count = 100,
-         size_t total_energy_loss_bin_count = 100,
-         size_t range_bin_count = 100,
-         std::string displacement_histogram_output_file = "output/displacement_histogram.csv",
-         std::string electronic_energy_loss_histogram_output_file = "output/electronic_loss_histogram.csv",
-         std::string nuclear_energy_loss_histogram_output_file = "output/nuclear_loss_histogram.csv",
-         std::string total_energy_loss_histogram_output_file = "output/total_loss_histogram.csv",
-        bool save_per_bombardment_info = false,
-        std::string per_bombardment_output_dir = "output/bombardments/",
-         ScreeningModel screening_model = ScreeningModel::ThomasFermi,
-        std::string range_histogram_output_file = {},
-        ElectronicStoppingModel electronic_stopping_model =
-            ElectronicStoppingModel::ZBL,
-        double custom_electronic_coefficient = 1.0,
-        double custom_electronic_exponent = 100.0,
-            double custom_recoil_electronic_coefficient = 1.0,
-            double custom_recoil_electronic_exponent = 100.0,
-            double custom_nuclear_screening_scale = 1.0);
-      Settings(energy_quantity electron_stopping_energy, size_t z_number,
-         size_t mass_number, bool enable_damage_cascade,
-         energy_quantity ion_stopping_energy,
-         energy_quantity ion_displacement_energy,
-         size_t divisor_angle_number,
-         size_t flying_distance_number, length_quantity range,
-         size_t bombardment_count, bool is_electron,
-         energy_quantity incident_energy, size_t thread_count,
-         angle_quantity incident_angle,
-         size_t displacement_bin_count,
-         size_t electronic_energy_loss_bin_count,
-         size_t nuclear_energy_loss_bin_count,
-         size_t total_energy_loss_bin_count,
-         size_t range_bin_count,
-         std::string displacement_histogram_output_file,
-         std::string electronic_energy_loss_histogram_output_file,
-         std::string nuclear_energy_loss_histogram_output_file,
-         std::string total_energy_loss_histogram_output_file,
-         ScreeningModel screening_model,
-         std::string range_histogram_output_file = {},
-         ElectronicStoppingModel electronic_stopping_model =
-             ElectronicStoppingModel::ZBL,
-         double custom_electronic_coefficient = 1.0,
-         double custom_electronic_exponent = 100.0,
-             double custom_recoil_electronic_coefficient = 1.0,
-             double custom_recoil_electronic_exponent = 100.0,
-             double custom_nuclear_screening_scale = 1.0);
-
-    Settings(energy_quantity electron_stopping_energy, size_t z_number,
-         size_t mass_number, bool enable_damage_cascade,
-         energy_quantity ion_stopping_energy,
-         energy_quantity ion_displacement_energy,
-         size_t divisor_angle_number,
-         size_t flying_distance_number, length_quantity range,
-         size_t bombardment_count, bool is_electron,
-         energy_quantity incident_energy, size_t thread_count,
-         angle_quantity incident_angle,
-         size_t displacement_bin_count,
-         size_t electronic_energy_loss_bin_count,
-         size_t nuclear_energy_loss_bin_count,
-         size_t total_energy_loss_bin_count,
-         size_t range_bin_count,
-         std::string displacement_histogram_output_file,
-         std::string electronic_energy_loss_histogram_output_file,
-         std::string nuclear_energy_loss_histogram_output_file,
-         std::string total_energy_loss_histogram_output_file,
-        bool save_per_bombardment_info,
-        std::string per_bombardment_output_dir,
-         std::string electron_screening_parameters_path,
-         std::string mott_scattering_parameters_path,
-         ScreeningModel screening_model = ScreeningModel::ThomasFermi,
-         std::string range_histogram_output_file = {},
-         ElectronicStoppingModel electronic_stopping_model =
-             ElectronicStoppingModel::ZBL,
-         double custom_electronic_coefficient = 1.0,
-         double custom_electronic_exponent = 100.0,
-             double custom_recoil_electronic_coefficient = 1.0,
-             double custom_recoil_electronic_exponent = 100.0,
-             double custom_nuclear_screening_scale = 1.0);
+  struct Settings {
+    //! Nuclear screening model (function + screening length).
+    enum class ScreeningModel {
+      ThomasFermi = 0, //!< "Thomas-Fermi" function and length (default)
+      QuickBasic = 1,  //!< Thomas-Fermi function with the Firsov length
+      ZBL = 2,         //!< ZBL universal function and length
+      Moliere = 3,     //!< Moliere function and length
+      Custom = 4       //!< Thomas-Fermi function, length scaled by custom_nuclear_screening_scale_
+    };
+    //! Electronic stopping model.
+    enum class ElectronicStoppingModel {
+      ZBL = 0,            //!< k_L sqrt(E) (ZBL low-energy form; default)
+      LSS = 1,            //!< Lindhard-Scharff velocity-proportional form
+      CustomPowerLaw = 2, //!< S_e/N = C * E[keV]^(n/100) * 1e-18 keV cm^2
+      BetheBloch = 3,     //!< Relativistic Bethe-Bloch (high-energy particles)
+      Builtin = 4,        //!< Lindhard-Scharff / Bethe-Bloch interpolation (all energies)
+      SrimTable = 5       //!< SRIM-2013 tables (srim_stopping_table_path_), Bethe-Bloch above
     };
 
+    const energy_quantity electron_stopping_energy_; //!< Electrons stop below this energy
+    const size_t z_number_;        //!< Atomic number of the incident particle (0 = electron)
+    const size_t mass_number_;     //!< Mass number of the incident particle (0 = electron)
+    const struct Particle::Properties incident_particle_properties_; //!< Derived from z/mass number
+    const bool enable_damage_cascade_; //!< Follow recoils (ions only)
+    const energy_quantity ion_stopping_energy_; //!< Ions stop below this energy
+    const energy_quantity ion_displacement_energy_; //!< Recoil-energy threshold to create a knock-on
+    const size_t divisor_angle_number_; //!< Number of angular grid nodes for the electron Mott integrals
+    const size_t flying_distance_number_; //!< Validated and displayed but currently unused by the physics
+    const length_quantity range_;    //!< Upper bound of all depth histograms (also GUI plot extent)
+    const size_t bombardment_count_; //!< Number of incident particles to simulate
+    const bool is_electron_; //!< true: electron bombardment, false: ion bombardment
+    const energy_quantity incident_energy_; //!< Incident kinetic energy
+    const size_t thread_count_; //!< Worker threads in the pool
+    const angle_quantity incident_angle_; //!< Angle from the surface normal, in the x-z plane
+    const size_t displacement_bin_count_;           //!< Bins of the displacement histogram
+    const size_t electronic_energy_loss_bin_count_; //!< Bins of the electronic loss histogram
+    const size_t nuclear_energy_loss_bin_count_;    //!< Bins of the nuclear loss histogram
+    const size_t total_energy_loss_bin_count_;      //!< Bins of the total loss histogram
+    const size_t range_bin_count_;                  //!< Bins of the range (and depth) histogram
+    const std::string displacement_histogram_output_file_;           //!< CSV path
+    const std::string electronic_energy_loss_histogram_output_file_; //!< CSV path
+    const std::string nuclear_energy_loss_histogram_output_file_;    //!< CSV path
+    const std::string total_energy_loss_histogram_output_file_;      //!< CSV path
+    const std::string range_histogram_output_file_; //!< CSV path; empty => "<dir of displacement file>/range_histogram.csv"
+    const bool save_per_bombardment_info_;          //!< Write bombardment_<id>.csv per history
+    const std::string per_bombardment_output_dir_;  //!< Directory for per-bombardment CSVs
+    const std::string electron_screening_parameters_path_; //!< Electron screening table (CSV)
+    const std::string mott_scattering_parameters_path_;    //!< Mott parameter table (CSV)
+    const ScreeningModel screening_model_;                   //!< Selected nuclear screening model
+    const ElectronicStoppingModel electronic_stopping_model_; //!< Selected electronic stopping model
+    const double custom_electronic_coefficient_;        //!< Custom power law C (primary ion)
+    const double custom_electronic_exponent_;           //!< Custom power law n (primary ion)
+    const double custom_recoil_electronic_coefficient_; //!< Custom power law C (recoils)
+    const double custom_recoil_electronic_exponent_;    //!< Custom power law n (recoils)
+    const double custom_nuclear_screening_scale_;       //!< Screening-length multiplier (Custom model)
+    const std::string srim_stopping_table_path_; //!< SRIM stopping tables (ElectronicStoppingModel::SrimTable)
+
+    Settings() = delete; //!< Every field must be provided explicitly
+
+    //! Overload (1); see the struct description.
+    Settings(energy_quantity electron_stopping_energy, size_t z_number,
+             size_t mass_number, bool enable_damage_cascade,
+             energy_quantity ion_stopping_energy,
+             energy_quantity ion_displacement_energy,
+             size_t divisor_angle_number, size_t flying_distance_number,
+             length_quantity range, size_t bombardment_count, bool is_electron,
+             energy_quantity incident_energy, size_t thread_count,
+             angle_quantity incident_angle = 0.0 * radian,
+             size_t displacement_bin_count = 100,
+             size_t electronic_energy_loss_bin_count = 100,
+             size_t nuclear_energy_loss_bin_count = 100,
+             size_t total_energy_loss_bin_count = 100,
+             size_t range_bin_count = 100,
+             std::string displacement_histogram_output_file =
+                 "output/displacement_histogram.csv",
+             std::string electronic_energy_loss_histogram_output_file =
+                 "output/electronic_loss_histogram.csv",
+             std::string nuclear_energy_loss_histogram_output_file =
+                 "output/nuclear_loss_histogram.csv",
+             std::string total_energy_loss_histogram_output_file =
+                 "output/total_loss_histogram.csv",
+             bool save_per_bombardment_info = false,
+             std::string per_bombardment_output_dir = "output/bombardments/",
+             ScreeningModel screening_model = ScreeningModel::ThomasFermi,
+             std::string range_histogram_output_file = {},
+             ElectronicStoppingModel electronic_stopping_model =
+                 ElectronicStoppingModel::ZBL,
+             double custom_electronic_coefficient = 1.0,
+             double custom_electronic_exponent = 100.0,
+             double custom_recoil_electronic_coefficient = 1.0,
+             double custom_recoil_electronic_exponent = 100.0,
+             double custom_nuclear_screening_scale = 1.0,
+             std::string srim_stopping_table_path = {});
+
+    //! Overload (2); see the struct description.
+    Settings(energy_quantity electron_stopping_energy, size_t z_number,
+             size_t mass_number, bool enable_damage_cascade,
+             energy_quantity ion_stopping_energy,
+             energy_quantity ion_displacement_energy,
+             size_t divisor_angle_number, size_t flying_distance_number,
+             length_quantity range, size_t bombardment_count, bool is_electron,
+             energy_quantity incident_energy, size_t thread_count,
+             angle_quantity incident_angle, size_t displacement_bin_count,
+             size_t electronic_energy_loss_bin_count,
+             size_t nuclear_energy_loss_bin_count,
+             size_t total_energy_loss_bin_count, size_t range_bin_count,
+             std::string displacement_histogram_output_file,
+             std::string electronic_energy_loss_histogram_output_file,
+             std::string nuclear_energy_loss_histogram_output_file,
+             std::string total_energy_loss_histogram_output_file,
+             ScreeningModel screening_model,
+             std::string range_histogram_output_file = {},
+             ElectronicStoppingModel electronic_stopping_model =
+                 ElectronicStoppingModel::ZBL,
+             double custom_electronic_coefficient = 1.0,
+             double custom_electronic_exponent = 100.0,
+             double custom_recoil_electronic_coefficient = 1.0,
+             double custom_recoil_electronic_exponent = 100.0,
+             double custom_nuclear_screening_scale = 1.0,
+             std::string srim_stopping_table_path = {});
+
+    //! Overload (3), the full form; see the struct description.
+    Settings(energy_quantity electron_stopping_energy, size_t z_number,
+             size_t mass_number, bool enable_damage_cascade,
+             energy_quantity ion_stopping_energy,
+             energy_quantity ion_displacement_energy,
+             size_t divisor_angle_number, size_t flying_distance_number,
+             length_quantity range, size_t bombardment_count, bool is_electron,
+             energy_quantity incident_energy, size_t thread_count,
+             angle_quantity incident_angle, size_t displacement_bin_count,
+             size_t electronic_energy_loss_bin_count,
+             size_t nuclear_energy_loss_bin_count,
+             size_t total_energy_loss_bin_count, size_t range_bin_count,
+             std::string displacement_histogram_output_file,
+             std::string electronic_energy_loss_histogram_output_file,
+             std::string nuclear_energy_loss_histogram_output_file,
+             std::string total_energy_loss_histogram_output_file,
+             bool save_per_bombardment_info,
+             std::string per_bombardment_output_dir,
+             std::string electron_screening_parameters_path,
+             std::string mott_scattering_parameters_path,
+             ScreeningModel screening_model = ScreeningModel::ThomasFermi,
+             std::string range_histogram_output_file = {},
+             ElectronicStoppingModel electronic_stopping_model =
+                 ElectronicStoppingModel::ZBL,
+             double custom_electronic_coefficient = 1.0,
+             double custom_electronic_exponent = 100.0,
+             double custom_recoil_electronic_coefficient = 1.0,
+             double custom_recoil_electronic_exponent = 100.0,
+             double custom_nuclear_screening_scale = 1.0,
+             std::string srim_stopping_table_path = {});
+  };
+
+  // Physics model function signatures {{{
+
+  /*!
+   * Electronic energy loss over one step:
+   * (Z1, M1, E, N [mol/m^3], step length, target Properties, C, n) -> dE.
+   * C and n are only used by the custom power law.
+   */
   using ElectronicStoppingFunction = energy_quantity (*)(
       dimensionless_quantity, mass_quantity, energy_quantity,
       number_density_quantity, length_quantity, const Particle::Properties &,
       double, double);
+  //! (M1, M2, E, angle) -> energy transferred to the target atom.
   using NuclearStoppingFunction = energy_quantity (*)(
       mass_quantity, mass_quantity, energy_quantity, angle_quantity);
+  //! Screening function phi(x) or its derivative dphi/dx, x = r / a.
   using NuclearScreeningFunction = dimensionless_quantity (*)(
       dimensionless_quantity);
+  //! (Z1, Z2, scale) -> screening length a. \c scale is only used by the Custom model.
   using NuclearScreeningLengthFunction = length_quantity (*)(
       dimensionless_quantity, dimensionless_quantity, double);
 
+  // Electronic stopping models (implemented in ion.cpp).
   static energy_quantity zbl_electronic_stopping(
       dimensionless_quantity, mass_quantity, energy_quantity,
       number_density_quantity, length_quantity,
@@ -1473,8 +1460,12 @@ public:
       dimensionless_quantity, mass_quantity, energy_quantity,
       number_density_quantity, length_quantity,
       const Particle::Properties &, double, double);
+
+  // Nuclear energy transfer (implemented in ion.cpp).
   static energy_quantity binary_collision_nuclear_stopping(
       mass_quantity, mass_quantity, energy_quantity, angle_quantity);
+
+  // Screening functions and derivatives (implemented in ion.cpp).
   static dimensionless_quantity thomas_fermi_screening(
       dimensionless_quantity);
   static dimensionless_quantity zbl_screening(dimensionless_quantity);
@@ -1485,6 +1476,8 @@ public:
       dimensionless_quantity);
   static dimensionless_quantity moliere_screening_derivative(
       dimensionless_quantity);
+
+  // Screening lengths (implemented in ion.cpp).
   static length_quantity thomas_fermi_screening_length(
       dimensionless_quantity, dimensionless_quantity, double);
   static length_quantity custom_screening_length(
@@ -1496,46 +1489,24 @@ public:
   static length_quantity moliere_screening_length(
       dimensionless_quantity, dimensionless_quantity, double);
 
+  // }}}
+
   Simulation() = delete;
 
-  using DrawFunction = std::function<void(const std::vector<Coordinate> &,
-                                          size_t bombardment_id)>;
-
   /*!
-   * \brief The constructor for the Simulation class. Accepts a Settings
-   * struct to describe simulation settings.
+   * \brief Construct a Simulation and pre-allocate all of its Bombardments.
    *
-   * This constructor is used to construct a Simulation object. It accepts a
-   * Settings struct to configure the simulation.
-      
-   *
-   * \param settings This is the struct that describes the configuration of
-   * the Simulation. \param volume The volume that the Simulation will use to
-   * simulate collisions
+   * \param settings The configuration of the Simulation.
+   * \param volume The target the Simulation will use (moved from).
    */
-  Simulation(
-      Settings settings, Volume &&volume,
-      DrawFunction draw_function =
-          [](const std::vector<Coordinate> & /*coords*/,
-             size_t /*bombardment_id*/) {});
+  Simulation(Settings settings, Volume &&volume);
 
   /*!
-   * \brief A function to access settings.
+   * \brief Read a field of the Settings via a pointer-to-member.
    *
-   * This templated function can be used to access member variables of the
-   * Settings settings member variable.
-   *
-   * \param member The settings field to be accessed.
-   * \return A reference to the requested setting.
    * \code{.cpp}
-   * Simulation simulation;
-   * Simulation::Settings settings;
-   *
-   * // Configure settings
-   *
-   * auto electron_stopping_energy =
-           
-   * simulation.getSettings(&Simulation::Settings::electron_stopping_energy_);
+   * auto energy = simulation.get_settings(
+   *     &Simulation::Settings::electron_stopping_energy_);
    * \endcode
    */
   template <typename T>
@@ -1544,62 +1515,109 @@ public:
   };
 
   /*!
-   * \brief Run the simulation.
+   * \brief Run all bombardments on the thread pool and write output files.
    *
-   * This function creates a thread pool with Settings::thread_count_ workers
-   * before posting Settings::bombardment_count_ Bombardment run_bombardment()
-   * commands.
+   * Blocks until every posted bombardment has finished. Output-file errors
+   * are logged and swallowed (they do not throw).
+   *
+   * \return Always 0 on normal completion (including cancellation).
+   * \warning Call at most once per Simulation: the thread pool is joined at
+   * the end of the first call.
    */
   int run_simulation();
 
+  // SimulationEngine interface (thin adapters over the native API).
+  int run() override { return run_simulation(); }
+  size_t completed_count() const noexcept override {
+    return get_completed_bombardment_count();
+  }
+  size_t total_count() const noexcept override {
+    return settings_.bombardment_count_;
+  }
+  bool try_pop_trajectory(std::vector<CollisionPoint> &out) override {
+    return try_pop_bombardment_results(out);
+  }
+  void clear_trajectories() override { clear_bombardment_results(); }
+  length_quantity depth_extent() const override { return settings_.range_; }
+  std::string describe() const override { return print_settings(); }
+
+  /*!
+   * \brief Electronic stopping cross section of projectile (z1, m1) in
+   * element z2 for the curve-based models (BetheBloch, Builtin, SrimTable).
+   * \returns nullptr for the analytic models.
+   */
+  const physics::StoppingCurve *stopping_curve(unsigned z1, mass_quantity m1,
+                                               unsigned z2) const;
+
+  //! Number of bombardments that have finished. Thread-safe.
   size_t get_completed_bombardment_count() const noexcept {
     return completed_bombardments_.load(std::memory_order_acquire);
   }
 
-  void request_cancel() noexcept {
+  //! Ask the pool to skip bombardments that have not started yet. Thread-safe.
+  void request_cancel() noexcept override {
     cancellation_requested_.store(true, std::memory_order_release);
   }
 
-  bool is_cancelled() const noexcept {
+  //! Whether request_cancel() has been called. Thread-safe.
+  bool is_cancelled() const noexcept override {
     return cancellation_requested_.load(std::memory_order_acquire);
   }
 
+  //! Called by the worker after each bombardment. Thread-safe.
   void increment_completed_bombardment_count() noexcept {
     completed_bombardments_.fetch_add(1, std::memory_order_acq_rel);
   }
 
-  /*!
-   * \brief Return a string of settings.
-   *
-   * This function provides the Simulation settings in a textual format.
-   *
-   * \return A string of settings for the simulation
-   */
+  //! Human-readable dump of the Settings (used in the log).
   std::string print_settings() const;
 
-  /*!
-   * \brief Return a constant reference to the simulation volume.
-   *
-   * \return The volume of the simulation environment.
-   */
+  //! The target volume.
   const Volume &get_volume() const { return volume_; };
 
-  /*!
-   * \brief Return the function used for point drawing
-   */
-  DrawFunction &get_draw_function() { return draw_function_; };
+  // Tallies {{{
 
-  // Tallies merge API
+  //! Merge one bombardment's tallies into the simulation totals. Thread-safe.
   void merge_tallies(const Tallies &tallies);
-  Tallies snapshot_tallies() const;
+  //! Copy of the current totals, taken under the lock. Thread-safe.
+  Tallies snapshot_tallies() const override;
+  /*!
+   * \brief Unsynchronized access to the totals.
+   * \warning Only safe when no bombardment is running (e.g. after
+   * run_simulation() returns). Use snapshot_tallies() otherwise.
+   */
   const Tallies &get_tallies() const noexcept;
 
+  /*!
+   * \brief Write a histogram as CSV with columns
+   * depth_min_angstrom, depth_max_angstrom, \p value_label.
+   *
+   * Parent directories are created as needed.
+   * \throws std::invalid_argument if \p output_file is empty.
+   * \throws std::runtime_error if the file cannot be opened.
+   */
   void write_histogram_csv(const std::string &output_file,
                            const Histogram &histogram,
                            const std::string &value_label = "count") const;
 
+  // }}}
+
+  // Result queue for the GUI {{{
+
+  //! Push a completed bombardment's collision points. Thread-safe.
+  void push_bombardment_results(std::vector<CollisionPoint> &&vec);
+
+  //! Pop the oldest queued result into \p out; false if empty. Thread-safe.
+  bool try_pop_bombardment_results(std::vector<CollisionPoint> &out);
+
+  //! Drop all queued results. Thread-safe.
+  void clear_bombardment_results();
+
+  // }}}
+
 private:
-  friend class Ion;
+  friend class Ion; // Ion calls the selected model function pointers below.
+
   const Settings settings_;
   const ElectronicStoppingFunction electronic_stopping_function_;
   const NuclearStoppingFunction nuclear_stopping_function_;
@@ -1607,33 +1625,29 @@ private:
   const NuclearScreeningFunction nuclear_screening_derivative_function_;
   const NuclearScreeningLengthFunction nuclear_screening_length_function_;
   Volume volume_;
-  Tallies tallies_;
+  //! Curve-based electronic stopping, keyed by (Z1, M1 in micro-amu, Z2).
+  std::map<std::tuple<unsigned, long long, unsigned>, physics::StoppingCurve>
+      stopping_curves_;
+  Tallies tallies_;                    //!< Aggregated totals (guarded by tallies_mutex_)
   mutable std::mutex tallies_mutex_;
-  std::vector<Bombardment> bombardments_;
+  std::vector<Bombardment> bombardments_; //!< One per incident particle, created up front
   boost::asio::thread_pool thread_pool_;
-  DrawFunction draw_function_; //!< Function used for drawing to the canvas
   std::atomic<size_t> completed_bombardments_{0};
   std::atomic<bool> cancellation_requested_{false};
-  // Queue of completed bombardment collision vectors for UI consumption
+  //! Completed bombardment collision vectors awaiting the GUI (guarded by
+  //! bombardment_queue_mutex_). Unbounded.
   std::deque<std::vector<CollisionPoint>> bombardment_queue_;
   mutable std::mutex bombardment_queue_mutex_;
-
-public:
-  /*! Push a completed bombardment collision vector into the queue. Thread-safe. */
-  void push_bombardment_results(std::vector<CollisionPoint> &&vec);
-
-  /*! Try to pop a bombardment collision vector from the queue. Returns true if one was popped. Thread-safe. */
-  bool try_pop_bombardment_results(std::vector<CollisionPoint> &out);
-
-  void clear_bombardment_results();
 }; // }}}
 
 /*!
- * \brief A class that provides a function to generate a random seed.
+ * \brief Generates RNG seeds.
  *
- * The generate() function in this class attempts to use a hardware random,
- * number generator to create a seed. If this is not possible, then the code
- * falls back on the system time and thread information instead.
+ * generate() XORs ten values from std::random_device when it reports
+ * non-zero entropy; otherwise it falls back to the high-resolution clock
+ * XOR a hash of the calling thread id (and logs a warning). Because every
+ * Bombardment is seeded in quick succession on one thread, the fallback can
+ * produce correlated or identical seeds; see docs/KNOWN_ISSUES.md.
  */
 class EntropySeeder {
 public:

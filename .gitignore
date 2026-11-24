@@ -19,10 +19,18 @@ CMakeLists.txt.user
 testing/output.csv
 common/include/config.h
 output.csv
-output
+/output/
 common/generated/isotope_database.cpp
 test_output.txt
 log.txt
 */info.log
 .vscode/.conan_tools
 compile_commands.json
+# SRIM-derived data: only the bundled tables in data/srim2013 are committed
+# (regenerate them with tools/srim).
+*.amcset
+*.amcset.gz
+!data/srim2013/srim2013_stopping.amcset
+srim_tables/
+__pycache__/
+!gui/scripts/*.cmake

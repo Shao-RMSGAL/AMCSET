@@ -14,14 +14,22 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
+/*! \file tallies.h
+ *  \brief Accumulators (running moments, fixed-bin histograms) used to
+ *  aggregate simulation statistics across bombardments.
+ *
+ *  These types are not internally synchronized: each Bombardment fills its
+ *  own Tallies and Simulation::merge_tallies() merges it under a mutex.
+ */
+
 #pragma once
 
-#include <atomic>
 #include <cmath>
 #include <cstddef>
-#include <mutex>
-#include <vector>
+#include <filesystem>
 #include <sstream>
+#include <string>
+#include <vector>
 
 namespace amcset {
 namespace common {
@@ -62,7 +70,8 @@ struct Welford {
  * @brief Simple fixed-bin histogram.
  *
  * Bins are uniformly spaced between `min` and `max`. Values outside the
- * interval [min,max] are ignored.
+ * interval [min,max] are ignored; a value exactly equal to `max` falls in
+ * the last bin.
  */
 struct Histogram {
   std::vector<double> bins;
@@ -73,8 +82,10 @@ struct Histogram {
   Histogram(size_t bin_count, double min_, double max_)
       : bins(bin_count, 0.0), min(min_), max(max_) {}
 
+  //! Count one event at position x.
   void add(double x) { add_value(x, 1.0); }
 
+  //! Add a weight (e.g. deposited energy) to the bin containing x.
   void add_value(double x, double value) {
     if (bins.empty()) return;
     if (x < min || x > max) return;
@@ -85,6 +96,12 @@ struct Histogram {
     bins[idx] += value;
   }
 
+  /*!
+   * \brief Add another histogram bin-by-bin.
+   *
+   * An empty histogram adopts \p o (including its range). Histograms with a
+   * different bin count are silently ignored; the ranges are not compared.
+   */
   void merge(const Histogram &o) {
     if (o.bins.empty()) return;
     if (bins.empty()) {
@@ -103,7 +120,14 @@ struct Histogram {
  *        bombardment or across a simulation.
  *
  * Contains simple counters, running moments for range and energy loss
- * (Welford), and a depth histogram.
+ * (Welford), and depth-binned histograms. All positions are depths in
+ * meters; all histograms span [0, Settings::range_].
+ *
+ * - range_histogram: final depth of each incident particle.
+ * - depth_histogram: legacy combined histogram; receives both incident final
+ *   depths and displacement depths. Only exported in tallies.json.
+ * - displacement_histogram: depth of each displacement (knock-on).
+ * - *_energy_loss_histogram: deposited energy (eV) per depth bin.
  */
 struct Tallies {
   // Lightweight counters
@@ -124,9 +148,14 @@ struct Tallies {
   Histogram total_energy_loss_histogram;
 
   /**
-   * @brief Default-constructed empty tallies.
+   * @brief Default-constructed empty tallies (all histograms have 0 bins and
+   * adopt the first non-empty histogram merged into them).
    */
   Tallies() = default;
+  /**
+   * @brief Tallies with pre-sized histograms over [0, max_depth].
+   * @param bin_count Bins of the range and depth histograms.
+   */
   Tallies(size_t bin_count, double max_depth,
           size_t displacement_bins = 100,
           size_t electronic_bins = 100,
@@ -152,46 +181,32 @@ struct Tallies {
     sputtered += o.sputtered;
     range_stats.merge(o.range_stats);
     energy_loss_stats.merge(o.energy_loss_stats);
-    if (depth_histogram.bins.empty() && !o.depth_histogram.bins.empty()) {
-      depth_histogram = o.depth_histogram;
-    } else {
-      depth_histogram.merge(o.depth_histogram);
-    }
-    if (range_histogram.bins.empty() && !o.range_histogram.bins.empty()) {
-      range_histogram = o.range_histogram;
-    } else {
-      range_histogram.merge(o.range_histogram);
-    }
-    if (displacement_histogram.bins.empty() && !o.displacement_histogram.bins.empty()) {
-      displacement_histogram = o.displacement_histogram;
-    } else {
-      displacement_histogram.merge(o.displacement_histogram);
-    }
-    if (electronic_energy_loss_histogram.bins.empty() && !o.electronic_energy_loss_histogram.bins.empty()) {
-      electronic_energy_loss_histogram = o.electronic_energy_loss_histogram;
-    } else {
-      electronic_energy_loss_histogram.merge(o.electronic_energy_loss_histogram);
-    }
-    if (nuclear_energy_loss_histogram.bins.empty() && !o.nuclear_energy_loss_histogram.bins.empty()) {
-      nuclear_energy_loss_histogram = o.nuclear_energy_loss_histogram;
-    } else {
-      nuclear_energy_loss_histogram.merge(o.nuclear_energy_loss_histogram);
-    }
-    if (total_energy_loss_histogram.bins.empty() && !o.total_energy_loss_histogram.bins.empty()) {
-      total_energy_loss_histogram = o.total_energy_loss_histogram;
-    } else {
-      total_energy_loss_histogram.merge(o.total_energy_loss_histogram);
-    }
+    // Histogram::merge() adopts the other histogram when this one is empty.
+    depth_histogram.merge(o.depth_histogram);
+    range_histogram.merge(o.range_histogram);
+    displacement_histogram.merge(o.displacement_histogram);
+    electronic_energy_loss_histogram.merge(o.electronic_energy_loss_histogram);
+    nuclear_energy_loss_histogram.merge(o.nuclear_energy_loss_histogram);
+    total_energy_loss_histogram.merge(o.total_energy_loss_histogram);
   }
 
   /**
    * @brief Render a compact JSON summary of the tallies.
    *
-   * The produced JSON includes counters, means, counts and the depth
-   * histogram bins. This is intended for quick diagnostics and may be
-   * extended later.
+   * The produced JSON includes counters, means (SI units: meters, joules),
+   * counts and all histogram bins. Written to output/tallies.json by
+   * Simulation::run_simulation() and read back by the GUI summary tab.
    */
   std::string to_json() const {
+    const auto write_bins = [](std::ostringstream &out, const char *key,
+                               const Histogram &histogram) {
+      out << "\"" << key << "\":[";
+      for (size_t i = 0; i < histogram.bins.size(); ++i) {
+        if (i) out << ",";
+        out << histogram.bins[i];
+      }
+      out << "]";
+    };
     std::ostringstream ss;
     ss << "{";
     ss << "\"incidents\":" << incidents << ",";
@@ -202,46 +217,37 @@ struct Tallies {
     ss << "\"range_straggling\":" << (double)std::sqrt(range_stats.variance()) << ",";
     ss << "\"energy_loss_mean\":" << (double)energy_loss_stats.mean << ",";
     ss << "\"energy_loss_count\":" << energy_loss_stats.n << ",";
-    ss << "\"depth_histogram_bins\":[";
-    for (size_t i = 0; i < depth_histogram.bins.size(); ++i) {
-      if (i) ss << ",";
-      ss << depth_histogram.bins[i];
-    }
-    ss << "],";
-    ss << "\"range_histogram_bins\":[";
-    for (size_t i = 0; i < range_histogram.bins.size(); ++i) {
-      if (i) ss << ",";
-      ss << range_histogram.bins[i];
-    }
-    ss << "],";
-    ss << "\"displacement_histogram_bins\":[";
-    for (size_t i = 0; i < displacement_histogram.bins.size(); ++i) {
-      if (i) ss << ",";
-      ss << displacement_histogram.bins[i];
-    }
-    ss << "],";
-    ss << "\"electronic_loss_histogram_bins\":[";
-    for (size_t i = 0; i < electronic_energy_loss_histogram.bins.size(); ++i) {
-      if (i) ss << ",";
-      ss << electronic_energy_loss_histogram.bins[i];
-    }
-    ss << "],";
-    ss << "\"nuclear_loss_histogram_bins\":[";
-    for (size_t i = 0; i < nuclear_energy_loss_histogram.bins.size(); ++i) {
-      if (i) ss << ",";
-      ss << nuclear_energy_loss_histogram.bins[i];
-    }
-    ss << "],";
-    ss << "\"total_loss_histogram_bins\":[";
-    for (size_t i = 0; i < total_energy_loss_histogram.bins.size(); ++i) {
-      if (i) ss << ",";
-      ss << total_energy_loss_histogram.bins[i];
-    }
-    ss << "]";
+    write_bins(ss, "depth_histogram_bins", depth_histogram);
+    ss << ",";
+    write_bins(ss, "range_histogram_bins", range_histogram);
+    ss << ",";
+    write_bins(ss, "displacement_histogram_bins", displacement_histogram);
+    ss << ",";
+    write_bins(ss, "electronic_loss_histogram_bins",
+               electronic_energy_loss_histogram);
+    ss << ",";
+    write_bins(ss, "nuclear_loss_histogram_bins", nuclear_energy_loss_histogram);
+    ss << ",";
+    write_bins(ss, "total_loss_histogram_bins", total_energy_loss_histogram);
     ss << "}";
     return ss.str();
   }
 };
+
+/*!
+ * \brief Write a depth histogram as CSV with the columns
+ * depth_min_angstrom, depth_max_angstrom, <value_label> (the format the GUI
+ * reads). Parent directories are created. \throws std::runtime_error
+ */
+void write_histogram_csv(const std::filesystem::path &file, const Histogram &histogram,
+                         const std::string &value_label = "count");
+
+/*!
+ * \brief Write the GUI result files (displacement_histogram.csv,
+ * range_histogram.csv, electronic/nuclear/total_loss_histogram.csv and
+ * tallies.json) of \p tallies into \p directory.
+ */
+void write_tallies_files(const std::filesystem::path &directory, const Tallies &tallies);
 
 } // namespace common
 } // namespace amcset

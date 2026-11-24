@@ -1,4 +1,4 @@
-// Copyright 2024, Texas A&M University
+// Copyright 2025, Texas A&M University
 //
 // This file is part of AMCSET.
 //
@@ -17,3 +17,4 @@
 #define amcset_VERSION_MAJOR @amcset_VERSION_MAJOR@
 #define amcset_VERSION_MINOR @amcset_VERSION_MINOR@
 #define amcset_VERSION_PATCH @amcset_VERSION_PATCH@
+#define AMCSET_VERSION "@amcset_VERSION_MAJOR@.@amcset_VERSION_MINOR@.@amcset_VERSION_PATCH@"

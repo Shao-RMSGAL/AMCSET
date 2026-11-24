@@ -83,7 +83,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxv-dev \
     libxxf86vm-dev \
     \
-    # Qt dependencie# XCB
+    # Qt dependencies: XCB
     libxcb1-dev \
     libxcb-util-dev \
     libxcb-util0-dev \

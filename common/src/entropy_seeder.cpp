@@ -14,7 +14,10 @@
 // You should have received a copy of the GNU General Public License along with
 // AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
-// EntropySeeder implementation separated from amcset_common.cpp
+/*! \file entropy_seeder.cpp
+ *  \brief RNG seed generation (hardware entropy with a clock/thread fallback).
+ */
+
 #include "amcset_common.h"
 
 #include <array>
