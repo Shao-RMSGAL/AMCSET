@@ -22,7 +22,7 @@ if "%~1"=="--conan" goto conan
 if exist build\Release\generators\conanbuild.bat goto configure
 :conan
 echo Installing Conan dependencies...
-conan install . --build=missing -s build_type=Release -s compiler.cppstd=20 >> "%LOG%" 2>&1 || goto buildfail
+conan install . --build=missing -s build_type=Release -s compiler.cppstd=20 -c tools.cmake.cmaketoolchain:generator=Ninja >> "%LOG%" 2>&1 || goto buildfail
 
 :configure
 call build\Release\generators\conanbuild.bat >> "%LOG%" 2>&1
