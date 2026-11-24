@@ -1,48 +1,61 @@
 name: Build and test
 
+# Runs on the self-hosted Windows runner (the workstation): MSVC, Conan with
+# Qt already in the Conan cache, Ninja. tools\windows\build_and_test.bat does
+# the work (conan install only on the first run, then configure, build, run
+# amcset.exe, ctest). The workspace is kept between runs (clean: false) so
+# builds are incremental.
 on:
   push:
+    branches: [main, develop]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: build-and-test-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
-    runs-on: self-hosted
+    runs-on: [self-hosted, windows, x64]
     timeout-minutes: 180
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          clean: false
+
+      - name: Header check
+        shell: cmd
+        run: python scripts\check_headers.py
 
       - name: Build and test
+        shell: cmd
         run: |
-          $ErrorActionPreference = 'Stop'
-          & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\Launch-VsDevShell.ps1'
-          Set-Location $env:GITHUB_WORKSPACE
+          set AMCSET_NO_PAUSE=1
+          call tools\windows\build_and_test.bat
+          exit /b 0
 
-          python -m pip install --disable-pip-version-check conan==2.7.0
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-          conan remote update conancenter --url https://center2.conan.io
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-          conan profile detect --force
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-          .\qbuild.ps1 -Conan
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-          .\qbuild.ps1 -Build
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-          ctest --test-dir build/test --build-config Release --output-on-failure
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check result
         shell: powershell
+        run: |
+          $last = (Get-Content build\build_and_test.status | Select-Object -Last 1).Trim()
+          Write-Host "build_and_test status: $last"
+          Select-String -Path build\build_and_test.log -Pattern 'tests passed|tests failed|\*\*\*Failed' |
+            ForEach-Object { $_.Line }
+          if ($last -ne 'SUCCESS') { exit 1 }
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build_and_test-log
+          path: |
+            build/build_and_test.log
+            build/build_and_test.status
+            build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore

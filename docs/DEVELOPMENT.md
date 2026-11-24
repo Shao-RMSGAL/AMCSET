@@ -259,10 +259,16 @@ reported only at run time, are fixed and tested.
 
 - `.github/workflows/check-headers.yml` (GitHub-hosted Ubuntu): runs
   `scripts/check_headers.py`.
-- `.github/workflows/tests.yml` (self-hosted Windows runner): installs Conan
-  2.7.0, `qbuild.ps1 -Conan`, `-Build`, then `ctest --test-dir build/test`.
-  It points at Visual Studio 2022's dev shell; the workstation has Visual
-  Studio 18 — update the path if the runner is this machine.
+- `.github/workflows/tests.yml` (self-hosted Windows runner, labels
+  `windows`, `x64`): on pushes to `main`/`develop`, pull requests and manual
+  runs it checks the headers, runs `tools\windowsuild_and_test.bat` (Conan
+  install only the first time, configure, build, `amcset.exe version`,
+  `ctest`) and fails unless `builduild_and_test.status` ends in `SUCCESS`.
+  The workspace is kept (`clean: false`) so builds are incremental; the log
+  is uploaded as an artifact. Register the runner on a machine with
+  `tools\windows\setup_runner.ps1 -Token <token>` (token from Settings >
+  Actions > Runners > New self-hosted runner). It runs as the current user so
+  it uses that user's Conan cache.
 
 There is no Linux test job yet (`docs/ROADMAP.md`).
 
