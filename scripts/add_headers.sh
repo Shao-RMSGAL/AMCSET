@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 #
-# One-off script: add the AMCSET license header to every existing
-# .h / .cpp / .py file under visualization/, any src/ or include/
-# directory, or test/common/ that doesn't already have it.
+# One-off script: add the AMCSET license header to every tracked
+# .h / .cpp / .py file under any src/ or include/ directory, or test/common/,
+# that doesn't already have it. (scripts/check_headers.py, run in CI, checks
+# all .h/.cpp/.py files outside build/ and generated/.)
 #
 # Run from the repo root:
-#   chmod +x add-headers.sh
-#   ./add-headers.sh
+#   chmod +x scripts/add_headers.sh
+#   ./scripts/add_headers.sh
 #
 # Then review with `git diff` and commit as usual.
 

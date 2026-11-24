@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Copyright 2025, Texas A&M University
 #
 # This file is part of AMCSET.
@@ -14,7 +15,6 @@
 # You should have received a copy of the GNU General Public License along with
 # AMCSET. If not, see <https://www.gnu.org/licenses/>.
 
-#!/usr/bin/env python3
 """
 animate_cascade.py
 
