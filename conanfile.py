@@ -69,7 +69,7 @@ class amcsetRecipe(ConanFile):
         self.requires("abseil/[=20260526.0]")
         self.requires("qt/[=6.11.1]")
         # libiconv 1.17 does not build with current MinGW/MSYS2 headers.
-        self.requires("libiconv/[=1.18]")
+        self.requires("libiconv/[=1.18]", override=True)
 
     def build_requirements(self):
         self.tool_requires("cmake/[=3.29]")
