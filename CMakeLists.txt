@@ -64,9 +64,12 @@ target_compile_options(compiler_flags INTERFACE
 )
 
 # Performance: tune Release flags for maximum runtime performance.
-# NOTE: -march=native makes Release binaries specific to the build machine's
+# NOTE: the default -march=native makes Release binaries specific to the build machine's
 # CPU, and these options are applied twice (via CMAKE_CXX_FLAGS_RELEASE and
 # via compiler_flags); harmless but redundant.
+# Set AMCSET_MARCH=x86-64-v2 for binaries that run on any recent x86-64 CPU
+# (the Linux AppImage, tools/linux/make_appimage.sh).
+set(AMCSET_MARCH "native" CACHE STRING "-march value of GCC/Clang Release builds")
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
         set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
 endif()
@@ -81,7 +84,7 @@ if(MSVC)
         $<$<CONFIG:Release>:/O2;/GL>
     )
 else()
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -flto -funroll-loops -pipe -DNDEBUG")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=${AMCSET_MARCH} -flto -funroll-loops -pipe -DNDEBUG")
     # GCC: -flto=auto runs the link-time code generation on every core (plain
     # -flto runs it serially and warns about it).
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -91,7 +94,7 @@ else()
     endif()
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} ${AMCSET_LTO_LINK_FLAG}")
     target_compile_options(compiler_flags INTERFACE
-        $<$<CONFIG:Release>:-O3;-march=native;-flto;-funroll-loops;-pipe>
+        $<$<CONFIG:Release>:-O3;-march=${AMCSET_MARCH};-flto;-funroll-loops;-pipe>
     )
 endif()
 # ABSL_MIN_LOG_LEVEL=2 compiles out LOG(INFO) and LOG(WARNING) in Release, so

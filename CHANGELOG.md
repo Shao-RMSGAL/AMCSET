@@ -15,7 +15,9 @@ of the 13 cases, differing only by the additions).
 
 `tools\windows\make_installer.ps1` builds a single-file, per-user installer
 (`build\installer\AMCSET-Setup.exe`) with shortcuts and an uninstaller
-(`docs/DEVELOPMENT.md` section 3.1).
+(`docs/DEVELOPMENT.md` section 3.1). `tools/linux/make_appimage.sh` builds a
+Linux AppImage (section 3.2); `-DAMCSET_MARCH=...` replaces the
+`-march=native` of GCC/Clang Release builds (default unchanged).
 
 ### Behaviour changes
 

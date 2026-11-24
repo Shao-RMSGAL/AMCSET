@@ -97,6 +97,21 @@ uninstaller. The files are unsigned: SmartScreen warns, and Smart App
 Control may block them. The bundled SRIM tables keep their non-commercial
 terms (`data/srim2013/README.md`).
 
+### 3.2 Linux AppImage
+
+`tools/linux/make_appimage.sh` (on Linux or in WSL; needs the Qt 6 dev
+packages listed in the script header and internet access for linuxdeploy)
+builds `AMCSET-<version>-x86_64.AppImage` (about 48 MB): GUI, CLI and the
+bundled SRIM tables in one file. It compiles in a work folder
+(`~/amcset-appimage`, not on a synchronised mount) with
+`-DAMCSET_MARCH=x86-64-v2` so the binary does not depend on the build CPU
+(the default `native` is kept for ordinary builds). Run it to start the GUI;
+`AMCSET.AppImage amcset run scenario.json` runs the CLI. The image carries
+the build machine's glibc, so build on the oldest distribution to support.
+Checked 2026-11-24 on Ubuntu 26.04 (WSL2): a TRIM case run through the
+AppImage gives the same tallies as the Windows build, and the GUI starts
+under WSLg.
+
 ## 4. Running
 
 ```bash
