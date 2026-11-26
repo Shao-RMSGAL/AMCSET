@@ -396,8 +396,9 @@ in **`docs/HOWTO.md`**.
   what users do about Windows' warnings); signing through the SignPath
   Foundation is the maintainer's choice for later (RELEASING.md §3.2).
   `.github/workflows/release.yml` built every package of `v1.0.0`
-  (2026-11-26: MSI, ZIP, AppImage, CLI tarball, .deb, .rpm, SHA256SUMS.txt)
-  into a draft release. Not yet done: the MSIX in the workflow (needs
+  (2026-11-26: MSI, ZIP, AppImage, CLI tarball, .deb, .rpm, SHA256SUMS.txt);
+  the maintainer tried them and **1.0.0 is published** (GitHub release
+  `v1.0.0`, 2026-11-26). Not yet done: the MSIX in the workflow (needs
   signing), the App Certification Kit, AppStream screenshots, the Flatpak
   build.
 - **Last full validation:** `build/trim_validation/trim3/analysis.txt` on the
