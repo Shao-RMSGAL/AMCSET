@@ -261,7 +261,10 @@ jobs:
           merge-multiple: true
       - name: Checksums
         run: cd dist && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      # Attestations need a public repository (or GitHub Enterprise Cloud for
+      # a private one); a private repository's release is built without them.
       - name: Build attestations
+        if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: dist/*
@@ -270,7 +273,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           WINDOWS_SIGNED: ${{ vars.ARTIFACT_SIGNING_ENDPOINT != '' }}
+          ATTESTED: ${{ !github.event.repository.private }}
         run: |
+          check="Check downloads against SHA256SUMS.txt"
+          if [ "$ATTESTED" = "true" ]; then
+            check="$check or with: gh attestation verify <file> --repo $GITHUB_REPOSITORY"
+          fi
           docs="https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/INSTALL.md"
           if [ "$WINDOWS_SIGNED" = "true" ]; then
             signing="The Windows files are signed."
@@ -279,4 +287,4 @@ jobs:
           fi
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft \
             --title "AMCSET ${GITHUB_REF_NAME#v}" \
-            --notes "Packages for Windows and Linux: $docs. Changes: CHANGELOG.md. $signing Check downloads against SHA256SUMS.txt or with: gh attestation verify <file> --repo $GITHUB_REPOSITORY"
+            --notes "Packages for Windows and Linux: $docs. Changes: CHANGELOG.md. $signing $check."

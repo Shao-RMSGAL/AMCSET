@@ -40,7 +40,8 @@ change the logo).
 4. The workflow `.github/workflows/release.yml` builds and tests on Windows,
    Ubuntu 22.04, Debian 13 and Fedora 42 (about an hour; GitHub-hosted
    runners, free for public repositories), signs the Windows files if signing
-   is set up (§3), writes `SHA256SUMS.txt` and build attestations, and
+   is set up (§3), writes `SHA256SUMS.txt` and build attestations (only in
+   a public repository: a private one needs GitHub Enterprise Cloud), and
    creates a **draft** release with every file.
 5. Download a few packages from the draft and try them (MSI install and
    uninstall, the AppImage, the CLI tarball on a cluster). Write the release
