@@ -394,11 +394,12 @@ in **`docs/HOWTO.md`**.
   and platform documents are in place (`docs/RELEASING.md`,
   `docs/PLATFORM.md`). 1.0 is published unsigned (docs/INSTALL.md says
   what users do about Windows' warnings); signing through the SignPath
-  Foundation is the maintainer's choice for later (RELEASING.md §3.2). Not
-  yet done: the first run of
-  `.github/workflows/release.yml` (written, not yet run: expect fixes), the
-  MSI (WiX is not installed on the workstation), the App Certification Kit,
-  AppStream screenshots, the Flatpak build.
+  Foundation is the maintainer's choice for later (RELEASING.md §3.2).
+  `.github/workflows/release.yml` built every package of `v1.0.0`
+  (2026-11-26: MSI, ZIP, AppImage, CLI tarball, .deb, .rpm, SHA256SUMS.txt)
+  into a draft release. Not yet done: the MSIX in the workflow (needs
+  signing), the App Certification Kit, AppStream screenshots, the Flatpak
+  build.
 - **Last full validation:** `build/trim_validation/trim3/analysis.txt` on the
   workstation (75 units, 161 TRIM runs, 704 AMCSET runs), summarised in
   `docs/VALIDATION.md` §2.2.

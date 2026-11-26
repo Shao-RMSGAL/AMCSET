@@ -290,7 +290,8 @@ reported only at run time, are fixed and tested.
   or by hand, builds and tests on Windows (Qt from Qt's binaries, Conan for
   the rest), Ubuntu 22.04, Debian 13 and Fedora 42, packages everything,
   signs the Windows files if Azure Artifact Signing is configured, and drafts
-  the release: docs/RELEASING.md. It has not run yet.
+  the release: docs/RELEASING.md. It built 1.0.0 in about 14 minutes
+  (2026-11-26).
 
 Apart from the release workflow there is no Linux test job yet
 (`docs/ROADMAP.md`).

@@ -277,7 +277,7 @@ jobs:
         run: |
           check="Check downloads against SHA256SUMS.txt"
           if [ "$ATTESTED" = "true" ]; then
-            check="$check or with: gh attestation verify <file> --repo $GITHUB_REPOSITORY"
+            check="$check or with \`gh attestation verify FILE --repo $GITHUB_REPOSITORY\`"
           fi
           docs="https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/INSTALL.md"
           if [ "$WINDOWS_SIGNED" = "true" ]; then
