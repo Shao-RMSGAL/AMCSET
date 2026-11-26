@@ -6,7 +6,7 @@ it is short on purpose and links to the details. Directory-specific rules
 live in `CLAUDE.md` files next to the code (`common/`, `common/src/trim/`,
 `gui/`, `cli/`, `test/`, `tools/`); they are loaded when you work there.
 
-State of this file: AMCSET 1.0.0 (not yet released), 2026-11-25.
+State of this file: AMCSET 1.0.0, 2026-11-26.
 
 ---
 

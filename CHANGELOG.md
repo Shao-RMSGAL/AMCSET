@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased)
+## 1.0.0 — November 2026
 
 ### Release 1.0: packages, signing, platform integration
 
