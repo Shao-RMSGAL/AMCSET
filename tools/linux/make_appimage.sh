@@ -21,6 +21,7 @@ out="$root/build"
 while getopts "o:" opt; do case $opt in o) out="$OPTARG" ;; *) exit 2 ;; esac; done
 version="$(sed -n 's/^project(amcset VERSION \([0-9.]*\).*/\1/p' "$root/CMakeLists.txt")"
 mkdir -p "$work/tools" "$out"
+out="$(cd "$out" && pwd)"   # absolute: the script changes directory before it copies the AppImage
 
 # With AMCSET_BUILD_DIR set (a configured and built tree, e.g. the release
 # workflow's), steps 1-3 are skipped and that build is packaged.
