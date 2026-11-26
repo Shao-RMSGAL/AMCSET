@@ -111,8 +111,13 @@ endif()
 
 # Data files of the source tree (data/), found at run time by data_files.cpp
 # when the program runs from the build folder.
-target_compile_definitions(amcset-common PRIVATE AMCSET_SOURCE_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/data/srim2013 DESTINATION share/amcset)
+target_compile_definitions(amcset-common PRIVATE AMCSET_SOURCE_DATA_DIR="${PROJECT_SOURCE_DIR}/data"
+                                                  AMCSET_SOURCE_ASSETS_DIR="${PROJECT_SOURCE_DIR}/common/assets")
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/data/srim2013 DESTINATION ${CMAKE_INSTALL_DATADIR}/amcset)
+# The native engine's electron tables (data_files.h: find_electron_table).
+install(FILES ${PROJECT_SOURCE_DIR}/common/assets/electron_screening_parameters.csv
+              ${PROJECT_SOURCE_DIR}/common/assets/mott_scattering_parameters.csv
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/amcset/electrons)
 
 target_include_directories(amcset-common PUBLIC
     ${PROJECT_SOURCE_DIR}/common/include/

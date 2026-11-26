@@ -283,8 +283,7 @@ TEST_F(CommonTest, cancellation_skips_unstarted_bombardments) try {
 }
 
 TEST_F(CommonTest, electron_bombardment_runs) try {
-  GTEST_SKIP() << "Electron bombardment test disabled (needs ./common/assets "
-                  "in the working directory; see docs/TESTING.md)";
+
   auto electron_stopping_energy = energy_quantity(1.0 * kilo_electron_volt);
   size_t z_number = 26;
   size_t mass_number = 56;

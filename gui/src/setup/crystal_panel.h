@@ -101,6 +101,7 @@ private:
   void select_site(int site);
   void beam_from_text();
   void beam_along_view();
+  void orient_to_view();
   void look_from_text();
   void set_crystal_transport(bool on);
 

@@ -71,6 +71,8 @@ public:
 
   //! The direction the user looks along (into the screen), crystal Cartesian frame, unit length.
   crystal::Vec3 view_direction() const noexcept;
+  //! The direction drawn towards the top of the view (crystal Cartesian frame, unit length).
+  crystal::Vec3 view_up() const noexcept;
   //! Turn the view to look along \p direction (crystal Cartesian frame, any length).
   void look_along(const crystal::Vec3 &direction);
   //! The standard oblique view.

@@ -1174,7 +1174,7 @@ RunConfig parse_config(std::string_view json_text, const std::filesystem::path &
                       "final_energy", "ion_stop_energy", "recoil_stop_energy",
                       "max_impact_parameter_ws", "kp_subtract_binding_energy",
                       "surface_atom_depth", "max_recoils_per_ion", "bethe_bloch", "trim_bugs",
-                      "fast_math", "crystal"});
+                      "fast_math", "crystal", "stopping_corrections"});
     const auto pe = [](std::string_view s, const std::string &w) { return parse_energy(s, w); };
     if (p.has("transport")) {
       t.transport = with_where(p.where("transport"), [&] { return trim::parse_transport(p.str("transport")); });
@@ -1233,6 +1233,9 @@ RunConfig parse_config(std::string_view json_text, const std::filesystem::path &
     bb.reject_unknown({"effective_charge", "density_effect"});
     t.bethe_bloch.effective_charge = bb.flag("effective_charge", t.bethe_bloch.effective_charge);
     t.bethe_bloch.density_effect = bb.flag("density_effect", t.bethe_bloch.density_effect);
+    const Reader sc(p.object("stopping_corrections"), "physics.stopping_corrections");
+    sc.reject_unknown({"nickel_ions"});
+    t.stopping_corrections.nickel_ions = sc.flag("nickel_ions", t.stopping_corrections.nickel_ions);
   }
 
   {
@@ -1541,6 +1544,9 @@ json::object to_object(const RunConfig &c) {
   bb["effective_charge"] = t.bethe_bloch.effective_charge;
   bb["density_effect"] = t.bethe_bloch.density_effect;
   p["bethe_bloch"] = std::move(bb);
+  json::object sc;
+  sc["nickel_ions"] = t.stopping_corrections.nickel_ions;
+  p["stopping_corrections"] = std::move(sc);
   if (t.bugs.all_reproduced()) {
     p["trim_bugs"] = "trim";
   } else {

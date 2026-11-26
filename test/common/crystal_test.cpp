@@ -543,6 +543,75 @@ TEST(CrystalOrientation, TiltAndTwistForABeamDirection) {
   EXPECT_NEAR(in_units(near.off, degree), 0.0, 1e-6);
 }
 
+// An orientation from a frame (the GUI's "Turn the crystal to this view"): the
+// given normal becomes lab +x and the lateral direction's in-surface part
+// lab +y, as Miller indices where a low-index plane fits, else as Euler angles.
+TEST(CrystalOrientation, OrientationForAFrame) {
+  const auto cubic = simple("diamond", {14}, 5.431).lattice;
+  const auto tet = Lattice::from_parameters(3.0 * angstrom, 3.0 * angstrom, 6.0 * angstrom, 90.0 * degree, 90.0 * degree,
+                                            90.0 * degree);
+  const auto tri = Lattice::from_parameters(3.0 * angstrom, 4.0 * angstrom, 5.0 * angstrom, 80.0 * degree, 95.0 * degree,
+                                            105.0 * degree);
+  // Looking along [1 1 0] with [0 0 1] up: the (1 1 0) surface with the reference [0 0 1].
+  auto o = orientation_for_frame(cubic, {2, 2, 0}, {0, 0, 5});
+  EXPECT_EQ(o.kind, OrientationKind::miller);
+  EXPECT_EQ(o.surface, (std::vector<double>{1, 1, 0}));
+  EXPECT_EQ(o.reference, (std::vector<double>{0, 0, 1}));
+  EXPECT_EQ(in_units(o.twist, degree), 0.0);
+  // Within the tolerance of the plane's normal: the plane itself.
+  o = orientation_for_frame(cubic, {1.0, 1.0, 0.0005}, {0, 0, 1});
+  EXPECT_EQ(o.surface, (std::vector<double>{1, 1, 0}));
+  expect_vec(rotation(cubic, o) * (Vec3{1, 1, 0} / std::sqrt(2.0)), {1, 0, 0}, 1e-14);
+  // The view rolled by 17 degrees about [0 0 1]: the same surface, the rest in the twist.
+  const Vec3 up = rotation_about({0, 0, 1}, 17.0 * deg) * Vec3{1, 0, 0};
+  o = orientation_for_frame(cubic, {0, 0, 1}, up);
+  EXPECT_EQ(o.kind, OrientationKind::miller);
+  EXPECT_EQ(o.surface, (std::vector<double>{0, 0, 1}));
+  EXPECT_TRUE(o.reference.empty());
+  EXPECT_NEAR(std::abs(in_units(o.twist, degree)), 17.0, 1e-9);
+  expect_vec(rotation(cubic, o) * up, {0, 1, 0}, 1e-12);
+  // A tetragonal cell: the plane whose normal is the view, not the direction of the same indices.
+  o = orientation_for_frame(tet, {2, 0, 1}, {0, 1, 0});
+  EXPECT_EQ(o.surface, (std::vector<double>{1, 0, 1}));
+  EXPECT_EQ(o.reference, (std::vector<double>{0, 1, 0}));
+  // Any frame, in any lattice: the rotation is the frame's.
+  std::mt19937 rng(11);
+  std::uniform_real_distribution<double> u(-1.0, 1.0);
+  int euler = 0;
+  for (const auto *lat : {&cubic, &tet, &tri}) {
+    for (int i = 0; i < 100; ++i) {
+      const Vec3 x = normalized({u(rng), u(rng), u(rng)});
+      const Vec3 l{u(rng), u(rng), u(rng)};
+      if (norm(cross(x, l)) < 0.1) continue;
+      const Vec3 y = normalized(l - x * dot(l, x));
+      const auto f = orientation_for_frame(*lat, x * 3.0, l);
+      const Mat3 r = rotation(*lat, f);
+      EXPECT_LT(rotation_error(r), 1e-12);
+      // (A direction that fits a low-index plane is moved onto it: up to the tolerance.)
+      const double tol = f.kind == OrientationKind::euler ? 1e-9 : 2e-3;
+      expect_vec(r * x, {1, 0, 0}, tol);
+      expect_vec(r * y, {0, 1, 0}, tol);
+      euler += f.kind == OrientationKind::euler ? 1 : 0;
+    }
+  }
+  EXPECT_GT(euler, 200);
+  // Phi = 0 and 180 degrees (the view along the sample normal): still the frame.
+  for (const Vec3 &x : {Vec3{0, 0, -1}, Vec3{0, 0, 1}}) {
+    const Vec3 l = rotation_about({0, 0, 1}, 33.0 * deg) * Vec3{1, 0, 0};
+    const auto f = orientation_for_frame(tri, x, l, 0); // no Miller indices: Euler angles
+    EXPECT_EQ(f.kind, OrientationKind::euler);
+    const Mat3 r = rotation(tri, f);
+    expect_vec(r * x, {1, 0, 0}, 1e-9);
+    expect_vec(r * l, {0, 1, 0}, 1e-9);
+  }
+  EXPECT_THROW(orientation_for_frame(cubic, {0, 0, 0}, {1, 0, 0}), std::invalid_argument);
+  EXPECT_THROW(orientation_for_frame(cubic, {0, 0, 2}, {0, 0, 1}), std::invalid_argument); // no part in the surface
+  EXPECT_THROW(orientation_for_frame(cubic, {0, 0, 2}, {0, 0, 0}), std::invalid_argument);
+  // Naming a plane.
+  const auto p = nearest_plane(tet, {2.0, 0.0, 1.01});
+  EXPECT_EQ(p.uvw, (std::array<int, 3>{1, 0, 1}));
+}
+
 // ---------------------------------------------------------------------------
 // Thermal vibrations
 // ---------------------------------------------------------------------------

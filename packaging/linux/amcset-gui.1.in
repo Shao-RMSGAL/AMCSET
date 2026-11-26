@@ -1,0 +1,70 @@
+.\" Manual page of amcset-gui. Part of AMCSET (GPL-3.0-or-later).
+.TH AMCSET-GUI 1 "@AMCSET_RELEASE_DATE@" "AMCSET @PROJECT_VERSION@" "User Commands"
+.SH NAME
+amcset\-gui \- set up, run and view AMCSET ion transport simulations
+.SH SYNOPSIS
+.B amcset\-gui
+.RI [ options ]
+.RI [ scenario.json | TRIM.IN | results.json ]
+.SH DESCRIPTION
+.B amcset\-gui
+is the graphical program of AMCSET, a Monte Carlo simulator of ion transport
+and radiation damage in layered amorphous and crystalline targets (SRIM
+mode: SRIM-2013's TRIM reproduced). It edits a scenario (ion, target layers,
+crystals, calculation, output), runs it on all processor cores, and shows the
+ion and recoil paths in 3D, TRIM's plots, tables and statistics while the
+calculation runs. A file given on the command line is opened.
+.SH OPTIONS
+.TP
+.B \-\-run
+Start the calculation at once.
+.TP
+.BI \-\-screenshots " DIR"
+After the calculation, save images of the views to DIR.
+.TP
+.B \-\-quit
+Quit when the calculation ends.
+.TP
+.BI \-\-timeout " SECONDS"
+With
+.BR \-\-run :
+exit with status 3 after SECONDS.
+.TP
+.BR \-h ", " \-\-help
+Show the options.
+.TP
+.BR \-v ", " \-\-version
+Show the version.
+.PP
+Qt's own options (for example
+.BR \-platform )
+are accepted as well.
+.SH SIGNALS
+SIGTERM, SIGHUP and SIGINT stop a running calculation and close the program
+without questions (unsaved changes to the scenario are lost); the exit status
+is 128 plus the signal number. When the desktop session ends (log-off,
+shutdown), the program closes without asking; a scenario with unsaved
+changes is kept in ~/.local/share/AMCSET/AMCSET/recovery/, and the next
+start says so.
+.SH ENVIRONMENT
+.TP
+.B AMCSET_RHI
+Graphics API of the path views: opengl, vulkan (Windows also d3d11, d3d12).
+.TP
+.B AMCSET_DATA_DIR
+A directory with the stopping tables, searched before the installed ones.
+.SH FILES
+.TP
+.I ~/.config/AMCSET/AMCSET.conf
+Settings (window layout, recent files).
+.TP
+.I ~/.local/share/AMCSET/AMCSET/logs/
+The program's log.
+.SH COPYRIGHT
+Copyright 2025 Texas A&M University. License GPL-3.0-or-later. The bundled
+SRIM-2013 stopping tables are derived from SRIM (J. F. Ziegler) and are free
+for non-commercial use only.
+.SH SEE ALSO
+.BR amcset (1)
+.PP
+https://github.com/Shao-RMSGAL/AMCSET

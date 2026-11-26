@@ -124,6 +124,8 @@ void CellView::set_selected_site(int site) {
 
 Vec3 CellView::view_direction() const noexcept { return normalized(-view_[2]); }
 
+Vec3 CellView::view_up() const noexcept { return normalized(view_[1]); }
+
 void CellView::look_along(const Vec3 &direction) {
   const Vec3 f = normalized(direction);
   if (!(norm(f) > 0.0)) return;

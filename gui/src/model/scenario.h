@@ -76,13 +76,11 @@ public:
   void set_config_silently(const config::RunConfig &c);
 
   /*!
-   * \brief Switch the crystal transport on or off (one undoable step). On
-   * also switches the automatic target depth off, which that transport does
-   * not offer (\p note then says so); off returns to the transport used
-   * before it (TRIM-2013 at first).
+   * \brief Switch the crystal transport on or off (one undoable step); off
+   * returns to the transport used before it (TRIM-2013 at first).
    * \return An empty string on success, otherwise the error message.
    */
-  QString set_crystal_transport(bool on, QString *note = nullptr);
+  QString set_crystal_transport(bool on);
   //! The transport in use when the crystal transport is off: the last other one chosen.
   trim::TrimConfig::Transport amorphous_transport() const noexcept { return amorphous_transport_; }
 

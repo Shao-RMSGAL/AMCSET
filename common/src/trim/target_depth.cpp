@@ -82,7 +82,8 @@ public:
   double operator()(double e_eV, double *nuclear = nullptr) const {
     const energy_quantity e = e_eV * electron_volt;
     const auto se = physics::layer_stopping(model_, db_, c_.ion.z, c_.ion.mass, comps_, l_.gas,
-                                            l_.compound_correction, e, density_, c_.bethe_bloch);
+                                            l_.compound_correction, e, density_, c_.bethe_bloch,
+                                            c_.stopping_corrections);
     double sn = 0.0;
     for (std::size_t j = 0; j < pairs_.size(); ++j) {
       sn += fractions_[j] * in_units(density_ * pairs_[j].nuclear_stopping(e), electron_volt_per_angstrom);
@@ -334,20 +335,33 @@ AutoDepthResult size_target(TrimConfig &c, const std::atomic<bool> *cancel) {
   for (std::size_t i = 0; i + 1 < c.layers.size(); ++i) top += in_units(c.layers[i].width, angstrom);
   const double min_last = std::ceil(monolayer_A(c.layers.back()) * 1.01 * 100.0) / 100.0;
 
+  // The crystal transport: channeled ions stop far beyond the estimate, which
+  // knows no lattice (up to 16 times the amorphous range along an open axis,
+  // tools/crystal/range_study.py). A test run costs the same in any box, so
+  // the first one is made in a box that holds them (crystal_first times the
+  // estimate; crystal_growth times deeper while ions still leave it), and the
+  // box is then trimmed to the deepest ion: two test runs as a rule.
+  const bool crystal = c.transport == TrimConfig::Transport::crystal;
+  constexpr double crystal_first = 32.0;
+  constexpr double crystal_growth = 8.0;
+  const double growth = crystal ? crystal_growth : 2.0;
+
   // Start: the estimated depth of the deepest ions (estimate_deepest; the
   // path length for the check that they reach the last layer at all).
   const double reach = in_units(estimate_penetration(c), angstrom);
   const double deepest_guess = in_units(estimate_deepest(c), angstrom);
   double last = in_units(c.layers.back().width, angstrom);
+  constexpr double max_total_A = 1e11; // 10 m
   if (std::isfinite(reach) && reach > 0.0) {
-    if (reach < top) {
+    if (reach < top && !crystal) {
       r.notes.push_back("automatic target depth: the ions are expected to stop above the last layer (reach about " +
                         length_text(reach) + "); its thickness is left as it is");
       return r;
     }
-    last = std::max(min_last, deepest_guess - top);
+    last = crystal ? std::clamp(crystal_first * deepest_guess - top, min_last, max_total_A - top)
+                   : std::max(min_last, deepest_guess - top);
   }
-  // Quick-mode test runs (fast approximations: only the depths matter).
+  // Quick-mode test runs (only the depths matter).
   TrimConfig t = c;
   t.damage = DamageCalculation::kinchin_pease;
   t.ion_count = t.source == TrimConfig::Source::beam ? opt.test_ions
@@ -361,11 +375,13 @@ AutoDepthResult size_target(TrimConfig &c, const std::atomic<bool> *cancel) {
   t.exyz_interval = 0.0 * electron_volt;
   t.window_start = 0.0 * angstrom;
   t.window_end = 0.0 * angstrom;
-  t.fast_math = true;
+  // The fast approximations, except with the crystal transport: channeling
+  // is decided by many small deflections, so its test runs keep the
+  // arithmetic the calculation itself will use.
+  if (!crystal) t.fast_math = true;
   t.auto_depth.enabled = false;
   t.trajectory_export = {}; // the test runs write no files
   t.md_events = {};
-  constexpr double max_total_A = 1e11; // 10 m
   bool done = false;
   for (int run = 0; run < 12 && !done; ++run) {
     if (cancel != nullptr && cancel->load()) {
@@ -389,7 +405,7 @@ AutoDepthResult size_target(TrimConfig &c, const std::atomic<bool> *cancel) {
                           "; the depth was not increased further");
         break;
       }
-      last = std::min(max_total_A - top, std::max(2.0 * last, 2.0 * total - top));
+      last = std::min(max_total_A - top, std::max(growth * last, growth * total - top));
       continue;
     }
     if (deepest < top) {
@@ -422,7 +438,11 @@ AutoDepthResult size_target(TrimConfig &c, const std::atomic<bool> *cancel) {
                                       length_text(before) + " -> " + length_text(last) + " (deepest of " +
                                       std::to_string(t.ion_count) + " test ions at " +
                                       length_text(in_units(r.deepest, angstrom)) + ", " +
-                                      std::to_string(r.runs) + " quick test runs)");
+                                      std::to_string(r.runs) + " quick test runs" +
+                                      (crystal ? " with the crystal transport: channeled ions decide the depth, and "
+                                                 "a longer calculation can send a few deeper"
+                                               : "") +
+                                      ")");
   return r;
 }
 

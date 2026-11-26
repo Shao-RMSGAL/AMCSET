@@ -20,6 +20,7 @@
 #include "config.h"
 #include "diagnostics.h"
 #include "run/datasets.h"
+#include "run_config.h"
 #include "setup/calculation_panel.h"
 #include "setup/crystal_panel.h"
 #include "setup/ion_panel.h"
@@ -53,13 +54,17 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSessionManager>
 #include <QSettings>
 #include <QSpinBox>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QStyleHints>
 #include <QTabWidget>
 #include <QToolBar>
 #include <QUrl>
+
+#include <filesystem>
 
 namespace amcset {
 namespace gui {
@@ -81,7 +86,6 @@ bool is_results_json(const QString &path) {
 } // namespace
 
 MainWindow::MainWindow() : run_(&tracks_) {
-  setWindowIcon(QIcon::fromTheme(QStringLiteral("applications-science")));
   // Views.
   paths_ = new TrackPanel(&tracks_, this);
   plots_ = new PlotsPanel(this);
@@ -173,6 +177,18 @@ MainWindow::MainWindow() : run_(&tracks_) {
   connect(&run_, &RunController::ions_escaped, this,
           guarded(this, tr("Main window (ions escaped)"),
                   [this](std::size_t transmitted, std::size_t done) { ions_escaped(transmitted, done); }));
+#if QT_CONFIG(sessionmanager)
+  // The desktop session ends (log-off, shutdown, an installer's Restart
+  // Manager): Qt asks for the data to be saved first (Windows:
+  // WM_QUERYENDSESSION).
+  connect(qApp, &QGuiApplication::commitDataRequest, this, [this](QSessionManager &m) {
+    try {
+      session_ending(m);
+    } catch (...) {
+      report_exception_quietly(QStringLiteral("Ending the session"), std::current_exception());
+    }
+  });
+#endif
 
   QSettings s;
   restoreGeometry(s.value(QStringLiteral("window/geometry")).toByteArray());
@@ -182,6 +198,15 @@ MainWindow::MainWindow() : run_(&tracks_) {
   scenario_changed();
   update_actions();
   log(tr("AMCSET %1. Set up a calculation on the left and press Run.").arg(QStringLiteral(AMCSET_VERSION)));
+  // Scenarios kept when an earlier session ended with unsaved changes.
+  const QStringList kept = QDir(recovery_dir()).entryList({QStringLiteral("scenario-*.json")}, QDir::Files, QDir::Time);
+  if (!kept.isEmpty()) {
+    log(tr("When the desktop session ended, %n scenario(s) with unsaved changes were kept in %1 (newest: %2). "
+           "Open them with File > Open; delete them when no longer needed.",
+           nullptr, static_cast<int>(kept.size()))
+            .arg(QDir::toNativeSeparators(recovery_dir()), kept.front()),
+        true);
+  }
 }
 
 MainWindow::~MainWindow() = default;
@@ -827,6 +852,14 @@ void MainWindow::closeEvent(QCloseEvent *e) {
 }
 
 void MainWindow::close_event(QCloseEvent *e) {
+  if (quiet_quit_) {
+    // A signal or the session's end: no questions (the session's end has
+    // asked already, where it could).
+    if (run_.busy()) run_.stop();
+    save_window_settings();
+    e->accept();
+    return;
+  }
   if (run_.busy()) {
     const auto r = QMessageBox::question(this, tr("Calculation running"),
                                          tr("A calculation is running. Stop it and quit?"));
@@ -840,12 +873,55 @@ void MainWindow::close_event(QCloseEvent *e) {
     e->ignore();
     return;
   }
+  save_window_settings();
+  e->accept();
+}
+
+void MainWindow::save_window_settings() {
   QSettings s;
   s.setValue(QStringLiteral("window/geometry"), saveGeometry());
   s.setValue(QStringLiteral("window/state"), saveState());
   paths_->save_settings();
-  e->accept();
 }
+
+void MainWindow::quit_quietly(int exit_code) {
+  // SIGTERM, SIGHUP or SIGINT (POSIX): stop the calculation and quit without
+  // dialogs; the window's layout is kept, unsaved scenario edits are not.
+  AMCSET_LOG(info) << "GUI: quitting (exit code " << exit_code << ")";
+  quiet_quit_ = true;
+  if (run_.busy()) run_.stop();
+  close();
+  QCoreApplication::exit(exit_code);
+}
+
+QString MainWindow::recovery_dir() {
+  return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + QStringLiteral("/recovery");
+}
+
+#if QT_CONFIG(sessionmanager)
+void MainWindow::session_ending(QSessionManager &) {
+  // Log-off, shutdown, an installer's Restart Manager: never block or veto
+  // it (Windows' rules for desktop programs: answer at once, do not cancel).
+  // A scenario with unsaved changes is kept in the recovery folder instead
+  // of asking; the next start says where it is.
+  AMCSET_LOG(info) << "GUI: the desktop session ends";
+  if (scenario_.is_modified()) {
+    const QString dir = recovery_dir();
+    QDir().mkpath(dir);
+    const QString file = dir + QStringLiteral("/scenario-%1.json")
+                                   .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss")));
+    try {
+      config::save_config(scenario_.config(), std::filesystem::path(file.toStdWString()));
+      AMCSET_LOG(info) << "GUI: unsaved scenario kept as " << file.toStdString();
+    } catch (...) {
+      report_exception_quietly(QStringLiteral("Keeping the unsaved scenario"), std::current_exception());
+    }
+  }
+  if (run_.busy()) run_.stop();
+  save_window_settings();
+  quiet_quit_ = true; // the window then closes without asking
+}
+#endif
 
 } // namespace gui
 } // namespace amcset

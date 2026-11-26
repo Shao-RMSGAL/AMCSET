@@ -127,6 +127,7 @@ Options parse_arguments(const std::vector<std::string> &args) {
     else if (a == "--md-emin") o.md_emin = value(a);
     else if (a == "--md-handoff") o.md_handoff = true;
     else if (a == "--lammps") o.lammps = true;
+    else if (a == "--correct-nickel") o.correct_nickel = true;
     else if (a == "--ntypes") o.ntypes = static_cast<unsigned>(to_count(a, value(a)));
     else if (a == "--list") o.list = true;
     else if (a == "--structure") o.structure = value(a);
@@ -194,6 +195,7 @@ void apply_options(config::RunConfig &c, const Options &o) {
   if (o.stopping) c.trim.stopping_model = physics::parse_electronic_stopping_model(*o.stopping);
   if (o.srim_data) c.trim.srim_data_directory = *o.srim_data;
   if (o.fast_math) c.trim.fast_math = true;
+  if (o.correct_nickel) c.trim.stopping_corrections.nickel_ions = true;
   if (o.auto_depth) c.trim.auto_depth.enabled = true;
   if (o.trajectory_file) {
     c.trim.trajectory_export.file = *o.trajectory_file;
@@ -395,6 +397,8 @@ int print_stopping_table(const Options &o, std::ostream &out) {
     throw UsageError("--density is required for compounds");
   }
   const number_density_quantity n = density / mean_mass;
+  physics::StoppingCorrections corrections;
+  corrections.nickel_ions = o.correct_nickel;
 
   // Default: the SRIM-2013 tables that come with AMCSET, if they are found.
   const std::string bundled = data::bundled_srim_stopping_table();
@@ -443,7 +447,7 @@ int print_stopping_table(const Options &o, std::ostream &out) {
       std::snprintf(buf, sizeof buf, "%.8g", in_units(e, electron_volt));
       out << buf;
       for (const auto &t : types) {
-        const auto se = n * physics::layer_stopping(model, db.get(), t.z, t.m, layer, o.gas, 1.0, e, n);
+        const auto se = n * physics::layer_stopping(model, db.get(), t.z, t.m, layer, o.gas, 1.0, e, n, {}, corrections);
         std::snprintf(buf, sizeof buf, " %.8g", in_units(se, electron_volt_per_angstrom));
         out << buf;
       }
@@ -497,7 +501,7 @@ int print_stopping_table(const Options &o, std::ostream &out) {
   energy_quantity prev_e = 10.0 * electron_volt;
   auto total_power = [&](energy_quantity e) {
     stopping_power_quantity s =
-        n * physics::layer_stopping(model, db.get(), z1, m1, layer, o.gas, 1.0, e, n);
+        n * physics::layer_stopping(model, db.get(), z1, m1, layer, o.gas, 1.0, e, n, {}, corrections);
     for (std::size_t k = 0; k < pairs.size(); ++k) s += n * comp[k].second * pairs[k].nuclear_stopping(e);
     return s;
   };
@@ -524,7 +528,7 @@ int print_stopping_table(const Options &o, std::ostream &out) {
       }
     }
     prev_e = e;
-    const auto se = physics::layer_stopping(model, db.get(), z1, m1, layer, o.gas, 1.0, e, n);
+    const auto se = physics::layer_stopping(model, db.get(), z1, m1, layer, o.gas, 1.0, e, n, {}, corrections);
     physics::stopping_cross_section_quantity sn = 0.0 * srim_stopping_unit;
     for (std::size_t k = 0; k < pairs.size(); ++k) sn += comp[k].second * pairs[k].nuclear_stopping(e);
     char buf[256];

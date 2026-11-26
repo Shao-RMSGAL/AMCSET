@@ -24,11 +24,15 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <csignal>
+
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 
 #include "cli.h"
+#include "interrupts.h"
 #include "element_data.h"
 #include "run_config.h"
 #include "trim/trim.h"
@@ -211,6 +215,27 @@ TEST(RunConfig, SaveAndLoad) {
 // Command line
 // ---------------------------------------------------------------------------
 
+TEST(Cli, InterruptsSetTheFlagAndGiveTheSignalsStatus) {
+  // 128 + the signal number, as POSIX shells report a program ended by it.
+  EXPECT_EQ(cli::interrupted_exit_status(SIGINT), 130);
+  EXPECT_EQ(cli::interrupted_exit_status(SIGTERM), 143);
+  std::atomic<bool> flag{true};
+  {
+    const cli::InterruptGuard guard(flag);
+    EXPECT_FALSE(flag.load()); // reset by the guard
+    EXPECT_EQ(cli::interrupt_signal(), 0);
+    EXPECT_EQ(cli::exit_after_interrupt(0), 0); // not interrupted: the status as it is
+#ifndef _WIN32
+    // The handler runs in this thread: it only sets the flag and the signal.
+    std::raise(SIGTERM);
+    EXPECT_TRUE(flag.load());
+    EXPECT_EQ(cli::interrupt_signal(), SIGTERM);
+    // Another status than the signal's (e.g. an error after the interrupt) is kept.
+    EXPECT_EQ(cli::exit_after_interrupt(1), 1);
+#endif
+  }
+}
+
 TEST(Cli, ParsesCommandsAndOptions) {
   const auto o = cli::parse_arguments(std::vector<std::string>{
       "run", "scenario.json", "-n", "500", "-j", "4", "--seed", "7", "--damage", "full",
@@ -339,6 +364,39 @@ TEST(Cli, AutoDepthOptionAndKeys) {
   EXPECT_THROW(parse_config(base + R"("auto_depth": {"test_ions": 1e9}})"), std::invalid_argument);
   EXPECT_THROW(parse_config(base + R"("auto_depth": {"depth": "1 um"}})"), std::invalid_argument);
   EXPECT_THROW(parse_config(base + R"("auto_depth": {"enabled": "maybe"}})"), std::exception);
+}
+
+TEST(Cli, NickelStoppingCorrection) {
+  auto c = parse_config(alloy_json);
+  EXPECT_FALSE(c.trim.stopping_corrections.nickel_ions);
+  EXPECT_NE(to_json(c).find("\"nickel_ions\": false"), std::string::npos) << to_json(c);
+  const auto o = cli::parse_arguments(std::vector<std::string>{"run", "x.json", "--correct-nickel"});
+  EXPECT_TRUE(o.correct_nickel);
+  cli::apply_options(c, o);
+  EXPECT_TRUE(c.trim.stopping_corrections.nickel_ions);
+  EXPECT_TRUE(parse_config(to_json(c)).trim.stopping_corrections.nickel_ions);
+  auto d = parse_config(alloy_json);
+  apply_override(d, "physics.stopping_corrections.nickel_ions=true");
+  EXPECT_TRUE(d.trim.stopping_corrections.nickel_ions);
+  const std::string base = R"({"ion": {"element": "Ni", "energy": "5 MeV"},
+    "layers": [{"thickness": "3 um", "elements": [{"element": "Fe"}]}], )";
+  EXPECT_THROW(parse_config(base + R"("physics": {"stopping_corrections": {"cobalt_ions": true}}})"),
+               std::invalid_argument);
+  // The stopping command: Ni in Fe at 3.5 MeV (0.06 MeV/u) stops much more with it.
+  const auto table = [](bool fix) {
+    std::vector<std::string> args{"stopping", "--ion", "Ni", "--target", "Fe", "--from", "3.5 MeV", "--to",
+                                  "3.5 MeV", "--csv"};
+    if (fix) args.push_back("--correct-nickel");
+    std::ostringstream out;
+    cli::print_stopping_table(cli::parse_arguments(args), out);
+    std::istringstream in(out.str());
+    std::string line;
+    while (std::getline(in, line)) {
+      if (!line.empty() && line[0] != '#') return std::stod(line.substr(line.find(',') + 1));
+    }
+    return 0.0;
+  };
+  EXPECT_GT(table(true), 1.4 * table(false));
 }
 
 // Malformed numbers in a scenario are errors, never silently truncated or

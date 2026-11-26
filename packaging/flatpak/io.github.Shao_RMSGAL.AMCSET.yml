@@ -1,0 +1,54 @@
+# Flatpak manifest of AMCSET (for Flathub). NOT BUILT YET: fill in the
+# sha256 values and the release tag, then
+#   flatpak-builder --user --install --force-clean build-flatpak io.github.Shao_RMSGAL.AMCSET.yml
+# and follow Flathub's submission process (docs/RELEASING.md §5). The KDE
+# runtime brings Qt 6.8 (the GUI needs 6.7 or later, with Qt GUI's private
+# headers for QRhi); abseil and the Boost headers are built here.
+id: io.github.Shao_RMSGAL.AMCSET
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+command: amcset-gui
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Scenarios refer to cell and particle files next to them and write their
+  # results into folders the user names: access to the home folder.
+  - --filesystem=home
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - '*.a'
+modules:
+  - name: abseil
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_CXX_STANDARD=20
+      - -DABSL_PROPAGATE_CXX_STD=ON
+      - -DBUILD_TESTING=OFF
+    sources:
+      - type: archive
+        url: https://github.com/abseil/abseil-cpp/releases/download/20250127.1/abseil-cpp-20250127.1.tar.gz
+        sha256: FILL-IN
+  - name: boost-headers
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/include && cp -r boost /app/include/
+    sources:
+      - type: archive
+        url: https://archives.boost.io/release/1.89.0/source/boost_1_89_0.tar.bz2
+        sha256: FILL-IN
+  - name: amcset
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DAMCSET_BUILD_TESTS=OFF
+      - -DAMCSET_MARCH=x86-64-v2
+    sources:
+      - type: git
+        url: https://github.com/Shao-RMSGAL/AMCSET.git
+        tag: v1.0.0

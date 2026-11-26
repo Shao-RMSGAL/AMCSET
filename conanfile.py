@@ -20,7 +20,7 @@ from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout, CMakeDeps
 
 class amcsetRecipe(ConanFile):
     name = "amcset"
-    version = "0.1.0"
+    version = "1.0.0"
 
     package_type = "application"
 
@@ -32,6 +32,10 @@ class amcsetRecipe(ConanFile):
 
     # Binary configuration
     settings = "os", "compiler", "build_type", "arch"
+    # with_qt=False: Qt comes from elsewhere (the release workflow uses Qt's
+    # own binaries; building Qt here takes hours), or no GUI is built.
+    options = {"with_qt": [True, False]}
+    default_options = {"with_qt": True}
 
     # Project sources
     # Everything CMakeLists.txt needs (common/ always; cli/, gui/ and test/
@@ -67,7 +71,8 @@ class amcsetRecipe(ConanFile):
         self.requires("boost/[=1.89.0]", transitive_headers=True)
         self.requires("gtest/[=1.15.0]")
         self.requires("abseil/[=20260526.0]")
-        self.requires("qt/[=6.11.1]")
+        if self.options.with_qt:
+            self.requires("qt/[=6.11.1]")
         # libiconv 1.17 does not build with current MinGW/MSYS2 headers.
         self.requires("libiconv/[=1.18]", override=True)
 
@@ -88,6 +93,8 @@ class amcsetRecipe(ConanFile):
 
         # ---- Qt ----
 
+        if not self.options.with_qt:
+            return
         # Use shared Qt libraries.
         self.options["qt"].shared = True
         self.options["qt"].with_pq = False

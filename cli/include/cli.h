@@ -62,6 +62,7 @@ struct Options {
   //! --fix-trim-bug NAME (repeatable; "all" = every bug of TRIM.exe).
   std::vector<std::string> fixed_bugs;
   bool fast_math = false;       //!< --fast (physics.fast_math)
+  bool correct_nickel = false;  //!< --correct-nickel (physics.stopping_corrections.nickel_ions; stopping command too)
   bool auto_depth = false;      //!< --auto-depth (auto_depth.enabled)
   std::string log_file;         //!< --log FILE (diagnostic log)
   std::string save_config;

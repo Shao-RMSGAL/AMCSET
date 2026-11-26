@@ -654,7 +654,8 @@ component_stopping(ElectronicStoppingModel model,
                    mass_quantity m1, unsigned z2, bool gas,
                    energy_quantity energy,
                    number_density_quantity electron_density,
-                   const BetheBlochOptions &bethe) {
+                   const BetheBlochOptions &bethe,
+                   const StoppingCorrections &corrections) {
   switch (model) {
   case ElectronicStoppingModel::lindhard_scharff:
     return lindhard_scharff_stopping(z1, m1, z2, energy);
@@ -665,6 +666,15 @@ component_stopping(ElectronicStoppingModel model,
   case ElectronicStoppingModel::builtin:
     return builtin_stopping(z1, m1, z2, energy, electron_density, bethe);
   case ElectronicStoppingModel::srim_tables: {
+    if (corrections.nickel_ions && z1 == 28) {
+      // StoppingCorrections::nickel_ions: the geometric mean of the
+      // neighbours Co and Cu at the velocity of this Ni projectile (the
+      // tables scale the lookup energy by their own mass over m1).
+      const StoppingCorrections none;
+      const auto co = component_stopping(model, database, 27, m1, z2, gas, energy, electron_density, bethe, none);
+      const auto cu = component_stopping(model, database, 29, m1, z2, gas, energy, electron_density, bethe, none);
+      return std::sqrt((co / srim_stopping_unit).value() * (cu / srim_stopping_unit).value()) * srim_stopping_unit;
+    }
     if (database == nullptr) {
       throw std::invalid_argument("SRIM stopping model selected but no stopping table loaded");
     }
@@ -700,14 +710,15 @@ layer_stopping(ElectronicStoppingModel model,
                mass_quantity m1, const std::vector<StoppingComponent> &layer,
                bool gas, double compound_correction, energy_quantity energy,
                number_density_quantity atomic_density,
-               const BetheBlochOptions &bethe) {
+               const BetheBlochOptions &bethe,
+               const StoppingCorrections &corrections) {
   double mean_z = 0.0;
   for (const auto &c : layer) mean_z += c.atom_fraction * static_cast<double>(c.z);
   const number_density_quantity electron_density = atomic_density * mean_z;
   stopping_cross_section_quantity s = 0.0 * srim_stopping_unit;
   for (const auto &c : layer) {
     s += c.atom_fraction * component_stopping(model, database, z1, m1, c.z, gas,
-                                              energy, electron_density, bethe);
+                                              energy, electron_density, bethe, corrections);
   }
   return compound_correction * s;
 }
@@ -725,7 +736,8 @@ StoppingCurve::StoppingCurve(ElectronicStoppingModel model,
                              const BetheBlochOptions &bethe,
                              energy_quantity min_energy,
                              energy_quantity max_energy,
-                             unsigned points_per_decade)
+                             unsigned points_per_decade,
+                             const StoppingCorrections &corrections)
     : density_(atomic_density) {
   if (!(min_energy > 0.0 * electron_volt) || !(max_energy > min_energy) ||
       points_per_decade == 0) {
@@ -742,7 +754,7 @@ StoppingCurve::StoppingCurve(ElectronicStoppingModel model,
         std::exp(log_e0_ + step * static_cast<double>(i)) * electron_volt;
     const stopping_power_quantity sp =
         atomic_density * layer_stopping(model, database, z1, m1, layer, gas,
-                                        compound_correction, e, atomic_density, bethe);
+                                        compound_correction, e, atomic_density, bethe, corrections);
     log_s_[i] = std::log(std::max(in_units(sp, electron_volt_per_angstrom), 1e-300));
   }
 }

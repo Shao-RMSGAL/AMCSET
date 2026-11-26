@@ -24,6 +24,7 @@
 
 #include "app/guard.h"
 #include "app/main_window.h"
+#include "app/unix_signals.h"
 #include "config.h"
 #include "diagnostics.h"
 
@@ -32,11 +33,13 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QIcon>
 #include <QMessageBox>
 #include <QSettings>
 #include <QStandardPaths>
 
 #include <chrono>
+#include <clocale>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -85,6 +88,20 @@ int main(int argc, char *argv[]) {
   amcset::diag::install_crash_handlers(argc > 0 ? argv[0] : "amcset-gui");
   // QApplication with an exception-catching notify() (app/guard.h).
   amcset::gui::Application app(argc, argv);
+  // Qt sets the C locale from the environment on Unix; numbers in scenario
+  // files, TRIM.IN and the results must not follow a decimal comma (as Qt's
+  // documentation of QCoreApplication advises). The interface still shows
+  // numbers in the user's locale (QLocale).
+  std::setlocale(LC_NUMERIC, "C");
+  QGuiApplication::setDesktopFileName(QStringLiteral("io.github.Shao_RMSGAL.AMCSET"));
+  {
+    // The logo (resources/icons) for every window and dialog.
+    QIcon icon;
+    for (int size : {16, 24, 32, 48, 64, 128, 256}) {
+      icon.addFile(QStringLiteral(":/icons/amcset-%1.png").arg(size), QSize(size, size));
+    }
+    QApplication::setWindowIcon(icon);
+  }
   QCoreApplication::setOrganizationName(QStringLiteral("AMCSET"));
   QCoreApplication::setApplicationName(QStringLiteral("AMCSET"));
   QCoreApplication::setApplicationVersion(QStringLiteral(AMCSET_VERSION));
@@ -130,6 +147,9 @@ int main(int argc, char *argv[]) {
   // slot guards; this catches what escapes building or closing the window.
   try {
     amcset::gui::MainWindow window;
+    // SIGTERM, SIGHUP, SIGINT (POSIX): stop the calculation and quit with
+    // 128 + the signal number, as programs ended by a signal do.
+    amcset::gui::install_unix_signal_handlers(&window, [&window](int sig) { window.quit_quietly(128 + sig); });
     window.show();
     const QStringList files = parser.positionalArguments();
     if (!files.isEmpty()) window.open_path(files.front());

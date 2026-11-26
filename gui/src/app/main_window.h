@@ -29,6 +29,8 @@
 #include <QPointer>
 #include <QStringList>
 
+class QSessionManager;
+
 class QAction;
 class QMessageBox;
 class QTimer;
@@ -63,6 +65,12 @@ public:
    * code 3.
    */
   void run_unattended(const QString &screenshot_dir, bool quit, int timeout_s = 0);
+  /*!
+   * \brief Stop a running calculation and quit with \p exit_code, without
+   * dialogs (SIGTERM, SIGHUP, SIGINT): the window's layout is saved,
+   * unsaved scenario edits are lost.
+   */
+  void quit_quietly(int exit_code);
 
 protected:
   void closeEvent(QCloseEvent *e) override;
@@ -77,6 +85,13 @@ private:
   void update_actions();
   void log(const QString &text, bool warning = false);
   bool maybe_save();
+  void save_window_settings();
+  //! Where unsaved scenarios are kept when the desktop session ends.
+  static QString recovery_dir();
+#if QT_CONFIG(sessionmanager)
+  //! QGuiApplication::commitDataRequest: keep an unsaved scenario, stop the calculation.
+  void session_ending(QSessionManager &m);
+#endif
   void new_scenario();
   void open_dialog();
   bool save();
@@ -135,6 +150,7 @@ private:
   QAction *extend_act_ = nullptr;
 
   bool unattended_ = false; //!< no dialogs; log to stderr; quit on errors
+  bool quiet_quit_ = false; //!< closing on a signal or the session's end: no questions
   // Ions transmitted during the current run (RunController::ions_escaped).
   std::size_t escaped_ = 0;
   bool escape_asked_ = false;          //!< the retry question was shown this run

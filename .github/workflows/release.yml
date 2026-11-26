@@ -1,0 +1,282 @@
+name: Release
+
+# Builds AMCSET's packages on GitHub's own runners and, for a version tag
+# (v1.0.0, ...), attaches them to a DRAFT release to review and publish by hand
+# (docs/RELEASING.md). Run it from the Actions tab (workflow_dispatch) to build
+# the packages without a release.
+#
+#   windows          windows-2025: MSI, ZIP, MSIX (the MSIX only when signed)
+#   linux-appimage   ubuntu-22.04: AppImage (GUI + CLI), CLI tarball
+#   linux-deb        Debian 13 container: .deb against the system's Qt
+#   linux-rpm        Fedora 42 container: .rpm against the system's Qt
+#   release          SHA256SUMS.txt, build attestations, the draft release
+#
+# Code signing (Windows) runs only when the repository variables
+# ARTIFACT_SIGNING_ENDPOINT, ARTIFACT_SIGNING_ACCOUNT, ARTIFACT_SIGNING_PROFILE
+# (and MSIX_PUBLISHER for the MSIX) and the secrets AZURE_CLIENT_ID,
+# AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID (OpenID Connect, no password stored)
+# are set; without them the Windows files are built unsigned.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  QT_VERSION: '6.8.3'      # Qt's long-term-support release (the GUI needs Qt 6.7 or later)
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      id-token: write   # Azure sign-in by OpenID Connect
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          cache: true
+      - name: MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: WiX Toolset (MSI)
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          "$env:USERPROFILE\.dotnet\tools" >> $env:GITHUB_PATH
+          $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
+          wix extension add --global WixToolset.UI.wixext/5.0.2
+      - name: Conan cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/p
+          key: conan-windows-${{ hashFiles('conanfile.py') }}
+      - name: Dependencies (Conan, without Qt)
+        run: |
+          pip install -r requirements.txt
+          conan profile detect --force
+          conan install . -o "&:with_qt=False" -s build_type=Release -s compiler.cppstd=20 --build=missing -c tools.cmake.cmaketoolchain:generator=Ninja
+      - name: Configure
+        run: cmake --preset conan-release -DAMCSET_BUILD_GUI=ON -DAMCSET_BUILD_CLI=ON -DAMCSET_BUILD_TESTS=ON "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR"
+      - name: Build
+        run: cmake --build --preset conan-release
+      - name: Test
+        run: ctest --test-dir build/Release --output-on-failure
+      - name: Header check
+        run: python scripts/check_headers.py
+
+      - name: Azure sign-in (code signing)
+        if: ${{ vars.ARTIFACT_SIGNING_ENDPOINT != '' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Signing client (Azure Artifact Signing)
+        if: ${{ vars.ARTIFACT_SIGNING_ENDPOINT != '' }}
+        run: |
+          nuget install Microsoft.ArtifactSigning.Client -x -OutputDirectory "$env:RUNNER_TEMP\sign"
+          $dlib = Get-ChildItem "$env:RUNNER_TEMP\sign" -Recurse -Filter Azure.CodeSigning.Dlib.dll |
+                  Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -First 1
+          if (-not $dlib) { throw 'Azure.CodeSigning.Dlib.dll (x64) not found in the signing client' }
+          @{ Endpoint = '${{ vars.ARTIFACT_SIGNING_ENDPOINT }}'
+             CodeSigningAccountName = '${{ vars.ARTIFACT_SIGNING_ACCOUNT }}'
+             CertificateProfileName = '${{ vars.ARTIFACT_SIGNING_PROFILE }}' } |
+            ConvertTo-Json | Set-Content "$env:RUNNER_TEMP\sign\metadata.json"
+          "SIGN_DLIB=$($dlib.FullName)" >> $env:GITHUB_ENV
+          "SIGN_METADATA=$env:RUNNER_TEMP\sign\metadata.json" >> $env:GITHUB_ENV
+      - name: Sign the programs and the Qt libraries
+        if: ${{ vars.ARTIFACT_SIGNING_ENDPOINT != '' }}
+        run: >
+          ./tools/windows/sign.ps1 -Metadata $env:SIGN_METADATA -Dlib $env:SIGN_DLIB
+          build/Release/amcset.exe build/Release/amcset-gui.exe
+          build/Release/Qt6Core.dll build/Release/Qt6Gui.dll build/Release/Qt6Widgets.dll
+          build/Release/platforms build/Release/styles build/Release/imageformats
+
+      - name: Packages (ZIP, MSI)
+        run: |
+          cd build/Release
+          cpack -G "ZIP;WIX" -B ../packages
+          Remove-Item ../packages/_CPack_Packages -Recurse -Force -ErrorAction SilentlyContinue
+      - name: Package (MSIX)
+        if: ${{ vars.ARTIFACT_SIGNING_ENDPOINT != '' && vars.MSIX_PUBLISHER != '' }}
+        run: ./tools/windows/make_msix.ps1 -BuildDir build/Release -Out build/packages -Publisher '${{ vars.MSIX_PUBLISHER }}'
+      - name: Sign the packages
+        if: ${{ vars.ARTIFACT_SIGNING_ENDPOINT != '' }}
+        run: ./tools/windows/sign.ps1 -Metadata $env:SIGN_METADATA -Dlib $env:SIGN_DLIB build/packages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            build/packages/*.zip
+            build/packages/*.msi
+            build/packages/*.msix
+          if-no-files-found: error
+
+  linux-appimage:
+    runs-on: ubuntu-22.04   # glibc 2.35: the oldest system the AppImage and the CLI tarball run on
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compiler and tools
+        run: |
+          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          sudo apt-get update
+          sudo apt-get install -y g++-13 ninja-build patchelf libfuse2 file desktop-file-utils \
+            libgl-dev libvulkan-dev libxkbcommon-dev libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libegl1
+      - name: Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
+          cache: true
+      - name: Conan cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/p
+          key: conan-linux-gcc13-${{ hashFiles('conanfile.py') }}
+      - name: Dependencies (Conan, without Qt)
+        env:
+          CC: gcc-13
+          CXX: g++-13
+        run: |
+          pip install -r requirements.txt
+          conan profile detect --force
+          conan install . -o "&:with_qt=False" -s build_type=Release -s compiler.cppstd=20 --build=missing -c tools.cmake.cmaketoolchain:generator=Ninja
+      - name: Configure, build, test (GUI + CLI)
+        env:
+          CC: gcc-13
+          CXX: g++-13
+        run: |
+          cmake --preset conan-release -DAMCSET_MARCH=x86-64-v2 -DAMCSET_BUILD_GUI=ON -DAMCSET_BUILD_TESTS=ON "-DCMAKE_PREFIX_PATH=$QT_ROOT_DIR"
+          cmake --build --preset conan-release
+          ctest --test-dir build/Release --output-on-failure
+      - name: AppImage
+        run: AMCSET_BUILD_DIR=build/Release QMAKE="$QT_ROOT_DIR/bin/qmake" tools/linux/make_appimage.sh -o dist
+      - name: CLI tarball (C++ runtime linked in)
+        env:
+          CC: gcc-13
+          CXX: g++-13
+        run: |
+          version=$(sed -n 's/^project(amcset VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          cmake -S . -B build/cli -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/build/Release/generators/conan_toolchain.cmake" \
+            -DAMCSET_BUILD_GUI=OFF -DAMCSET_BUILD_TESTS=OFF -DAMCSET_MARCH=x86-64-v2 -DAMCSET_STATIC_LIBSTDCXX=ON
+          cmake --build build/cli
+          (cd build/cli && cpack -G TGZ -D CPACK_PACKAGE_FILE_NAME="amcset-cli-$version-linux-x86_64" -B "$PWD/../../dist")
+          rm -rf dist/_CPack_Packages
+          tar -xzf "dist/amcset-cli-$version-linux-x86_64.tar.gz" -C /tmp
+          "/tmp/amcset-cli-$version-linux-x86_64/bin/amcset" version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: |
+            dist/*.AppImage
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  linux-deb:
+    runs-on: ubuntu-24.04
+    container: debian:trixie
+    timeout-minutes: 90
+    steps:
+      - name: Build tools and libraries (Debian's own)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates build-essential cmake ninja-build \
+            python3 file dpkg-dev desktop-file-utils appstream libboost-dev libabsl-dev libgtest-dev \
+            qt6-base-dev qt6-base-private-dev libgl-dev libvulkan-dev
+      - uses: actions/checkout@v4
+      - name: Configure, build, test
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DAMCSET_MARCH=x86-64-v2 \
+            -DAMCSET_PACKAGE_CONTACT="${{ vars.PACKAGE_CONTACT || 'AMCSET maintainers <https://github.com/Shao-RMSGAL/AMCSET/issues>' }}"
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+      - name: Validate the desktop entry and the AppStream data
+        run: |
+          desktop-file-validate packaging/linux/*.desktop
+          appstreamcli validate --no-net build/packaging/*.metainfo.xml
+      - name: Package
+        run: |
+          cd build && cpack -G DEB && mkdir -p ../dist
+          for f in amcset_*_amd64.deb; do mv "$f" "../dist/${f%_amd64.deb}_debian13_amd64.deb"; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: dist/*.deb
+          if-no-files-found: error
+
+  linux-rpm:
+    runs-on: ubuntu-24.04
+    container: fedora:42
+    timeout-minutes: 90
+    steps:
+      - name: Build tools and libraries (Fedora's own)
+        run: |
+          dnf install -y git gcc-c++ cmake ninja-build python3 file rpm-build boost-devel abseil-cpp-devel \
+            gtest-devel qt6-qtbase-devel qt6-qtbase-private-devel mesa-libGL-devel vulkan-headers
+      - uses: actions/checkout@v4
+      - name: Configure, build, test
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DAMCSET_MARCH=x86-64-v2 \
+            -DAMCSET_PACKAGE_CONTACT="${{ vars.PACKAGE_CONTACT || 'AMCSET maintainers <https://github.com/Shao-RMSGAL/AMCSET/issues>' }}"
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+      - name: Package
+        run: cd build && cpack -G RPM && mkdir -p ../dist && mv ./*.rpm ../dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-rpm
+          path: dist/*.rpm
+          if-no-files-found: error
+
+  release:
+    needs: [windows, linux-appimage, linux-deb, linux-rpm]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write       # the draft release
+      id-token: write       # build attestations
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Build attestations
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WINDOWS_SIGNED: ${{ vars.ARTIFACT_SIGNING_ENDPOINT != '' }}
+        run: |
+          docs="https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/INSTALL.md"
+          if [ "$WINDOWS_SIGNED" = "true" ]; then
+            signing="The Windows files are signed."
+          else
+            signing="The Windows files are not signed: Windows asks before it runs them, and Smart App Control blocks them. What to do: $docs#running-the-unsigned-windows-release"
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft \
+            --title "AMCSET ${GITHUB_REF_NAME#v}" \
+            --notes "Packages for Windows and Linux: $docs. Changes: CHANGELOG.md. $signing Check downloads against SHA256SUMS.txt or with: gh attestation verify <file> --repo $GITHUB_REPOSITORY"

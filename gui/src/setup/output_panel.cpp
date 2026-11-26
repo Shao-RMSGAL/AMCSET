@@ -126,26 +126,35 @@ OutputPanel::OutputPanel(Scenario *scenario, std::function<std::shared_ptr<const
   lf->addRow(QString(), all_paths);
   lay->addWidget(lists);
 
-  // --- Trajectory and MD event files (not TRIM; trim2013 transport) ---------
+  // --- Trajectory and MD event files (not TRIM; every SRIM-mode transport) ---------
   auto *md = new QGroupBox(tr("Trajectory and MD event files (not TRIM outputs)"), this);
   md->setToolTip(tr("Files for coupling the cascades to molecular dynamics (hybrid BCA-MD) and for "
-                    "analysing trajectories. SRIM mode with the TRIM-2013 transport only. File names "
-                    "ending in .csv or .parquet; relative names go into the output folder. See "
+                    "analysing trajectories. SRIM mode, with every transport (TRIM-2013, refined, crystal). "
+                    "File names ending in .csv or .parquet; relative names go into the output folder. See "
                     "docs/OUTPUT.md."));
   auto *mf = new QFormLayout(md);
+  auto *traj_on = new QCheckBox(tr("Write a trajectory file"), md);
+  traj_on->setToolTip(tr("Write the recorded paths to a file in the output folder (trajectories.parquet unless "
+                         "another name is given below). It holds the ions counted under \"Paths drawn\" above, or "
+                         "all of them with \"Record every ion's path\"; if no paths are recorded, switching this "
+                         "on records every ion's. (output.trajectory_file)"));
   auto *traj_file = new QLineEdit(md);
-  traj_file->setPlaceholderText(tr("off (e.g. trajectories.parquet)"));
+  traj_file->setPlaceholderText(tr("trajectories.parquet or .csv"));
   traj_file->setToolTip(tr("Every recorded point of the paths above (Paths drawn / every ion): ion, point, "
                            "track, parent track and point, kind (birth, collision, stop, exit), Z, mass, "
                            "position, direction, energy, energy before the collision, energy transferred, "
                            "electronic loss, time. Large: about 100 000 points per 5 MeV Fe ion; Parquet "
-                           "is the compact choice. (output.trajectory_file)"));
+                           "is the compact choice. (output.trajectory_file.file)"));
   auto *births = new QCheckBox(tr("Only where atoms start to move (births)"), md);
   births->setToolTip(tr("Write only the first point of every track (output.trajectory_file.points = births)"));
   auto *traj_emin = new QLineEdit(md);
   traj_emin->setToolTip(tr("Write only points with at least this energy (0 = all)"));
+  auto *md_on = new QCheckBox(tr("Write an MD event file"), md);
+  md_on->setToolTip(tr("Write the recoil events for molecular dynamics to a file in the output folder "
+                       "(events.parquet unless another name is given below), with E_c = 1 keV unless set. Needs "
+                       "the full-cascade (or monolayer) damage calculation. (output.md_events)"));
   auto *md_file = new QLineEdit(md);
-  md_file->setPlaceholderText(tr("off (e.g. events.csv)"));
+  md_file->setPlaceholderText(tr("events.parquet or .csv"));
   md_file->setToolTip(tr("Recoil events for MD (output.md_events): for each transition energy E_c, a recoil "
                          "set in motion with E_min <= T < E_c, and a moving atom at the collision where its "
                          "energy first falls below E_c. Needs full cascades (or monolayer steps). Columns: "
@@ -164,9 +173,11 @@ OutputPanel::OutputPanel(Scenario *scenario, std::function<std::shared_ptr<const
                          "and the run is faster; the tallies then cover the BCA part only, and summary.json "
                          "gives the energy handed to MD. One E_c. Not TRIM: for MD coupling, fix TRIM's "
                          "bugs as well (Calculation tab), or energy is created in slow collisions."));
+  mf->addRow(QString(), traj_on);
   mf->addRow(tr("Trajectory file"), traj_file);
   mf->addRow(QString(), births);
   mf->addRow(tr("Minimum energy"), traj_emin);
+  mf->addRow(QString(), md_on);
   mf->addRow(tr("MD event file"), md_file);
   mf->addRow(tr("E_c"), md_ec);
   mf->addRow(tr("E_min"), md_emin);
@@ -237,6 +248,28 @@ OutputPanel::OutputPanel(Scenario *scenario, std::function<std::shared_ptr<const
   binder_->check(all_paths, tr("Every ion's path"),
                  [](const config::RunConfig &c) { return c.trim.trajectory_ions == trim::TrimConfig::all_ions; },
                  [](config::RunConfig &c, bool on) { c.trim.trajectory_ions = on ? trim::TrimConfig::all_ions : 10; });
+  // The switches: a default file name when switched on, none when off.
+  binder_->check(traj_on, tr("Trajectory file"),
+                 [](const config::RunConfig &c) { return !c.trim.trajectory_export.file.empty(); },
+                 [](config::RunConfig &c, bool on) {
+                   auto &file = c.trim.trajectory_export.file;
+                   if (!on) {
+                     file.clear();
+                     return;
+                   }
+                   if (file.empty()) file = "trajectories.parquet";
+                   if (c.trim.trajectory_ions == 0) c.trim.trajectory_ions = trim::TrimConfig::all_ions;
+                 });
+  binder_->check(md_on, tr("MD event file"), [](const config::RunConfig &c) { return c.trim.md_events.enabled(); },
+                 [](config::RunConfig &c, bool on) {
+                   auto &ev = c.trim.md_events;
+                   if (!on) {
+                     ev.file.clear();
+                     return;
+                   }
+                   if (ev.file.empty()) ev.file = "events.parquet";
+                   if (ev.transition_energies.empty()) ev.transition_energies = {1000.0 * common::electron_volt};
+                 });
   binder_->text(traj_file, tr("Trajectory file"),
                 [](const config::RunConfig &c) { return QString::fromStdString(c.trim.trajectory_export.file); },
                 [](config::RunConfig &c, const QString &t) {
@@ -279,13 +312,16 @@ OutputPanel::OutputPanel(Scenario *scenario, std::function<std::shared_ptr<const
                 });
   binder_->combo(md_mode, tr("MD mode"), [](const config::RunConfig &c) { return c.trim.md_events.handoff ? 1 : 0; },
                  [](config::RunConfig &c, int i) { c.trim.md_events.handoff = i == 1; });
-  binder_->custom([paths, md, births, traj_emin, md_ec, md_emin, md_mode](const config::RunConfig &c) {
+  binder_->custom([paths, md, traj_file, births, traj_emin, md_file, md_ec, md_emin, md_mode](const config::RunConfig &c) {
     paths->setEnabled(c.trim.trajectory_ions != trim::TrimConfig::all_ions);
     md->setVisible(c.mode == config::Mode::srim);
+    // The settings of a file follow its switch.
     const bool traj = !c.trim.trajectory_export.file.empty();
+    traj_file->setEnabled(traj);
     births->setEnabled(traj);
     traj_emin->setEnabled(traj);
     const bool ev = c.trim.md_events.enabled();
+    md_file->setEnabled(ev);
     md_ec->setEnabled(ev);
     md_emin->setEnabled(ev);
     md_mode->setEnabled(ev);

@@ -26,6 +26,7 @@
 #include "config.h"
 #include "diagnostics.h"
 #include "element_data.h"
+#include "interrupts.h"
 #include "physics/scattering.h"
 #include "physics/stopping.h"
 #include "run_config.h"
@@ -54,11 +55,15 @@ using namespace amcset::common;
 
 namespace {
 
-// Ctrl-C only sets a flag (a signal handler must not lock mutexes, which
-// request_cancel() does); the progress loop forwards it to the engine.
+// Set by a signal or console event during a run (interrupts.h); the progress
+// loop forwards it to the engine (request_cancel() locks, a handler must not).
 std::atomic<bool> g_interrupted{false};
 
-extern "C" void on_interrupt(int) { g_interrupted.store(true); }
+//! The exit status of an interrupted run: 128 + the signal (130 for Ctrl+C).
+int interrupted_status() {
+  const int sig = cli::interrupt_signal();
+  return cli::interrupted_exit_status(sig != 0 ? sig : SIGINT);
+}
 
 const char *usage = R"(AMCSET - Monte Carlo transport of ions and electrons in matter
 
@@ -108,7 +113,7 @@ Options for run/trim/validate:
       --source beam|ions|recoils
       --exyz ENERGY         Write EXYZ.txt (ion position every ENERGY of loss)
 
-Trajectory and MD event files (SRIM mode, trim2013 transport; not TRIM outputs;
+Trajectory and MD event files (SRIM mode, every transport; not TRIM outputs;
 docs/OUTPUT.md):
       --trajectory-file F   Every recorded point (ion, track, parent, kind, position,
                             direction, energies, time) to F (.csv or .parquet; a
@@ -142,6 +147,8 @@ Options for stopping:
       --gas                 Gas-phase target
       --from E --to E       Energy range (default 10 keV .. 10 MeV)
       --per-decade N        Points per decade (default 10)
+      --correct-nickel      Ni projectiles: Co/Cu-interpolated stopping (also for run/trim;
+                            physics.stopping_corrections.nickel_ions, docs/VALIDATION.md)
       --model MODEL         srim | builtin | bethe-bloch | lss (default srim with
                             the bundled SRIM-2013 tables; builtin without them)
       --stopping-table PATH, --srim-data DIR
@@ -236,17 +243,10 @@ void print_summary(const config::RunConfig &cfg, const SimulationEngine &engine,
 }
 
 int run_engine(config::RunConfig &cfg, const cli::Options &opt) {
-  // Ctrl+C sets g_interrupted from here on (the sizing test runs and the run
-  // stop on it); the default handler is back on every way out.
-  struct InterruptHandler {
-    InterruptHandler() {
-      g_interrupted.store(false);
-      std::signal(SIGINT, on_interrupt);
-    }
-    ~InterruptHandler() { std::signal(SIGINT, SIG_DFL); }
-    InterruptHandler(const InterruptHandler &) = delete;
-    InterruptHandler &operator=(const InterruptHandler &) = delete;
-  } interrupt_handler;
+  // Ctrl+C, SIGTERM, SIGHUP (Windows: the console events) set g_interrupted
+  // from here on (the sizing test runs and the run stop on it); the default
+  // handlers are back on every way out.
+  const cli::InterruptGuard interrupt_guard(g_interrupted);
   if (cfg.mode == config::Mode::srim && cfg.trim.auto_depth.enabled) {
     // Automatic target depth: quick test runs size the last layer first.
     cfg.trim.validate();
@@ -258,7 +258,7 @@ int run_engine(config::RunConfig &cfg, const cli::Options &opt) {
     }
     if (g_interrupted.load()) {
       std::cerr << "Interrupted while sizing the target; nothing was run.\n";
-      return 130;
+      return interrupted_status();
     }
   }
   // The scenario as it runs (with the sized target).
@@ -314,9 +314,13 @@ int run_engine(config::RunConfig &cfg, const cli::Options &opt) {
   bool escape_warned = false;
   while (true) {
     if (g_interrupted.load() && !cancel_sent) {
-      AMCSET_LOG(info) << "interrupted (Ctrl-C): stopping after the running particles";
+      AMCSET_LOG(info) << "interrupted (signal " << cli::interrupt_signal()
+                       << "): stopping after the running particles";
       engine->request_cancel();
       cancel_sent = true;
+      bar.clear_line();
+      std::cerr << "Stopping after the ions in progress; the results so far will be written "
+                   "(interrupt again to quit at once).\n";
     }
     if (warn_escape && !escape_warned && trim_engine->transmitted_so_far() > 0) {
       // The run goes on; the user decides afterwards.
@@ -340,7 +344,7 @@ int run_engine(config::RunConfig &cfg, const cli::Options &opt) {
               << " ions escaped through the back of the target.\n";
   }
   print_summary(cfg, *engine, opt.json);
-  return engine->is_cancelled() ? 130 : 0;
+  return engine->is_cancelled() ? interrupted_status() : 0;
 }
 
 config::RunConfig load_any(const std::string &path) {
@@ -520,8 +524,9 @@ int main(int argc, char **argv) {
       std::cout << "AMCSET " << AMCSET_VERSION << "\n";
       return 0;
     }
-    if (opt.command == "run") return cmd_run(opt, false);
-    if (opt.command == "trim") return cmd_run(opt, true);
+    // An interrupted run ends by its signal (POSIX), after its results are written.
+    if (opt.command == "run") return cli::exit_after_interrupt(cmd_run(opt, false));
+    if (opt.command == "trim") return cli::exit_after_interrupt(cmd_run(opt, true));
     if (opt.command == "validate") return cmd_validate(opt);
     if (opt.command == "convert") return cmd_convert(opt);
     if (opt.command == "template") return cmd_template(opt);

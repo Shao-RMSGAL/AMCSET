@@ -585,11 +585,17 @@ CrystalPanel::CrystalPanel(Scenario *scenario, QWidget *parent)
   auto *beam_view = new QPushButton(tr("Point the beam along this view"), cell_group);
   beam_view->setToolTip(tr("Sets the beam's angle of incidence (Ion tab) and the crystal's twist so that the ions "
                            "travel the way you are looking at the cell. The view must look into the surface."));
+  auto *orient_view = new QPushButton(tr("Turn the crystal to this view"), cell_group);
+  orient_view->setToolTip(tr("Sets the crystal's orientation to the view: the direction you look along becomes the "
+                             "surface normal (you look into the target), and the top of the view the lateral Y axis, "
+                             "towards which the beam tilts. A view along the normal of a low-index plane (type a "
+                             "direction, or use Snap) gives that plane as the surface, in Miller indices; any other "
+                             "view gives Euler angles. The beam's angle of incidence stays as it is."));
   auto *hint = new QLabel(tr("Drag: turn. Shift+drag: roll. Wheel: zoom. Click an atom: replace its element, share "
                              "the site, set its occupancy, make it interstitial, or remove it."),
                           cell_group);
   hint->setWordWrap(true);
-  for (QWidget *w : std::initializer_list<QWidget *>{view_, repeat_, look_, look_beam, look_normal, look_snap, look_reset, beam_view}) {
+  for (QWidget *w : std::initializer_list<QWidget *>{view_, repeat_, look_, look_beam, look_normal, look_snap, look_reset, beam_view, orient_view}) {
     needs_crystal_.push_back(w);
   }
 
@@ -622,7 +628,10 @@ CrystalPanel::CrystalPanel(Scenario *scenario, QWidget *parent)
   cell_lay->addWidget(view_, 1);
   cell_lay->addLayout(view_row);
   cell_lay->addLayout(look_row);
-  cell_lay->addWidget(beam_view);
+  auto *apply_row = new QHBoxLayout();
+  apply_row->addWidget(beam_view);
+  apply_row->addWidget(orient_view);
+  cell_lay->addLayout(apply_row);
   cell_lay->addWidget(hint);
   cell_lay->addWidget(sites_);
   cell_lay->addLayout(site_row);
@@ -916,6 +925,8 @@ CrystalPanel::CrystalPanel(Scenario *scenario, QWidget *parent)
   }));
   connect(look_reset, &QToolButton::clicked, this, guarded(this, tr("Reset the view"), [this] { view_->reset_view(); }));
   connect(beam_view, &QPushButton::clicked, this, guarded(this, tr("Beam along the view"), [this] { beam_along_view(); }));
+  connect(orient_view, &QPushButton::clicked, this,
+          guarded(this, tr("Crystal orientation from the view"), [this] { orient_to_view(); }));
   connect(beam_, &QLineEdit::editingFinished, this, guarded(this, tr("Beam direction"), [this] { beam_from_text(); }));
   connect(view_, &CellView::site_clicked, this,
           guarded(this, tr("Editing a site"), [this](int site, const QPoint &pos) { site_menu(site, pos); }));
@@ -1608,6 +1619,17 @@ void CrystalPanel::beam_along_view() {
   beam_->setText(beam_text_);
 }
 
+void CrystalPanel::orient_to_view() {
+  if (current_crystal() == nullptr) return;
+  // The view's frame: into the screen is the depth axis, its top lateral Y.
+  const Vec3 normal = view_->view_direction();
+  const Vec3 up = view_->view_up();
+  edit(tr("Crystal orientation from the view"), [&](crystal::Crystal &c, trim::TargetLayer &, config::RunConfig &) {
+    c.orientation = crystal::orientation_for_frame(c.cell.lattice, normal, up, 6, 0.05 * common::degree, "view direction");
+  });
+  beam_->setText(beam_text_);
+}
+
 void CrystalPanel::look_from_text() {
   const auto *cr = current_crystal();
   if (cr == nullptr) return;
@@ -1620,13 +1642,10 @@ void CrystalPanel::look_from_text() {
 }
 
 void CrystalPanel::set_crystal_transport(bool on) {
-  QString note;
-  const QString err = scenario_->set_crystal_transport(on, &note);
+  const QString err = scenario_->set_crystal_transport(on);
   if (!err.isEmpty()) {
     QMessageBox::warning(this, tr("Crystal transport"), err);
     binder_->refresh(); // the box goes back to what the scenario says
-  } else if (!note.isEmpty()) {
-    emit message(note);
   }
 }
 

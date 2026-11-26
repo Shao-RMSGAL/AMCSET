@@ -365,6 +365,45 @@ TEST(StoppingTable, LayerStoppingUsesBraggsRuleAndCorrection) {
                std::exception);
 }
 
+// StoppingCorrections::nickel_ions: a Ni projectile takes the geometric mean of
+// the Co and Cu tables at its own velocity (the tables scale the lookup energy
+// by their mass over the projectile's); other ions and other models are untouched.
+TEST(StoppingTable, NickelCorrectionIsTheNeighboursGeometricMean) {
+  SrimStoppingDatabase db;
+  db.add(synthetic_table(27, 59.0, 26)); // Co: S_e = 10 sqrt(E / keV) (synthetic_table)
+  auto ni = synthetic_table(28, 58.0, 26);
+  for (auto &v : ni.log_electronic) v += std::log(0.6); // Ni: 0.6 of it
+  db.add(ni);
+  auto cu = synthetic_table(29, 63.0, 26);
+  for (auto &v : cu.log_electronic) v += std::log(1.2);
+  db.add(cu);
+  const mass_quantity m = 58.0 * atomic_mass_unit;
+  const auto n = 8.5e22 * per_cubic_centimeter;
+  const std::vector<StoppingComponent> fe{{26, 1.0}};
+  const auto e = 300.0 * kilo_electron_volt;
+  StoppingCorrections fix;
+  fix.nickel_ions = true;
+  const auto se = [&](unsigned z1, const StoppingCorrections &c) {
+    return in_units(layer_stopping(ElectronicStoppingModel::srim_tables, &db, z1, m, fe, false, 1.0, e, n, {}, c),
+                    srim_stopping_unit);
+  };
+  const double co = in_units(db.find(27, 26, false)->electronic(e, m), srim_stopping_unit);
+  const double cu_at = in_units(db.find(29, 26, false)->electronic(e, m), srim_stopping_unit);
+  EXPECT_NEAR(se(28, fix), std::sqrt(co * cu_at), 1e-9 * co);
+  EXPECT_NEAR(se(28, {}), 0.6 * 10.0 * std::sqrt(300.0), 1e-9 * co); // the Ni table itself
+  EXPECT_EQ(se(27, fix), se(27, {}));
+  EXPECT_EQ(se(29, fix), se(29, {}));
+  // The built-in model has no tables to correct.
+  EXPECT_EQ(layer_stopping(ElectronicStoppingModel::builtin, nullptr, 28, m, fe, false, 1.0, e, n, {}, fix),
+            layer_stopping(ElectronicStoppingModel::builtin, nullptr, 28, m, fe, false, 1.0, e, n));
+  // The curve takes it as well.
+  const StoppingCurve plain(ElectronicStoppingModel::srim_tables, &db, 28, m, fe, false, 1.0, n);
+  const StoppingCurve fixed(ElectronicStoppingModel::srim_tables, &db, 28, m, fe, false, 1.0, n, {},
+                            1.0 * electron_volt, 100.0 * giga_electron_volt, 50, fix);
+  EXPECT_GT(in_units(fixed.stopping_power(e), electron_volt_per_angstrom),
+            1.5 * in_units(plain.stopping_power(e), electron_volt_per_angstrom));
+}
+
 TEST(StoppingTable, CurveContinuesWithBetheBlochAboveTheTable) {
   SrimStoppingDatabase db;
   db.add(synthetic_table(1, 1.0, 26));

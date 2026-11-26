@@ -24,6 +24,7 @@ set(GUI_SOURCES
     src/main.cpp
     src/app/main_window.cpp src/app/main_window.h
     src/app/guard.cpp src/app/guard.h
+    src/app/unix_signals.cpp src/app/unix_signals.h
     src/model/scenario.cpp src/model/scenario.h
     src/model/target_models.cpp src/model/target_models.h
     src/model/quantity_text.cpp src/model/quantity_text.h
@@ -48,7 +49,10 @@ set(GUI_SOURCES
     src/views/track_panel.cpp src/views/track_panel.h
 )
 
-add_executable(amcset-gui WIN32 ${GUI_SOURCES})
+add_executable(amcset-gui WIN32 ${GUI_SOURCES} resources/icons.qrc)
+# Version information, icon and manifest of the executable (Windows).
+amcset_windows_resources(amcset-gui "AMCSET")
+install(TARGETS amcset-gui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 target_include_directories(amcset-gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(amcset-gui PRIVATE compiler_flags amcset-common Qt6::Core Qt6::Gui Qt6::Widgets)
 

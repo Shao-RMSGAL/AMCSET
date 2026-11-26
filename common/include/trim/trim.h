@@ -216,6 +216,72 @@ void apply_crystal(TargetLayer &layer);
  */
 void check_layer_crystal(const TargetLayer &layer, const std::string &where);
 
+struct TrimConfig;
+
+/*!
+ * \brief How a layer's crystal sits in the target and meets the beam, as the
+ * outputs report it (summary.json "crystals", the "crystals" table, the
+ * metadata of the trajectory and MD event files). Not TRIM.
+ *
+ * Two frames: TRIM's (x = depth, y, z lateral; the beam tilts in x-y) and
+ * the output axes of the trajectory and event files (x = TRIM's y, y =
+ * TRIM's z, z = depth).
+ */
+struct CrystalReport {
+  std::size_t layer = 0; //!< 0-based
+  std::string layer_name;
+  std::string cell_name;
+  bool followed = false;        //!< the crystal transport follows the lattice (else: amorphous)
+  double top_A = 0.0;           //!< depth of the layer's top: the lattice origin's depth
+  crystal::Mat3 lattice_A;      //!< rows: the lattice vectors a, b, c in the crystal frame
+  crystal::Mat3 to_trim;        //!< crystal -> TRIM axes (v_trim = R v_crystal)
+  crystal::Mat3 to_output;      //!< crystal -> output axes
+  std::array<double, 3> euler_deg{0, 0, 0}; //!< Bunge (phi1, Phi, phi2) relative to the sample (z = outward normal)
+  //! Crystal directions along the depth (inward normal), TRIM's y (the tilt
+  //! plane) and TRIM's z, and of the beam: the nearest low-index [uvw] and
+  //! the angle to it (degrees).
+  std::array<int, 3> depth_uvw{0, 0, 1}, y_uvw{1, 0, 0}, z_uvw{0, 1, 0}, beam_uvw{0, 0, 1};
+  double depth_off_deg = 0.0, y_off_deg = 0.0, z_off_deg = 0.0, beam_off_deg = 0.0;
+  crystal::Vec3 beam_crystal;   //!< the beam's unit vector in the crystal frame
+  double tilt_deg = 0.0;        //!< ion.angle
+  double twist_deg = 0.0;
+  double temperature_K = 0.0;
+  //! rms thermal displacement along one axis per element as the transport
+  //! uses it (0: static), and whether it came from Gemmell's table.
+  struct Vibration {
+    unsigned z = 0;
+    double rms_A = 0.0;
+    bool from_table = false;
+  };
+  std::vector<Vibration> vibrations;
+  /*!
+   * The low-index crystal axes nearest the beam (indices up to 2, nearest
+   * first): the angle to the beam, the mean spacing d of the atoms along the
+   * row, and Lindhard's critical angles for the ion at its energy E (Z2: the
+   * cell's mean atomic number; Gemmell, Rev. Mod. Phys. 46, 129 (1974),
+   * Eqs. 2.27-2.29): psi_1 = (2 Z1 Z2 e^2 / (E d))^1/2, valid while
+   * psi_1 <= a/d, and below E' = 2 Z1 Z2 e^2 d / a^2 (psi_1 > a/d)
+   * psi_2 = (C a psi_1 / (d sqrt 2))^1/2 with C = sqrt 3 and Lindhard's
+   * screening length a = 0.8853 a0 (Z1^2/3 + Z2^2/3)^-1/2. An ion within
+   * about the critical angle (psi_1 or psi_2, whichever applies) of an axis
+   * channels along it.
+   */
+  struct Axis {
+    std::array<int, 3> uvw{0, 0, 1};
+    double angle_deg = 0.0;
+    double spacing_A = 0.0;
+    double psi1_deg = 0.0;
+    double psi2_deg = 0.0;
+    double critical_deg = 0.0; //!< psi_1 if psi_1 <= a/d, else psi_2
+  };
+  std::vector<Axis> axes;
+};
+
+//! The report of every layer that has a crystal (empty: none).
+std::vector<CrystalReport> crystal_reports(const TrimConfig &config);
+//! "[1 1 0]".
+std::string uvw_text(const std::array<int, 3> &uvw);
+
 /*!
  * \brief Where the ions of the beam meet the surface (not TRIM: TRIM's beam
  * is a point). Each ion enters at a random point of the spot. Only the
@@ -433,13 +499,17 @@ struct TrimConfig {
   CrystalPhysics crystal;
   physics::ScatteringMethod scattering = physics::ScatteringMethod::magic;
   physics::BetheBlochOptions bethe_bloch;
+  //! Corrections of the SRIM-2013 stopping tables (not TRIM; off by
+  //! default; physics.stopping_corrections): physics::StoppingCorrections.
+  physics::StoppingCorrections stopping_corrections;
   bool electronic_straggling = true;   //!< TRIM's Eq. 7-47 straggling
   /*!
    * \brief Distribution of the straggled electronic loss of one flight.
    * truncated_gaussian (a normal deviate clipped at zero, the default)
    * reproduces TRIM, including its upward bias of the mean loss when the
    * straggling is comparable to the loss (slow recoils); gamma keeps the
-   * mean loss exact.
+   * mean loss exact. The refined transport only: the crystal transport
+   * always uses gamma (its ~1 A steps would make the clipping bias large).
    */
   enum class StragglingDistribution { gamma, truncated_gaussian };
   StragglingDistribution straggling_distribution =
@@ -523,7 +593,7 @@ struct TrimConfig {
   static constexpr std::size_t all_ions = static_cast<std::size_t>(-1);
   /*!
    * \brief Export of the recorded trajectories to a file (not a TRIM
-   * output; trim2013 transport). One row per recorded point of the first
+   * output; every transport). One row per recorded point of the first
    * #trajectory_ions ions, in ion order for any number of threads: ion,
    * point, track, parent track and point, kind, generation, Z, mass,
    * position, direction, energy, energy before the collision, energy
@@ -538,7 +608,7 @@ struct TrimConfig {
   TrajectoryExport trajectory_export;
   /*!
    * \brief Recoil events for coupling to molecular dynamics (hybrid BCA-MD;
-   * not TRIM; trim2013 transport with full cascades or monolayer steps).
+   * not TRIM; every transport, with full cascades or monolayer steps).
    * For each transition energy E_c: a recoil set in motion with
    * min_energy <= T < E_c, and a moving atom (the ion or a recoil) at the
    * collision where its energy first falls below E_c, are events; nothing
@@ -706,8 +776,11 @@ struct AutoDepthResult {
  * config.auto_depth.test_ions ions stops inside the target, in its last
  * config.auto_depth.margin. Starts from estimate_penetration(), grows the
  * layer while ions are transmitted and shrinks it while the deepest ion
- * stops shallower; at most 12 test runs. Not used for recoil sources
- * (TRIM.DAT atoms start at given depths). \p cancel (optional) stops early.
+ * stops shallower; at most 12 test runs. With the crystal transport the
+ * first test run is made in a box 32 times as deep as that estimate
+ * (channeled ions stop far beyond it), which is then trimmed to the deepest
+ * ion. Not used for recoil sources (TRIM.DAT atoms start at given depths).
+ * \p cancel (optional) stops early.
  * \throws std::invalid_argument, std::runtime_error (invalid configuration)
  */
 AutoDepthResult size_target(TrimConfig &config, const std::atomic<bool> *cancel = nullptr);

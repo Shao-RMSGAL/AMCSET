@@ -112,6 +112,28 @@ struct NearestDirection {
   common::angle_quantity off = 0.0 * common::degree;
 };
 NearestDirection nearest_direction(const Lattice &lattice, const Vec3 &v, int max_index = 12);
+//! The low-index plane (hkl) (|h|,|k|,|l| <= \p max_index) whose normal is
+//! closest to a crystal-frame vector (indices in NearestDirection::uvw).
+NearestDirection nearest_plane(const Lattice &lattice, const Vec3 &v, int max_index = 12);
+
+/*!
+ * \brief The orientation that puts the crystal direction \p normal (crystal
+ * Cartesian frame, any length) along the inward surface normal (lab +x) and
+ * the part of \p lateral in the surface along lab +y.
+ *
+ * Given as Miller indices when a plane with indices up to \p max_index has
+ * its normal within \p tolerance of \p normal: that plane is then the
+ * surface exactly, and the reference is a direction with indices up to
+ * \p max_index if one lies within the tolerance of \p lateral, otherwise the
+ * automatic one with the twist that makes up the difference. Any other
+ * \p normal gives Bunge Euler angles (no twist), which are exact.
+ * \throws std::invalid_argument if \p normal is zero or \p lateral has no
+ * part in the surface.
+ */
+Orientation orientation_for_frame(const Lattice &lattice, const Vec3 &normal, const Vec3 &lateral,
+                                  int max_index = 6,
+                                  common::angle_quantity tolerance = 0.05 * common::degree,
+                                  const std::string &where = "orientation");
 
 //! "[1 1 0]"-style text of indices (integers printed without decimals).
 std::string format_indices(const std::vector<double> &v, char open = '[', char close = ']');

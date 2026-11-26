@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata (software centres, Flathub). Configured by packaging/CMakeLists.txt. -->
+<component type="desktop-application">
+  <id>io.github.Shao_RMSGAL.AMCSET</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later AND LicenseRef-SRIM-noncommercial</project_license>
+  <name>AMCSET</name>
+  <summary>Simulate ions in matter and the radiation damage they cause</summary>
+  <developer id="edu.tamu">
+    <name>Texas A&amp;M University</name>
+  </developer>
+  <description>
+    <p>
+      AMCSET is a Monte Carlo simulator of ion transport and radiation damage in
+      layered targets. Its SRIM mode reproduces SRIM-2013's TRIM statistically,
+      reads and writes TRIM.IN and TRIM's output files, and runs much faster on
+      all processor cores.
+    </p>
+    <ul>
+      <li>Ranges, damage (vacancies, replacements, displacements per atom by several damage models), ionization, sputtering and transmission</li>
+      <li>Crystalline targets: ions channel along the lattice of single crystals in any orientation</li>
+      <li>Live plots, tables and 3D views of the ion and recoil paths while the calculation runs</li>
+      <li>Results as TRIM text files, CSV, JSON and Parquet; trajectory and event files for molecular dynamics</li>
+      <li>A command-line program for scripts and computing clusters</li>
+    </ul>
+    <p>
+      The bundled SRIM-2013 stopping tables are derived from SRIM (J. F. Ziegler)
+      and are free for non-commercial use only.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.Shao_RMSGAL.AMCSET.desktop</launchable>
+  <url type="homepage">@PROJECT_HOMEPAGE_URL@</url>
+  <url type="bugtracker">@PROJECT_HOMEPAGE_URL@/issues</url>
+  <url type="vcs-browser">@PROJECT_HOMEPAGE_URL@</url>
+  <categories>
+    <category>Science</category>
+    <category>Physics</category>
+  </categories>
+  <keywords>
+    <keyword>SRIM</keyword>
+    <keyword>TRIM</keyword>
+    <keyword>ion implantation</keyword>
+    <keyword>radiation damage</keyword>
+    <keyword>channeling</keyword>
+  </keywords>
+  <provides>
+    <binary>amcset</binary>
+    <binary>amcset-gui</binary>
+  </provides>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@PROJECT_VERSION@" date="@AMCSET_RELEASE_DATE@">
+      <description>
+        <p>First stable release: SRIM mode validated against TRIM-2013, crystal transport, packages for Windows and Linux.</p>
+      </description>
+    </release>
+  </releases>
+</component>

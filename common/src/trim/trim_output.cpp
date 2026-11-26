@@ -777,6 +777,49 @@ std::string TrimSimulation::summary_json() const {
       << ", \"transmitted_recoils_per_ion\": " << json_number(t.transmitted_recoils[i] / n) << "}";
   }
   j << "],\n";
+  if (const auto crystals = crystal_reports(config_); !crystals.empty()) {
+    // The crystals' orientation (not TRIM; docs/OUTPUT.md "Crystals").
+    const auto vec = [&](const crystal::Vec3 &v) {
+      return "[" + json_number(v.x) + ", " + json_number(v.y) + ", " + json_number(v.z) + "]";
+    };
+    const auto mat = [&](const crystal::Mat3 &m) { return "[" + vec(m[0]) + ", " + vec(m[1]) + ", " + vec(m[2]) + "]"; };
+    const auto dir = [&](const std::array<int, 3> &uvw, double off) {
+      return "{\"uvw\": \"" + uvw_text(uvw) + "\", \"off_deg\": " + json_number(off) + "}";
+    };
+    j << "  \"crystals\": [";
+    for (std::size_t i = 0; i < crystals.size(); ++i) {
+      const auto &r = crystals[i];
+      if (i) j << ",";
+      j << "\n    {\"layer\": " << r.layer + 1 << ", \"layer_name\": \"" << json_escape(r.layer_name)
+        << "\", \"cell\": \"" << json_escape(r.cell_name) << "\", \"followed\": " << (r.followed ? "true" : "false")
+        << ", \"top_A\": " << json_number(r.top_A) << ",\n     \"lattice_vectors_A\": " << mat(r.lattice_A)
+        << ",\n     \"rotation_crystal_to_trim_axes\": " << mat(r.to_trim)
+        << ",\n     \"rotation_crystal_to_output_axes\": " << mat(r.to_output)
+        << ",\n     \"euler_bunge_deg\": [" << json_number(r.euler_deg[0]) << ", " << json_number(r.euler_deg[1])
+        << ", " << json_number(r.euler_deg[2]) << "], \"depth_direction\": " << dir(r.depth_uvw, r.depth_off_deg)
+        << ", \"trim_y_direction\": " << dir(r.y_uvw, r.y_off_deg)
+        << ", \"trim_z_direction\": " << dir(r.z_uvw, r.z_off_deg)
+        << ",\n     \"beam_direction\": " << dir(r.beam_uvw, r.beam_off_deg)
+        << ", \"beam_unit_vector_crystal\": " << vec(r.beam_crystal) << ", \"tilt_deg\": " << json_number(r.tilt_deg)
+        << ", \"twist_deg\": " << json_number(r.twist_deg) << ", \"temperature_K\": " << json_number(r.temperature_K)
+        << ",\n     \"vibrations\": [";
+      for (std::size_t k = 0; k < r.vibrations.size(); ++k) {
+        const auto &v = r.vibrations[k];
+        j << (k ? ", " : "") << "{\"z\": " << v.z << ", \"rms_A\": " << json_number(v.rms_A)
+          << ", \"from_table\": " << (v.from_table ? "true" : "false") << "}";
+      }
+      j << "],\n     \"axes_near_beam\": [";
+      for (std::size_t k = 0; k < r.axes.size(); ++k) {
+        const auto &a = r.axes[k];
+        j << (k ? ", " : "") << "{\"uvw\": \"" << uvw_text(a.uvw) << "\", \"angle_deg\": " << json_number(a.angle_deg)
+          << ", \"spacing_A\": " << json_number(a.spacing_A) << ", \"psi1_deg\": " << json_number(a.psi1_deg)
+          << ", \"psi2_deg\": " << json_number(a.psi2_deg) << ", \"critical_deg\": " << json_number(a.critical_deg)
+          << "}";
+      }
+      j << "]}";
+    }
+    j << "],\n";
+  }
   if (config_.transport == TrimConfig::Transport::trim2013) {
     // Damage models of the primary knock-on atoms (docs/OUTPUT.md "dpa"), per ion.
     j << "  \"damage_models\": {\"damage_energy_eV_per_ion\": " << json_number(t.total_pka_damage_energy / n)

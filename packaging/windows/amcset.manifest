@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Application manifest of amcset.exe and amcset-gui.exe, merged by the linker
+  with its own (which requests asInvoker: no elevation).
+  - supportedOS: Windows 10 and 11, so that version queries are not shimmed.
+  - longPathAware: paths beyond MAX_PATH (260 characters) work where the
+    system allows them (the LongPathsEnabled policy).
+  - activeCodePage UTF-8: the narrow (char) Windows and C runtime functions,
+    the command line and std::filesystem conversions use UTF-8, the encoding
+    of scenario files, so that any file name works.
+  - dpiAwareness Per-Monitor v2 (Per-Monitor before Windows 10 1703): sharp at
+    every display scale. It is also Qt's default, which Qt then keeps silently.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+    </application>
+  </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2, PerMonitor</dpiAwareness>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>

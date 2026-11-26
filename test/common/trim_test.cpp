@@ -235,6 +235,18 @@ TEST(TrimConfig, DamageNamesAndValidation) {
   EXPECT_FALSE(c.describe().empty());
 }
 
+TEST(DataFiles, ElectronTablesAreFoundOutsideTheSourceTree) {
+  // The native engine's electron tables: installed as share/amcset/electrons
+  // (found from any working directory), and in common/assets of the source
+  // tree for a build.
+  for (const char *name : {"electron_screening_parameters.csv", "mott_scattering_parameters.csv"}) {
+    const auto p = data::find_electron_table(name);
+    ASSERT_FALSE(p.empty()) << name;
+    EXPECT_EQ(p.filename().string(), name);
+  }
+  EXPECT_TRUE(data::find_electron_table("no_such_table.csv").empty());
+}
+
 TEST(TrimConfig, BundledSrimTablesAreTheDefault) {
   // TRIM.IN and scenario files default to the SRIM-2013 tables of data/srim2013.
   const auto path = data::bundled_srim_stopping_table();
@@ -1671,8 +1683,8 @@ TEST(TrimMdEvents, SettingsAreValidated) {
   bad.damage = DamageCalculation::kinchin_pease;
   EXPECT_NE(message(bad).find("full-cascade"), std::string::npos);
   bad = c;
-  bad.transport = TrimConfig::Transport::refined;
-  EXPECT_NE(message(bad).find("trim2013"), std::string::npos);
+  bad.transport = TrimConfig::Transport::refined; // (every transport writes the files)
+  EXPECT_EQ(message(bad), "");
   bad = c;
   bad.md_events.transition_energies = {2000.0 * electron_volt, 1000.0 * electron_volt};
   EXPECT_NE(message(bad).find("increasing order"), std::string::npos);
@@ -1978,8 +1990,8 @@ TEST(TrimCrystal, NamesAndValidation) {
   bad.ion.spot.shape = BeamSpot::Shape::point; // a point has no size
   EXPECT_NO_THROW(bad.validate());
   bad = c;
-  bad.auto_depth.enabled = true;
-  EXPECT_THROW(bad.validate(), std::invalid_argument);
+  bad.auto_depth.enabled = true; // sized in a deep box (TrimCrystal.AutomaticDepthHoldsTheChanneledIons)
+  EXPECT_NO_THROW(bad.validate());
   bad = c;
   bad.source = TrimConfig::Source::particle_recoils;
   bad.particles = sample_particles(14, 3, 1e3, 100.0).particles;
@@ -2116,6 +2128,40 @@ TEST(TrimCrystal, ChannelsAreDeeperAndCleaner) {
   EXPECT_GT(screened.range.mean(), 1.1 * tilted.range.mean());
 }
 
+// The automatic target depth with the crystal transport: the box holds the
+// channeled ions (far beyond the amorphous estimate), the deepest of them in
+// its last margin, from a far too thin and a far too thick start alike.
+TEST(TrimCrystal, AutomaticDepthHoldsTheChanneledIons) {
+  std::vector<double> sized;
+  for (const double start_A : {50.0, 1e7}) {
+    auto c = crystal_config(5, 30.0, silicon(start_A), 10, DamageCalculation::full_cascade);
+    c.auto_depth.enabled = true;
+    c.auto_depth.test_ions = 200;
+    const auto r = size_target(c);
+    EXPECT_TRUE(r.changed);
+    EXPECT_EQ(r.transmitted, 0u);
+    EXPECT_LE(r.runs, 3u) << joined(r.notes); // the deep box, the trimmed one
+    const double total = in_units(c.target_thickness(), angstrom);
+    const double deepest = in_units(r.deepest, angstrom);
+    EXPECT_LE(deepest, total);
+    EXPECT_GE(deepest, (1.0 - c.auto_depth.margin) * total * (1.0 - 1e-9)) << joined(r.notes);
+    // Channeled along <001>: deeper than the estimate that knows no lattice.
+    EXPECT_GT(deepest, 1.5 * in_units(estimate_deepest(c), angstrom)) << joined(r.notes);
+    EXPECT_EQ(c.damage, DamageCalculation::full_cascade);
+    EXPECT_EQ(c.ion_count, 10u);
+    EXPECT_NE(joined(r.notes).find("crystal transport"), std::string::npos) << joined(r.notes);
+    EXPECT_NO_THROW(c.validate());
+    // The calculation itself, in the sized box: the same ions, none transmitted.
+    auto run = c;
+    run.auto_depth.enabled = false;
+    run.ion_count = 200;
+    run.damage = DamageCalculation::kinchin_pease;
+    EXPECT_EQ(run_tallies(run).transmitted, 0u);
+    sized.push_back(total);
+  }
+  EXPECT_EQ(sized[0], sized[1]);
+}
+
 TEST(TrimCrystal, ThermalVibrationsDechannel) {
   // The hotter the crystal, the larger the vibrations and the sooner the
   // ions leave the <001> channel; a static lattice channels best.
@@ -2189,6 +2235,23 @@ TEST(TrimCrystal, AmorphousLayersTakeRandomPartners) {
   EXPECT_LT(rel(t.range.mean(), ref.range.mean()), 0.06);
   EXPECT_LT(rel(t.total_vacancies, ref.total_vacancies), 0.06);
   EXPECT_LT(rel(t.total_ionization_ion, ref.total_ionization_ion), 0.03);
+}
+
+TEST(TrimCrystal, HeavySlowIonsKeepTheAmorphousRange) {
+  // 30 keV W into amorphous W: large-angle collisions, whose deflection
+  // point lies x1 = p tan(theta/2) before the closest approach. One partner
+  // per monolayer of path and the electronic loss charged once: the range
+  // is TRIM's. (Charging the last x1 again and starting the next monolayer
+  // at the deflection point made it 4.9 % short: 50.3 against 52.9 A with
+  // 20000 ions.) 6000 ions: the ratio's standard error is about 1 %.
+  auto layer = crystal_layer("bcc", {74}, 3.165, 2000.0, 310.0);
+  layer.crystal.reset();
+  auto c = crystal_config(74, 30.0, layer, 6000);
+  const auto t = run_tallies(c);
+  c.transport = TrimConfig::Transport::trim2013;
+  const auto ref = run_tallies(c);
+  EXPECT_NEAR(ref.range.mean(), 52.9, 1.5);
+  EXPECT_LT(rel(t.range.mean(), ref.range.mean()), 0.025);
 }
 
 TEST(TrimCrystal, AlloysInterstitialAtomsAndSputtering) {
@@ -2384,4 +2447,242 @@ TEST(TrimCrystal, PolycrystalGrains) {
   EXPECT_THROW(TrimSimulation{unread}, std::invalid_argument);
   auto bad = grains(1.0, crystal::Polycrystal::Texture::random, 0.0);
   EXPECT_THROW(bad.validate(), std::invalid_argument); // grains of 1 A
+}
+
+// The trajectory and MD event files in the refined and crystal transports:
+// the recorded points form a tree with times, recording changes no tally,
+// and in the handoff mode what MD takes plus what the BCA books is the ion
+// energy.
+TEST(TrimTrajectories, EveryTransportRecordsTreesAndEvents) {
+  struct Case {
+    const char *name;
+    TrimConfig config;
+  };
+  std::vector<Case> cases;
+  {
+    auto c = md_case(20.0, 30);
+    c.transport = TrimConfig::Transport::refined;
+    cases.push_back({"refined", c});
+  }
+  {
+    auto c = crystal_config(26, 20.0, crystal_layer("bcc", {26}, 2.8665, 3000.0, 420.0), 30,
+                            DamageCalculation::full_cascade);
+    c.ion.angle = 7.0 * amcset::common::degree;
+    c.layers[0].elements[0].displacement_energy = 40.0 * electron_volt;
+    c.threads = 1;
+    cases.push_back({"crystal", c});
+  }
+  {
+    // The crystal transport through an amorphous layer (random partners).
+    auto c = md_case(20.0, 30);
+    c.transport = TrimConfig::Transport::crystal;
+    cases.push_back({"crystal, amorphous layer", c});
+  }
+  for (auto &[name, plain] : cases) {
+    SCOPED_TRACE(name);
+    TrimSimulation reference(plain);
+    reference.run();
+
+    // Points: one birth per track, the parent's collision point recorded
+    // before the child's birth and near it (the struck atom sits within
+    // an impact parameter of the path), times that never decrease along a
+    // track, and the energies of each collision.
+    auto c = plain;
+    c.trajectory_ions = TrimConfig::all_ions;
+    c.md_events.file = "events.csv";
+    c.md_events.transition_energies = {300.0 * electron_volt, 2000.0 * electron_volt};
+    c.trajectory_export.file = "traj.csv";
+    c.output_directory = temp_dir(std::string("traj_") + (name[0] == 'r' ? "r" : name[8] == ',' ? "ca" : "c")).string();
+    c.outputs.formats.clear();
+    TrimSimulation s(c);
+    s.run();
+    EXPECT_EQ(totals(reference.tallies()), totals(s.tallies())) << "recording changed a tally";
+    ASSERT_EQ(s.tallies().md.size(), 2u);
+    EXPECT_GT(s.tallies().md[0].events, s.tallies().md[1].events);
+    EXPECT_GT(s.tallies().md[1].events, 0.0);
+    std::vector<common::CollisionPoint> pts;
+    std::size_t ions = 0;
+    std::size_t recoils = 0;
+    while (s.try_pop_trajectory(pts)) {
+      ++ions;
+      ASSERT_FALSE(pts.empty());
+      EXPECT_EQ(pts.front().kind, common::CollisionPoint::Kind::birth);
+      EXPECT_EQ(pts.front().track, 0u);
+      std::map<std::uint32_t, double> last_time;
+      std::set<std::uint32_t> born;
+      std::set<std::uint32_t> ended;
+      for (std::size_t i = 0; i < pts.size(); ++i) {
+        const auto &p = pts[i];
+        EXPECT_EQ(p.point_index, i);
+        if (p.kind == common::CollisionPoint::Kind::birth) {
+          EXPECT_TRUE(born.insert(p.track).second) << "two births of track " << p.track;
+          if (p.track != 0) {
+            ++recoils;
+            ASSERT_LT(p.parent_point, i);
+            const auto &q = pts[p.parent_point];
+            EXPECT_EQ(q.track, p.parent_track);
+            EXPECT_LE(q.time, p.time + 1e-21);
+            const double dx = in_units(q.coordinate.x_ - p.coordinate.x_, angstrom);
+            const double dy = in_units(q.coordinate.y_ - p.coordinate.y_, angstrom);
+            const double dz = in_units(q.coordinate.z_ - p.coordinate.z_, angstrom);
+            EXPECT_LT(std::sqrt(dx * dx + dy * dy + dz * dz), 15.0) << "track " << p.track;
+            EXPECT_GT(q.energy_transferred_eV, 0.0);
+          }
+        } else {
+          EXPECT_TRUE(born.count(p.track)) << "point before the birth of track " << p.track;
+          EXPECT_FALSE(ended.count(p.track)) << "point after the end of track " << p.track;
+        }
+        if (p.kind == common::CollisionPoint::Kind::stop || p.kind == common::CollisionPoint::Kind::exit) {
+          ended.insert(p.track);
+        }
+        if (last_time.count(p.track)) {
+          EXPECT_GE(p.time, last_time[p.track]);
+        }
+        last_time[p.track] = p.time;
+        if (p.kind == common::CollisionPoint::Kind::collision && p.energy_before_eV > 0.0) {
+          EXPECT_NEAR(p.energy_before_eV - p.energy_transferred_eV - p.electronic_loss_eV, p.energy_eV,
+                      1e-9 * p.energy_before_eV + 1e-9);
+        }
+      }
+      EXPECT_GT(pts.back().time, 0.0);
+    }
+    EXPECT_EQ(ions, 30u);
+    EXPECT_GT(recoils, 30u);
+    const auto events = read_file(std::filesystem::path(c.output_directory) / "events.csv");
+    EXPECT_GT(events.size(), 200u);
+    EXPECT_GT(std::filesystem::file_size(std::filesystem::path(c.output_directory) / "traj.csv"), 1000u);
+
+    // Handoff: what MD takes over plus what the BCA deposits and what
+    // leaves the target is the ion energy; fewer atoms are followed.
+    auto h = plain;
+    h.md_events.file = "events.csv";
+    h.md_events.transition_energies = {1000.0 * electron_volt};
+    h.md_events.handoff = true;
+    h.output_directory = c.output_directory;
+    h.outputs.formats.clear();
+    TrimSimulation handed(h);
+    handed.run();
+    const auto &t = handed.tallies();
+    ASSERT_EQ(t.md.size(), 1u);
+    const double e0 = 20000.0;
+    const double md_share = t.md[0].energy_eV / (e0 * static_cast<double>(t.ions));
+    EXPECT_GT(md_share, 0.05);
+    EXPECT_NEAR(energy_balance(handed, e0) + md_share, energy_balance(reference, e0), 0.01);
+    EXPECT_LT(t.recoils_followed, reference.tallies().recoils_followed);
+  }
+}
+
+TEST(TrimCrystal, OrientationIsReported) {
+  // Si (0 0 1) with [1 1 0] along TRIM's y: the beam at 7 degrees tilt,
+  // twist 0, travels 7 degrees from [0 0 1].
+  auto c = crystal_config(5, 30.0, silicon(), 30, DamageCalculation::full_cascade);
+  c.ion.angle = 7.0 * amcset::common::degree;
+  auto reports = crystal_reports(c);
+  ASSERT_EQ(reports.size(), 1u);
+  auto r = reports.front();
+  EXPECT_TRUE(r.followed);
+  EXPECT_EQ(r.depth_uvw, (std::array<int, 3>{0, 0, 1}));
+  EXPECT_NEAR(r.depth_off_deg, 0.0, 1e-9);
+  EXPECT_EQ(r.y_uvw, (std::array<int, 3>{1, 1, 0}));
+  // Bunge angles that give back the rotation.
+  crystal::Orientation o;
+  o.kind = crystal::OrientationKind::euler;
+  o.euler_deg = r.euler_deg;
+  const auto again = crystal::rotation(c.layers[0].crystal->cell.lattice, o);
+  for (int i = 0; i < 3; ++i) {
+    for (int k = 0; k < 3; ++k) EXPECT_NEAR(again[i][k], r.to_trim[i][k], 1e-12);
+  }
+  // The output axes are TRIM's (y, z, x).
+  for (int k = 0; k < 3; ++k) {
+    EXPECT_EQ(r.to_output[0][k], r.to_trim[1][k]);
+    EXPECT_EQ(r.to_output[2][k], r.to_trim[0][k]);
+  }
+  // 7 degrees from [0 0 1]; Lindhard's angle along <001> of Si (spacing
+  // a = 5.431 A) for 30 keV B: 0.307 sqrt(5 * 14 / (5.431 * 0.030)) degrees.
+  ASSERT_FALSE(r.axes.empty());
+  EXPECT_EQ(r.axes.front().uvw, (std::array<int, 3>{0, 0, 1}));
+  EXPECT_NEAR(r.axes.front().angle_deg, 7.0, 1e-9);
+  EXPECT_NEAR(r.axes.front().spacing_A, 5.431, 1e-9);
+  EXPECT_NEAR(r.axes.front().psi1_deg, 0.307 * std::sqrt(5.0 * 14.0 / (5.431 * 0.030)), 0.01);
+  // Below E' psi1 exceeds a/d (a = 0.8853 a0 (5^2/3 + 14^2/3)^-1/2 =
+  // 0.1585 A: 1.67 degrees), and the critical angle is psi2 =
+  // (sqrt 3 a psi1 / (d sqrt 2))^1/2 = 3.6 degrees.
+  {
+    const double psi1 = r.axes.front().psi1_deg * pi_v / 180.0;
+    const double a = 0.8853 * 0.529177 / std::sqrt(std::pow(5.0, 2.0 / 3.0) + std::pow(14.0, 2.0 / 3.0));
+    const double psi2 = std::sqrt(std::sqrt(3.0) * a * psi1 / (5.431 * std::sqrt(2.0))) * 180.0 / pi_v;
+    EXPECT_NEAR(r.axes.front().psi2_deg, psi2, 1e-9);
+    EXPECT_NEAR(r.axes.front().critical_deg, psi2, 1e-9);
+    EXPECT_NEAR(psi2, 3.6, 0.1);
+  }
+  // The mean spacing of the atoms along a row: a / sqrt 2 along <1 1 0> of
+  // diamond; along <1 1 1> two atoms per a sqrt 3 (a sqrt(3) / 4 and
+  // 3 a sqrt(3) / 4 apart alternately), a sqrt(3) / 2 on average. At 54.74
+  // degrees the beam runs along [1 1 1].
+  c.ion.angle = std::atan(std::sqrt(2.0)) * amcset::common::radian;
+  r = crystal_reports(c).front();
+  EXPECT_EQ(r.beam_uvw, (std::array<int, 3>{1, 1, 1}));
+  EXPECT_NEAR(r.beam_off_deg, 0.0, 1e-6);
+  ASSERT_FALSE(r.axes.empty());
+  EXPECT_EQ(r.axes.front().uvw, (std::array<int, 3>{1, 1, 1}));
+  EXPECT_NEAR(r.axes.front().spacing_A, 5.431 * std::sqrt(3.0) / 2.0, 1e-9);
+  {
+    auto c110 = crystal_config(5, 30.0, crystal_layer("diamond", {14}, 5.431, 20000.0, 645.0, {1, 1, 0}, {0, 0, 1}), 1);
+    const auto r110 = crystal_reports(c110).front();
+    EXPECT_EQ(r110.beam_uvw, (std::array<int, 3>{1, 1, 0}));
+    ASSERT_FALSE(r110.axes.empty());
+    EXPECT_EQ(r110.axes.front().uvw, (std::array<int, 3>{1, 1, 0}));
+    EXPECT_NEAR(r110.axes.front().spacing_A, 5.431 / std::sqrt(2.0), 1e-9);
+  }
+  // In summary.json, the result tables and the export files.
+  c.ion.angle = 7.0 * amcset::common::degree;
+  c.trajectory_ions = 3;
+  c.trajectory_export.file = "traj.csv";
+  c.md_events.file = "events.csv";
+  c.md_events.transition_energies = {1000.0 * electron_volt};
+  c.output_directory = temp_dir("crystal_report").string();
+  c.outputs.formats = {output::Format::json};
+  c.ion.spot.width = c.ion.spot.height = 50.0 * angstrom;
+  TrimSimulation s(c);
+  s.run();
+  const std::string summary = s.summary_json();
+  EXPECT_NE(summary.find("\"crystals\": ["), std::string::npos);
+  EXPECT_NE(summary.find("\"rotation_crystal_to_output_axes\""), std::string::npos);
+  EXPECT_NE(summary.find("\"axes_near_beam\": [{\"uvw\": \"[0 0 1]\""), std::string::npos);
+  const auto d = make_dataset(s);
+  const auto *table = d.find("crystals");
+  ASSERT_NE(table, nullptr);
+  ASSERT_EQ(table->rows(), 1u);
+  const auto traj = read_file(std::filesystem::path(c.output_directory) / "traj.csv");
+  ASSERT_GT(traj.size(), 100u);
+  EXPECT_NE(traj.substr(0, traj.find('\n')).find(",lattice_dx_A,lattice_dy_A"), std::string::npos);
+  const auto ev = read_file(std::filesystem::path(c.output_directory) / "events.csv");
+  EXPECT_NE(ev.substr(0, ev.find('\n')).find(",lattice_dx_A,lattice_dy_A"), std::string::npos);
+  // Offsets within the spot, and the same for every row of an ion.
+  std::istringstream lines(traj);
+  std::string line;
+  std::getline(lines, line);
+  std::map<std::string, std::string> per_ion;
+  while (std::getline(lines, line)) {
+    const auto ion = line.substr(0, line.find(','));
+    const auto tail = line.substr(line.rfind(',', line.rfind(',') - 1) + 1);
+    const double dx = std::stod(tail.substr(0, tail.find(',')));
+    EXPECT_LE(std::abs(dx), 25.0);
+    if (per_ion.count(ion)) {
+      EXPECT_EQ(per_ion[ion], tail);
+    }
+    per_ion[ion] = tail;
+  }
+  EXPECT_EQ(per_ion.size(), 3u);
+  // Amorphous runs keep the columns they had.
+  auto amorphous = md_case(10.0, 2);
+  amorphous.trajectory_ions = 2;
+  amorphous.trajectory_export.file = "traj.csv";
+  amorphous.output_directory = temp_dir("crystal_report_amorphous").string();
+  amorphous.outputs.formats.clear();
+  TrimSimulation a(amorphous);
+  a.run();
+  const auto plain = read_file(std::filesystem::path(amorphous.output_directory) / "traj.csv");
+  EXPECT_EQ(plain.substr(0, plain.find('\n')).find("lattice_dx_A"), std::string::npos);
+  EXPECT_TRUE(crystal_reports(amorphous).empty());
 }

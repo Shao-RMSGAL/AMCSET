@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=AMCSET
+GenericName=Ion Transport Simulator
+Comment=Monte Carlo transport of ions in matter and the radiation damage they cause (SRIM-compatible)
+Exec=amcset-gui %f
+TryExec=amcset-gui
+Icon=io.github.Shao_RMSGAL.AMCSET
+Terminal=false
+StartupNotify=true
+StartupWMClass=amcset-gui
+Categories=Science;Physics;
+Keywords=SRIM;TRIM;ion;implantation;radiation;damage;dpa;channeling;Monte Carlo;stopping;

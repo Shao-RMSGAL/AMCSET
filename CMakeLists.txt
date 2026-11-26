@@ -28,7 +28,10 @@ cmake_minimum_required(VERSION 3.23)
 #   AMCSET_BUILD_TESTS  build the GoogleTest suite
 
 # Keep in sync with conanfile.py's version.
-project(amcset VERSION 0.1.0)
+project(amcset VERSION 1.0.0
+        DESCRIPTION "Monte Carlo transport of ions and electrons and radiation damage in layered targets"
+        HOMEPAGE_URL "https://github.com/Shao-RMSGAL/AMCSET"
+        LANGUAGES C CXX)
 
 option(AMCSET_BUILD_GUI "Build the Qt GUI" ON)
 option(AMCSET_BUILD_CLI "Build the command-line program" ON)
@@ -70,6 +73,12 @@ target_compile_options(compiler_flags INTERFACE
 # Set AMCSET_MARCH=x86-64-v2 for binaries that run on any recent x86-64 CPU
 # (the Linux AppImage, tools/linux/make_appimage.sh).
 set(AMCSET_MARCH "native" CACHE STRING "-march value of GCC/Clang Release builds")
+# Portable Linux binaries (the CLI tarball of a release): the C++ runtime
+# linked in, so that an older system's libstdc++ is enough.
+option(AMCSET_STATIC_LIBSTDCXX "Link libstdc++ and libgcc statically (GCC)" OFF)
+if(AMCSET_STATIC_LIBSTDCXX AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_link_options(-static-libstdc++ -static-libgcc)
+endif()
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
         set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
 endif()
@@ -143,6 +152,11 @@ if(AMCSET_BUILD_GUI)
     qt_standard_project_setup()
 endif()
 
+# Install layout (bin/, share/amcset/, share/doc/amcset/, ...) and the
+# executables' Windows resources.
+include(GNUInstallDirs)
+include(${PROJECT_SOURCE_DIR}/packaging/windows/resources.cmake)
+
 add_subdirectory(common)
 if(AMCSET_BUILD_CLI)
     add_subdirectory(cli)
@@ -174,3 +188,7 @@ if(AMCSET_BUILD_TESTS)
     enable_testing()
     add_subdirectory(test)
 endif()
+
+# Installation (desktop integration, documents, runtime libraries) and the
+# packages built from it with CPack: docs/RELEASING.md.
+add_subdirectory(packaging)

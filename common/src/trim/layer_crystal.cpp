@@ -21,11 +21,13 @@
 
 #include "trim/trim.h"
 
+#include "crystal/materials.h"
 #include "element_data.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <numeric>
 #include <stdexcept>
 
 namespace amcset {
@@ -138,6 +140,167 @@ void check_layer_crystal(const TargetLayer &layer, const std::string &where) {
       }
     }
   }
+}
+
+std::string uvw_text(const std::array<int, 3> &uvw) {
+  return "[" + std::to_string(uvw[0]) + " " + std::to_string(uvw[1]) + " " + std::to_string(uvw[2]) + "]";
+}
+
+namespace {
+
+double degrees(double rad) { return rad * 180.0 / pi_v; }
+
+//! Mean spacing of the atoms along the row through the cell's first
+//! occupied lattice site in direction \p u (crystal frame, unit vector):
+//! the row's period (the shortest lattice translation along it) over the
+//! number of atoms in one period (two along <1 1 1> of diamond); 0 if none.
+double row_spacing_A(const crystal::UnitCell &cell, const crystal::Vec3 &u) {
+  const crystal::Site *origin = nullptr;
+  for (const auto &s : cell.sites) {
+    if (s.kind == crystal::SiteKind::lattice && !s.occupants.empty()) {
+      origin = &s;
+      break;
+    }
+  }
+  if (origin == nullptr) return 0.0;
+  const crystal::Vec3 r0 = cell.lattice.to_cartesian_A(origin->position);
+  double period = 0.0;
+  std::vector<double> along_row;
+  const int n = 4;
+  for (const auto &s : cell.sites) {
+    if (s.kind != crystal::SiteKind::lattice || s.occupants.empty()) continue;
+    for (int i = -n; i <= n; ++i) {
+      for (int j = -n; j <= n; ++j) {
+        for (int k = -n; k <= n; ++k) {
+          const crystal::Vec3 d =
+              cell.lattice.to_cartesian_A(s.position + crystal::Vec3{double(i), double(j), double(k)}) - r0;
+          const double along = crystal::dot(d, u);
+          if (crystal::norm(d - u * along) > 1e-6 * std::max(1.0, std::abs(along))) continue; // not on the row
+          along_row.push_back(along);
+          if (&s == origin && along > 1e-6 && (period == 0.0 || along < period)) period = along;
+        }
+      }
+    }
+  }
+  if (!(period > 0.0)) return 0.0;
+  std::sort(along_row.begin(), along_row.end());
+  int atoms = 0;
+  double last = -1.0;
+  for (const double a : along_row) {
+    if (a < -1e-6 || a >= period - 1e-6) continue;
+    if (atoms == 0 || a - last > 1e-6) ++atoms;
+    last = a;
+  }
+  return atoms > 0 ? period / atoms : 0.0;
+}
+
+} // namespace
+
+std::vector<CrystalReport> crystal_reports(const TrimConfig &config) {
+  std::vector<CrystalReport> out;
+  double top = 0.0;
+  for (std::size_t li = 0; li < config.layers.size(); ++li) {
+    const auto &l = config.layers[li];
+    const double width = in_units(l.width, angstrom);
+    if (!l.crystal) {
+      top += width;
+      continue;
+    }
+    const auto &c = *l.crystal;
+    const auto &lattice = c.cell.lattice;
+    CrystalReport r;
+    r.layer = li;
+    r.layer_name = l.name;
+    r.cell_name = c.cell.name;
+    r.followed = config.transport == TrimConfig::Transport::crystal;
+    r.top_A = top;
+    r.lattice_A = lattice.vectors_A();
+    r.to_trim = c.rotation();
+    // Output axes: (x, y, z) = (TRIM y, TRIM z, TRIM x).
+    r.to_output = crystal::Mat3::from_rows(r.to_trim[1], r.to_trim[2], r.to_trim[0]);
+    // Bunge angles: R = M g^T with M the sample -> TRIM axes rotation, so
+    // g = R^T M (sample -> crystal); Phi = acos g33, phi1 = atan2(g31, -g32),
+    // phi2 = atan2(g13, g23) (phi1 + phi2 from g11, g12 when Phi = 0).
+    const crystal::Mat3 m = crystal::Mat3::from_rows({0, 0, -1}, {1, 0, 0}, {0, -1, 0});
+    const crystal::Mat3 g = r.to_trim.transposed() * m;
+    const double Phi = std::acos(std::clamp(g[2][2], -1.0, 1.0));
+    double phi1 = 0.0;
+    double phi2 = 0.0;
+    if (std::abs(std::sin(Phi)) > 1e-9) {
+      phi1 = std::atan2(g[2][0], -g[2][1]);
+      phi2 = std::atan2(g[0][2], g[1][2]);
+    } else {
+      phi1 = std::atan2(g[0][1], g[0][0]);
+    }
+    const auto wrap360 = [](double d) { return d < 0.0 ? d + 360.0 : d; };
+    r.euler_deg = {wrap360(degrees(phi1)), degrees(Phi), wrap360(degrees(phi2))};
+    const auto nearest = [&](const crystal::Vec3 &v, std::array<int, 3> &uvw, double &off) {
+      const auto n = crystal::nearest_direction(lattice, v, 12);
+      uvw = n.uvw;
+      off = in_units(n.off, degree);
+    };
+    // The rows of the rotation are the TRIM axes in the crystal frame.
+    nearest(r.to_trim[0], r.depth_uvw, r.depth_off_deg);
+    nearest(r.to_trim[1], r.y_uvw, r.y_off_deg);
+    nearest(r.to_trim[2], r.z_uvw, r.z_off_deg);
+    r.beam_crystal = crystal::beam_in_crystal(lattice, c.orientation, config.ion.angle);
+    nearest(r.beam_crystal, r.beam_uvw, r.beam_off_deg);
+    r.tilt_deg = in_units(config.ion.angle, degree);
+    r.twist_deg = in_units(c.orientation.twist, degree);
+    r.temperature_K = in_units(c.temperature, kelvin);
+    for (const auto &e : l.elements) {
+      CrystalReport::Vibration v;
+      v.z = e.z;
+      if (config.crystal.thermal_vibrations) {
+        if (const auto u = crystal::thermal_amplitude(c, e.z, e.mass, &v.from_table)) v.rms_A = in_units(*u, angstrom);
+      }
+      r.vibrations.push_back(v);
+    }
+    // The low-index axes nearest the beam (one of each pair +-[uvw]).
+    double z2 = 0.0;
+    double atoms = 0.0;
+    for (const auto &[z, count] : c.cell.composition()) {
+      z2 += static_cast<double>(z) * count;
+      atoms += count;
+    }
+    z2 = atoms > 0.0 ? z2 / atoms : 0.0;
+    std::vector<CrystalReport::Axis> axes;
+    for (int u = -2; u <= 2; ++u) {
+      for (int v = -2; v <= 2; ++v) {
+        for (int w = -2; w <= 2; ++w) {
+          if (u == 0 && v == 0 && w == 0) continue;
+          if (std::gcd(std::gcd(std::abs(u), std::abs(v)), std::abs(w)) != 1) continue;
+          const crystal::Vec3 d = crystal::normalized(crystal::direction_vector(lattice, crystal::Vec3{double(u), double(v), double(w)}));
+          const double cosine = crystal::dot(d, r.beam_crystal);
+          if (cosine < 0.0 || (cosine == 0.0 && (u < 0 || (u == 0 && (v < 0 || (v == 0 && w < 0)))))) continue;
+          CrystalReport::Axis a;
+          a.uvw = {u, v, w};
+          a.angle_deg = degrees(std::acos(std::clamp(cosine, -1.0, 1.0)));
+          a.spacing_A = row_spacing_A(c.cell, d);
+          if (a.spacing_A > 0.0 && z2 > 0.0) {
+            const double psi1 = in_units(crystal::lindhard_angle(config.ion.z, static_cast<unsigned>(std::lround(z2)),
+                                                                 a.spacing_A * angstrom, config.ion.energy),
+                                         radian);
+            // Lindhard's screening length (Gemmell Eq. 2.4 with C = sqrt 3;
+            // a0 = 0.529177 A) and the low-energy angle (Eq. 2.28).
+            const double z1 = static_cast<double>(config.ion.z);
+            const double screening = 0.8853 * 0.529177 / std::sqrt(std::pow(z1, 2.0 / 3.0) + std::pow(z2, 2.0 / 3.0));
+            const double psi2 = std::sqrt(std::sqrt(3.0) * screening * psi1 / (a.spacing_A * std::sqrt(2.0)));
+            a.psi1_deg = degrees(psi1);
+            a.psi2_deg = degrees(psi2);
+            a.critical_deg = degrees(psi1 <= screening / a.spacing_A ? psi1 : psi2);
+          }
+          axes.push_back(a);
+        }
+      }
+    }
+    std::sort(axes.begin(), axes.end(), [](const auto &a, const auto &b) { return a.angle_deg < b.angle_deg; });
+    if (axes.size() > 6) axes.resize(6);
+    r.axes = std::move(axes);
+    out.push_back(std::move(r));
+    top += width;
+  }
+  return out;
 }
 
 } // namespace trim

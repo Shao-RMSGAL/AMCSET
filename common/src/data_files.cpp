@@ -80,4 +80,15 @@ std::filesystem::path find(std::string_view relative) {
 
 std::string bundled_srim_stopping_table() { return find(srim_stopping_table).string(); }
 
+std::filesystem::path find_electron_table(std::string_view file) {
+  const auto relative = std::filesystem::path(electron_tables) / std::filesystem::path(file);
+  if (auto p = find(relative.generic_string()); !p.empty()) return p;
+#ifdef AMCSET_SOURCE_ASSETS_DIR
+  std::error_code ec;
+  const auto p = std::filesystem::path(AMCSET_SOURCE_ASSETS_DIR) / std::filesystem::path(file);
+  if (std::filesystem::is_regular_file(p, ec)) return p;
+#endif
+  return {};
+}
+
 } // namespace amcset::data

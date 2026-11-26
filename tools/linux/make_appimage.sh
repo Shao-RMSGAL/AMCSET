@@ -19,9 +19,15 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 work="${AMCSET_APPIMAGE_WORK:-$HOME/amcset-appimage}"
 out="$root/build"
 while getopts "o:" opt; do case $opt in o) out="$OPTARG" ;; *) exit 2 ;; esac; done
-version="$(sed -n 's/^project(amcset VERSION \([0-9.]*\)).*/\1/p' "$root/CMakeLists.txt")"
+version="$(sed -n 's/^project(amcset VERSION \([0-9.]*\).*/\1/p' "$root/CMakeLists.txt")"
 mkdir -p "$work/tools" "$out"
 
+# With AMCSET_BUILD_DIR set (a configured and built tree, e.g. the release
+# workflow's), steps 1-3 are skipped and that build is packaged.
+if [ -n "${AMCSET_BUILD_DIR:-}" ]; then
+  build="$(cd "$AMCSET_BUILD_DIR" && pwd)"
+else
+build="$work/build"
 # 1. Source copy in a native folder (the repository may be on a slow or synchronised mount).
 # (rsync keeps the timestamps of unchanged files, so a rerun rebuilds only what changed.)
 mkdir -p "$work/src"
@@ -48,19 +54,14 @@ cmake -S "$work/src" -B "$work/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DAMCSET_MARCH=x86-64-v2 -DAMCSET_BUILD_TESTS=OFF -DAMCSET_BUILD_GUI=ON -DAMCSET_BUILD_CLI=ON \
   -DAMCSET_QT_RHI_INCLUDE_DIR="$rhi_dir"
 ninja -C "$work/build"
+fi
 
-# 4. AppDir.
+# 4. AppDir: the installed layout (programs, stopping tables, documents,
+#    desktop entry, AppStream metadata, icons, manual pages).
 appdir="$work/AppDir"
 rm -rf "$appdir"
-mkdir -p "$appdir/usr/bin" "$appdir/usr/share/amcset" \
-         "$appdir/usr/share/applications" "$appdir/usr/share/icons/hicolor/scalable/apps" \
-         "$appdir/usr/share/doc/amcset"
-install -m 755 "$work/build/amcset-gui" "$work/build/amcset" "$appdir/usr/bin/"
-cp -r "$work/src/data/srim2013" "$appdir/usr/share/amcset/"
-cp "$work/src/README.md" "$work/src/LICENSE" "$work/src/CHANGELOG.md" "$appdir/usr/share/doc/amcset/" 2>/dev/null || true
-cp -r "$work/src/docs" "$appdir/usr/share/doc/amcset/"
-cp "$root/tools/linux/amcset.desktop" "$appdir/usr/share/applications/"
-cp "$root/tools/linux/amcset.svg" "$appdir/usr/share/icons/hicolor/scalable/apps/amcset.svg"
+DESTDIR="$appdir" cmake --install "$build" --prefix /usr
+app_id="io.github.Shao_RMSGAL.AMCSET"
 # AppRun: the GUI by default; "AMCSET.AppImage amcset run scenario.json" etc. runs the CLI.
 cat > "$work/AppRun" <<'EOF'
 #!/bin/sh
@@ -84,8 +85,8 @@ cd "$work"
 rm -f ./*.AppImage
 "$work/tools/linuxdeploy-x86_64.AppImage" --appdir "$appdir" \
   --executable "$appdir/usr/bin/amcset-gui" --executable "$appdir/usr/bin/amcset" \
-  --desktop-file "$appdir/usr/share/applications/amcset.desktop" \
-  --icon-file "$appdir/usr/share/icons/hicolor/scalable/apps/amcset.svg" \
+  --desktop-file "$appdir/usr/share/applications/$app_id.desktop" \
+  --icon-file "$appdir/usr/share/icons/hicolor/256x256/apps/$app_id.png" \
   --custom-apprun "$work/AppRun" --plugin qt --output appimage
 
 img="$(ls -1 "$work"/*.AppImage | head -1)"

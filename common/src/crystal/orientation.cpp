@@ -158,7 +158,10 @@ Vec3 beam_in_crystal(const Lattice &lattice, const Orientation &o, angle_quantit
   return rotation(lattice, o).transposed() * Vec3{std::cos(t), std::sin(t), 0.0};
 }
 
-NearestDirection nearest_direction(const Lattice &lattice, const Vec3 &v, int max_index) {
+namespace {
+
+//! nearest_direction() (\p plane false) and nearest_plane() (true).
+NearestDirection nearest_indices(const Lattice &lattice, const Vec3 &v, int max_index, bool plane) {
   NearestDirection best;
   double best_angle = 10.0;
   // Larger index sets only win when strictly closer, so the lowest indices
@@ -169,7 +172,8 @@ NearestDirection nearest_direction(const Lattice &lattice, const Vec3 &v, int ma
         for (int w = -n; w <= n; ++w) {
           if (std::max({std::abs(u), std::abs(w2), std::abs(w)}) != n) continue;
           if (std::gcd(std::gcd(std::abs(u), std::abs(w2)), std::abs(w)) != 1) continue;
-          const double a = angle_rad(direction_vector(lattice, Vec3{double(u), double(w2), double(w)}), v);
+          const Vec3 indices{double(u), double(w2), double(w)};
+          const double a = angle_rad(plane ? plane_normal(lattice, indices) : direction_vector(lattice, indices), v);
           if (a < best_angle - 1e-9) {
             best_angle = a;
             best.uvw = {u, w2, w};
@@ -180,6 +184,76 @@ NearestDirection nearest_direction(const Lattice &lattice, const Vec3 &v, int ma
   }
   best.off = best_angle * radian;
   return best;
+}
+
+//! An angle in degrees in [0, 360).
+double wrapped_deg(double rad) {
+  double d = std::fmod(rad * 180.0 / pi_v, 360.0);
+  if (d < 0.0) d += 360.0;
+  return d >= 360.0 ? 0.0 : d + 0.0;
+}
+
+} // namespace
+
+NearestDirection nearest_direction(const Lattice &lattice, const Vec3 &v, int max_index) {
+  return nearest_indices(lattice, v, max_index, false);
+}
+
+NearestDirection nearest_plane(const Lattice &lattice, const Vec3 &v, int max_index) {
+  return nearest_indices(lattice, v, max_index, true);
+}
+
+Orientation orientation_for_frame(const Lattice &lattice, const Vec3 &normal, const Vec3 &lateral, int max_index,
+                                  angle_quantity tolerance, const std::string &where) {
+  if (!(norm(normal) > 0.0) || !std::isfinite(norm(normal))) {
+    throw std::invalid_argument(where + ": the direction of the surface normal is zero");
+  }
+  const auto in_surface = [&](const Vec3 &x) {
+    const Vec3 p = lateral - x * dot(lateral, x);
+    if (!(norm(lateral) > 0.0) || !std::isfinite(norm(lateral)) || norm(p) < 1e-6 * norm(lateral)) {
+      throw std::invalid_argument(where + ": the lateral direction is parallel to the surface normal; it must "
+                                          "have a component in the surface");
+    }
+    return normalized(p);
+  };
+  const double tol = in_units(tolerance, radian);
+  Orientation o;
+  const auto plane = nearest_plane(lattice, normal, max_index);
+  if (in_units(plane.off, radian) <= tol) {
+    o.kind = OrientationKind::miller;
+    o.surface = {double(plane.uvw[0]), double(plane.uvw[1]), double(plane.uvw[2])};
+    const Vec3 x = normalized(plane_normal(lattice, Vec3{o.surface[0], o.surface[1], o.surface[2]}));
+    const Vec3 y = in_surface(x);
+    const auto ref = nearest_direction(lattice, y, max_index);
+    if (in_units(ref.off, radian) <= tol) {
+      o.reference = {double(ref.uvw[0]), double(ref.uvw[1]), double(ref.uvw[2])};
+    } else {
+      // The automatic reference, and the twist from its lateral axes (y0,
+      // z0) to y: rotation() turns them by Rx(twist), y = cos y0 - sin z0.
+      const Mat3 r0 = rotation(lattice, o, where);
+      o.twist = (std::atan2(-dot(y, r0[2]), dot(y, r0[1])) + 0.0) * radian;
+    }
+    return o;
+  }
+  // Bunge Euler angles of R = m g^T (rotation()): g = R^T m.
+  const Vec3 x = normalized(normal);
+  const Vec3 y = in_surface(x);
+  const Mat3 r = Mat3::from_rows(x, y, cross(x, y));
+  const Mat3 m = Mat3::from_rows({0, 0, -1}, {1, 0, 0}, {0, -1, 0});
+  const Mat3 g = r.transposed() * m;
+  const double big_phi = std::acos(std::clamp(g[2][2], -1.0, 1.0));
+  double phi1 = 0.0;
+  double phi2 = 0.0;
+  if (std::hypot(g[2][0], g[2][1]) > 1e-9) {
+    phi1 = std::atan2(g[2][0], -g[2][1]);
+    phi2 = std::atan2(g[0][2], g[1][2]);
+  } else {
+    // Phi = 0 or 180 deg: only phi1 + phi2 (or phi1 - phi2) is defined.
+    phi1 = std::atan2(g[0][1], g[0][0]);
+  }
+  o.kind = OrientationKind::euler;
+  o.euler_deg = {wrapped_deg(phi1), big_phi * 180.0 / pi_v, wrapped_deg(phi2)};
+  return o;
 }
 
 std::string format_indices(const std::vector<double> &v, char open, char close) {

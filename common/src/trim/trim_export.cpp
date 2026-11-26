@@ -23,6 +23,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <unordered_map>
 
 namespace amcset {
 namespace trim {
@@ -46,11 +48,21 @@ const char *kind_text(CollisionPoint::Kind k) {
   return "collision";
 }
 
+//! Crystal transport: where the crystal lattice is for this ion.
+void add_lattice_offset_columns(Table &t) {
+  const char *what = "Crystal transport: the lateral offset of the crystal lattice for this ion (its entry point "
+                     "on the beam spot). A point (x, y, z) of this file is at (x + lattice_dx_A, y + lattice_dy_A, "
+                     "z - top of the layer) in the frame of the layer's lattice, whose origin is a lattice point; "
+                     "the crystal's orientation is in the file's metadata and in summary.json";
+  t.columns.push_back(Column::real("lattice_dx_A", "Lattice offset x", Dimension::length, "A", {}, what));
+  t.columns.push_back(Column::real("lattice_dy_A", "Lattice offset y", Dimension::length, "A", {}, what));
+}
+
 //! The trajectory file's columns (keys carry the units; docs/OUTPUT.md).
-Table trajectory_schema() {
+Table trajectory_schema(bool lattice_offsets) {
   Table t;
   t.key = "trajectories";
-  t.title = "Trajectory points (SRIM mode, trim2013 transport)";
+  t.title = "Trajectory points (SRIM mode)";
   t.description = "One row per recorded point. Axes: z is the depth below the surface, x and y lateral "
                   "(TRIM's y and z). Energies and directions are those after the collision at the point.";
   const auto i = [&](const char *k, const char *label, const char *d) { t.columns.push_back(Column::integer(k, label, {}, d)); };
@@ -79,11 +91,12 @@ Table trajectory_schema() {
   r("dE_e_eV", "Electronic loss", Dimension::energy, "eV",
     "Collision points: electronic energy loss over the flight that led to the point");
   r("t_ps", "Time", Dimension::time, "ps", "Time since the ion entered (flight length / speed, summed)");
+  if (lattice_offsets) add_lattice_offset_columns(t);
   return t;
 }
 
 //! The MD event file's columns.
-Table event_schema() {
+Table event_schema(bool lattice_offsets) {
   Table t;
   t.key = "md_events";
   t.title = "Recoil events for molecular dynamics (hybrid BCA-MD)";
@@ -114,6 +127,7 @@ Table event_schema() {
   i("parent_track", "Parent track", "Track of the atom that set it in motion (-1: none)");
   i("parent_event", "Parent event",
     "Always -1: an event's atom is not followed further for its E_c, so no event descends from another");
+  if (lattice_offsets) add_lattice_offset_columns(t);
   return t;
 }
 
@@ -150,14 +164,58 @@ void number_events(std::vector<MdEvent> &events, std::size_t first) {
   }
 }
 
+bool exports_lattice_offsets(const TrimConfig &config) {
+  if (config.transport != TrimConfig::Transport::crystal) return false;
+  return std::any_of(config.layers.begin(), config.layers.end(), [](const TargetLayer &l) { return l.crystal.has_value(); });
+}
+
+std::vector<std::pair<std::string, std::string>> crystal_metadata(const TrimConfig &config) {
+  std::vector<std::pair<std::string, std::string>> m;
+  const auto num = [](double v) {
+    char buf[40];
+    std::snprintf(buf, sizeof buf, "%.10g", v);
+    return std::string(buf);
+  };
+  const auto matrix = [&](const crystal::Mat3 &r) {
+    std::string s;
+    for (int i = 0; i < 3; ++i) {
+      for (int j = 0; j < 3; ++j) s += (i == 0 && j == 0 ? "" : " ") + num(r[i][j]);
+    }
+    return s;
+  };
+  for (const auto &r : crystal_reports(config)) {
+    const std::string k = "crystal.layer" + std::to_string(r.layer + 1) + ".";
+    m.emplace_back(k + "name", r.cell_name);
+    m.emplace_back(k + "followed", r.followed ? "yes (crystal transport)" : "no (treated as amorphous)");
+    m.emplace_back(k + "top_A", num(r.top_A));
+    m.emplace_back(k + "lattice_vectors_A", matrix(r.lattice_A));
+    m.emplace_back(k + "rotation_crystal_to_file_axes", matrix(r.to_output));
+    m.emplace_back(k + "euler_bunge_deg", num(r.euler_deg[0]) + " " + num(r.euler_deg[1]) + " " + num(r.euler_deg[2]));
+    m.emplace_back(k + "depth_direction", uvw_text(r.depth_uvw) + " + " + num(r.depth_off_deg) + " deg");
+    m.emplace_back(k + "beam_direction", uvw_text(r.beam_uvw) + " + " + num(r.beam_off_deg) + " deg");
+    m.emplace_back(k + "tilt_twist_deg", num(r.tilt_deg) + " " + num(r.twist_deg));
+    m.emplace_back(k + "temperature_K", num(r.temperature_K));
+  }
+  if (!m.empty()) {
+    m.emplace_back("crystal.convention",
+                   "rotation_crystal_to_file_axes maps the crystal's Cartesian frame (lattice_vectors_A, rows) to "
+                   "the file's axes (x, y lateral, z depth); the lattice origin of a layer is at its top, shifted "
+                   "laterally per ion by the columns lattice_dx_A, lattice_dy_A");
+  }
+  return m;
+}
+
 TrimSimulation::ExportWriters::ExportWriters(const TrimConfig &c,
-                                             const std::vector<std::pair<std::string, std::string>> &metadata) {
+                                             const std::vector<std::pair<std::string, std::string>> &given) {
+  lattice_offsets = exports_lattice_offsets(c);
+  auto metadata = given;
+  for (auto &kv : crystal_metadata(c)) metadata.push_back(std::move(kv));
   if (!c.trajectory_export.file.empty()) {
     auto m = metadata;
     m.emplace_back("points", c.trajectory_export.births_only ? "births" : "all");
     m.emplace_back("min_energy_eV", std::to_string(common::in_units(c.trajectory_export.min_energy, common::electron_volt)));
     trajectories = std::make_unique<output::StreamTableWriter>(export_path(c.trajectory_export.file, c.output_directory),
-                                                               trajectory_schema(), m);
+                                                               trajectory_schema(lattice_offsets), m);
   }
   if (c.md_events.enabled()) {
     auto m = metadata;
@@ -171,13 +229,21 @@ TrimSimulation::ExportWriters::ExportWriters(const TrimConfig &c,
                                    : std::string("Ed of the struck element"));
     m.emplace_back("mode", c.md_events.handoff ? "handoff" : "record");
     events = std::make_unique<output::StreamTableWriter>(export_path(c.md_events.file, c.output_directory),
-                                                         event_schema(), m);
+                                                         event_schema(lattice_offsets), m);
   }
 }
 
 void TrimSimulation::ExportWriters::write(const ExportBlock &b) {
+  std::unordered_map<std::size_t, std::array<double, 2>> offset;
+  for (const auto &[ion, o] : b.lattice_offsets) offset[ion] = o;
+  const auto offsets = [&](Table &t, std::size_t &k, std::size_t ion) {
+    if (!lattice_offsets) return;
+    const auto it = offset.find(ion);
+    push(t, k++, it != offset.end() ? it->second[0] : 0.0);
+    push(t, k++, it != offset.end() ? it->second[1] : 0.0);
+  };
   if (trajectories && !b.points.empty()) {
-    Table t = trajectory_schema();
+    Table t = trajectory_schema(lattice_offsets);
     for (auto &col : t.columns) {
       if (col.type == output::ColumnType::text) col.text.reserve(b.points.size());
       else col.values.reserve(b.points.size());
@@ -206,11 +272,12 @@ void TrimSimulation::ExportWriters::write(const ExportBlock &b) {
       push(t, k++, p.energy_transferred_eV);
       push(t, k++, p.electronic_loss_eV);
       push(t, k++, p.time * 1e12);
+      offsets(t, k, static_cast<std::size_t>(p.ion));
     }
     trajectories->append(t);
   }
   if (events && !b.events.empty()) {
-    Table t = event_schema();
+    Table t = event_schema(lattice_offsets);
     for (const auto &e : b.events) {
       std::size_t k = 0;
       push(t, k++, static_cast<double>(e.ion));
@@ -231,6 +298,7 @@ void TrimSimulation::ExportWriters::write(const ExportBlock &b) {
       push(t, k++, static_cast<double>(e.track));
       push(t, k++, parent_value(e.parent_track));
       push(t, k++, -1.0);
+      offsets(t, k, e.ion);
     }
     events->append(t);
   }

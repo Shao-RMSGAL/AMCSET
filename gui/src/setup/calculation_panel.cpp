@@ -154,6 +154,15 @@ CalculationPanel::CalculationPanel(Scenario *scenario, QWidget *parent)
   sf->insertRow(0, tr("Transport"), transport);
   sf->insertRow(1, QString(), crystal);
   sf->insertRow(2, tr("Electronic stopping"), stopping);
+  auto *nickel = new QCheckBox(tr("Correct the stopping of Ni ions"), srim_);
+  nickel->setToolTip(
+      tr("SRIM-2013's electronic stopping of Ni projectiles is up to 40 % below that of Co and Cu at "
+         "0.02-0.3 MeV/u, in every target, and measured Ni ranges in Fe and Mo are 1.3-1.5 times shorter than "
+         "SRIM-2013's. On: Ni ions (and Ni recoils) take the geometric mean of Co's and Cu's stopping at the same "
+         "velocity, which shortens their ranges by about 1.27 times at 5-12 MeV.\n\n"
+         "Not TRIM: off by default, so that results agree with TRIM.exe. Evidence: docs/VALIDATION.md §3, §4.1, "
+         "§9. (Scenario key physics.stopping_corrections.nickel_ions; SRIM tables only.)"));
+  sf->insertRow(3, QString(), nickel);
   auto *srim_data = path_row(srim_, sf, tr("SRIM Data folder"), true);
   srim_data->setToolTip(tr("Optional: SRIM's Data folder (pair potentials, if requested)"));
   auto *straggling = new QCheckBox(tr("Electronic energy-loss straggling"), srim_);
@@ -197,17 +206,20 @@ CalculationPanel::CalculationPanel(Scenario *scenario, QWidget *parent)
     transport->setEnabled(!on);
   });
   connect(crystal, &QCheckBox::clicked, this, guarded(this, tr("Crystal transport"), [this](bool on) {
-    QString note;
-    const QString err = scenario_->set_crystal_transport(on, &note);
+    const QString err = scenario_->set_crystal_transport(on);
     if (!err.isEmpty()) {
       emit message(tr("Crystal transport: %1").arg(err));
       binder_->refresh(); // the box goes back to what the scenario says
-    } else if (!note.isEmpty()) {
-      emit message(note);
     }
   }));
   binder_->combo(stopping, tr("Electronic stopping"), [](const config::RunConfig &c) { return static_cast<int>(c.trim.stopping_model); },
                  [](config::RunConfig &c, int i) { c.trim.stopping_model = static_cast<physics::ElectronicStoppingModel>(i); });
+  binder_->check(nickel, tr("Ni stopping correction"),
+                 [](const config::RunConfig &c) { return c.trim.stopping_corrections.nickel_ions; },
+                 [](config::RunConfig &c, bool on) { c.trim.stopping_corrections.nickel_ions = on; });
+  binder_->custom([nickel](const config::RunConfig &c) {
+    nickel->setEnabled(c.trim.stopping_model == physics::ElectronicStoppingModel::srim_tables);
+  });
   binder_->text(table, tr("Stopping tables"), [](const config::RunConfig &c) { return QString::fromStdString(c.trim.stopping_table); },
                 [](config::RunConfig &c, const QString &t) {
                   c.trim.stopping_table = t.trimmed().toStdString();
@@ -238,7 +250,10 @@ CalculationPanel::CalculationPanel(Scenario *scenario, QWidget *parent)
          "that the deepest test ion stops inside the target, in its last part (Margin): the layer grows while "
          "ions are transmitted and shrinks while the deepest stops shallower. The first guess comes from the "
          "stopping powers (the ions' path length). The sized thickness replaces the last layer's and can be "
-         "undone.\n\nLeave this off to study transmission through a given target, and for recoil sources "
+         "undone.\n\nWith the crystal transport, channeled ions stop far beyond that guess: the first test run "
+         "is made in a box 32 times as deep, which is then trimmed to the deepest ion (two test runs as a "
+         "rule; they take as long per ion as the calculation itself).\n\nLeave this off to study "
+         "transmission through a given target, and for recoil sources "
          "(TRIM.DAT atoms start at given depths). (No TRIM equivalent; scenario key auto_depth.enabled.)"));
   auto *test_ions = count_spin(depth, static_cast<int>(10'000'000), 1);
   test_ions->setToolTip(tr("Ions per test run. The deepest of more ions lies deeper in the tail of the range "
@@ -272,10 +287,8 @@ CalculationPanel::CalculationPanel(Scenario *scenario, QWidget *parent)
                 [](config::RunConfig &c, int v) { c.trim.auto_depth.margin = v / 100.0; });
   binder_->check(warn, tr("Warn when ions escape"), [](const config::RunConfig &c) { return c.trim.auto_depth.warn_transmitted; },
                  [](config::RunConfig &c, bool on) { c.trim.auto_depth.warn_transmitted = on; });
-  binder_->custom([depth, auto_depth, test_ions, margin](const config::RunConfig &c) {
+  binder_->custom([depth, test_ions, margin](const config::RunConfig &c) {
     depth->setVisible(c.mode == config::Mode::srim);
-    // (The crystal transport does not offer it: validation refuses the pair.)
-    auto_depth->setEnabled(c.trim.transport != trim::TrimConfig::Transport::crystal);
     const bool on = c.trim.auto_depth.enabled && c.trim.source == trim::TrimConfig::Source::beam;
     test_ions->setEnabled(on);
     margin->setEnabled(on);

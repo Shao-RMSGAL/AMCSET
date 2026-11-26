@@ -55,7 +55,6 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cmake_cmd="cmake"
 build_dir="$project_dir/build/$mode"
 
-run_flags=(--minloglevel=3 --gui=true)
 
 test_dir="$project_dir/build/$mode/test"
 
@@ -95,7 +94,7 @@ test() {
 }
 
 run() {
-    "$build_dir/amcset-gui" "${run_flags[@]}"
+    "$build_dir/amcset-gui"
     check_status
 }
 

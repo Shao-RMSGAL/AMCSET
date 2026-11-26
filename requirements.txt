@@ -1,1 +1,4 @@
-conan==2.7.0
+# Python packages for building AMCSET (pip install -r requirements.txt): the Conan 2
+# client that installs the C++ dependencies (conanfile.py). The tools in tools/
+# and scripts/ need only the standard library (scripts/make_icons.py: Pillow).
+conan>=2.10,<3

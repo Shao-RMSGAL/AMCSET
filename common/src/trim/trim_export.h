@@ -30,8 +30,10 @@
 #include "output/stream.h"
 #include "trim/trim.h"
 
+#include <array>
 #include <filesystem>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace amcset {
@@ -40,7 +42,16 @@ namespace trim {
 struct TrimSimulation::ExportBlock {
   std::vector<common::CollisionPoint> points; //!< Kept points (the export's filter applied)
   std::vector<MdEvent> events;
+  //! Crystal transport: each ion's lateral lattice offset (its entry point
+  //! on the beam spot) in the files' axes, by 1-based ion number.
+  std::vector<std::pair<std::size_t, std::array<double, 2>>> lattice_offsets;
 };
+
+//! Whether the files carry the lattice offset columns: the crystal
+//! transport with at least one crystal layer.
+bool exports_lattice_offsets(const TrimConfig &config);
+//! The crystals' orientation as key-value metadata of the files.
+std::vector<std::pair<std::string, std::string>> crystal_metadata(const TrimConfig &config);
 
 struct TrimSimulation::ExportWriters {
   //! Open the files the configuration asks for (relative names: in the
@@ -52,6 +63,7 @@ struct TrimSimulation::ExportWriters {
 
   std::unique_ptr<output::StreamTableWriter> trajectories;
   std::unique_ptr<output::StreamTableWriter> events;
+  bool lattice_offsets = false; //!< the files have the lattice offset columns
 };
 
 //! Where an export file goes: \p file itself if absolute or if there is no

@@ -1,0 +1,13 @@
+<!DOCTYPE RCC>
+<!-- The application icon (resources/icons, drawn by scripts/make_icons.py). -->
+<RCC version="1.0">
+  <qresource prefix="/icons">
+    <file alias="amcset-16.png">../../resources/icons/amcset-16.png</file>
+    <file alias="amcset-24.png">../../resources/icons/amcset-24.png</file>
+    <file alias="amcset-32.png">../../resources/icons/amcset-32.png</file>
+    <file alias="amcset-48.png">../../resources/icons/amcset-48.png</file>
+    <file alias="amcset-64.png">../../resources/icons/amcset-64.png</file>
+    <file alias="amcset-128.png">../../resources/icons/amcset-128.png</file>
+    <file alias="amcset-256.png">../../resources/icons/amcset-256.png</file>
+  </qresource>
+</RCC>

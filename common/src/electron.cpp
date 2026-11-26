@@ -31,6 +31,7 @@
  */
 
 #include "amcset_common.h"
+#include "data_files.h"
 
 #include <absl/log/log.h>
 
@@ -63,22 +64,27 @@ std::once_flag g_electron_tables_initialized;
 
 void Electron::initialize_tables(const std::string &screening_path,
                                const std::string &mott_path) {
-  // An empty path selects the bundled table under <cwd>/common/assets.
-  // Relative paths are resolved against the current working directory.
-  const std::filesystem::path assets_path =
-      std::filesystem::current_path() / "common" / "assets";
-  const auto resolve = [](const std::string &path,
-                          const std::filesystem::path &fallback) {
-    if (path.empty()) {
-      return fallback;
+  // Relative paths are resolved against the current working directory. The
+  // bundled tables (an empty path, or the default common/assets/<name>) are
+  // otherwise looked up with AMCSET's other data files (data_files.h:
+  // share/amcset/electrons when installed), so that an installed program
+  // finds them from any working directory.
+  const auto resolve = [](const std::string &path, const char *name) {
+    const std::filesystem::path bundled = std::filesystem::path("common") / "assets" / name;
+    const std::filesystem::path p = path.empty() ? bundled : std::filesystem::path(path);
+    if (p.is_absolute()) {
+      return p;
     }
-    const std::filesystem::path p(path);
-    return p.is_absolute() ? p : std::filesystem::current_path() / p;
+    std::error_code ec;
+    const std::filesystem::path here = std::filesystem::current_path() / p;
+    if (std::filesystem::is_regular_file(here, ec) || p.generic_string() != bundled.generic_string()) {
+      return here;
+    }
+    const auto found = amcset::data::find_electron_table(name);
+    return found.empty() ? here : found;
   };
-  const auto screening_table_path =
-      resolve(screening_path, assets_path / "electron_screening_parameters.csv");
-  const auto mott_table_path =
-      resolve(mott_path, assets_path / "mott_scattering_parameters.csv");
+  const auto screening_table_path = resolve(screening_path, "electron_screening_parameters.csv");
+  const auto mott_table_path = resolve(mott_path, "mott_scattering_parameters.csv");
 
   // If the lambda throws, call_once does not mark the flag as done, so the
   // next call retries.

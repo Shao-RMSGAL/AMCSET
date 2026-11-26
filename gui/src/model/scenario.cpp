@@ -73,24 +73,12 @@ void Scenario::remember_transport() {
   if (config_.trim.transport != trim::TrimConfig::Transport::crystal) amorphous_transport_ = config_.trim.transport;
 }
 
-QString Scenario::set_crystal_transport(bool on, QString *note) {
+QString Scenario::set_crystal_transport(bool on) {
   using Transport = trim::TrimConfig::Transport;
   if (on == (config_.trim.transport == Transport::crystal)) return {};
-  const bool auto_depth = config_.trim.auto_depth.enabled;
   const Transport back = amorphous_transport_;
-  const QString err = modify(on ? tr("Crystal transport on") : tr("Crystal transport off"), [on, back](config::RunConfig &c) {
-    if (on) {
-      c.trim.transport = Transport::crystal;
-      c.trim.auto_depth.enabled = false; // not available with this transport
-    } else {
-      c.trim.transport = back;
-    }
-  });
-  if (err.isEmpty() && on && auto_depth && note != nullptr) {
-    *note = tr("The automatic target depth was switched off: the crystal transport does not offer it "
-               "(channeled ions go far beyond the estimate). Check the layer thicknesses.");
-  }
-  return err;
+  return modify(on ? tr("Crystal transport on") : tr("Crystal transport off"),
+                [on, back](config::RunConfig &c) { c.trim.transport = on ? Transport::crystal : back; });
 }
 
 QString Scenario::modify(const QString &what, const std::function<void(config::RunConfig &)> &edit,

@@ -1,0 +1,29 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: AMCSET
+Upstream-Contact: https://github.com/Shao-RMSGAL/AMCSET/issues
+Source: https://github.com/Shao-RMSGAL/AMCSET
+
+Files: *
+Copyright: 2025 Texas A&M University
+License: GPL-3+
+
+Files: usr/share/amcset/srim2013/*
+Copyright: James F. Ziegler (SRIM, www.srim.org)
+License: SRIM-noncommercial
+ The SRIM-2013 stopping tables were computed with SRIM's SR Module and are
+ derived from SRIM, which is free for non-commercial use; these tables carry
+ the same terms. See usr/share/amcset/srim2013/README.md.
+
+License: GPL-3+
+ This program is free software: you can redistribute it and/or modify it
+ under the terms of the GNU General Public License as published by the Free
+ Software Foundation, either version 3 of the License, or (at your option)
+ any later version.
+ .
+ This program is distributed in the hope that it will be useful, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ more details.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 3 can be found in "/usr/share/common-licenses/GPL-3".

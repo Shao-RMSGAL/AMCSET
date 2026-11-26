@@ -46,4 +46,16 @@ inline constexpr std::string_view srim_stopping_table = "srim2013/srim2013_stopp
 //! find(srim_stopping_table) as a string (empty if not found).
 std::string bundled_srim_stopping_table();
 
+//! Folder of the native engine's electron tables among the data files
+//! (installed as share/amcset/electrons; common/assets in the source tree).
+inline constexpr std::string_view electron_tables = "electrons";
+
+/*!
+ * \brief A table of the native engine's electron model (e.g.
+ * "mott_scattering_parameters.csv"): electrons/<file> in
+ * search_directories(), else common/assets/<file> of the source tree the
+ * program was built from; empty if neither has it.
+ */
+std::filesystem::path find_electron_table(std::string_view file);
+
 } // namespace amcset::data

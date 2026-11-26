@@ -80,15 +80,9 @@ $BuildDir = Join-Path $ProjectDir "build\$mode"
 $CmakeConfigurePreset = "conan-release"
 $CmakeBuildPreset = "conan-release"
 
-$RunFlags = @("--minloglevel=3", "--gui=true")
 
-# NOTE: This differs from qbuild.sh (build/Release/test) and from $BuildDir
-# above; the CI workflow (.github/workflows/tests.yml) also uses build/test.
-# Unverified which one the Windows toolchain actually produces -- see
-# docs/KNOWN_ISSUES.md. (Was a path relative to the current directory; it is
-# now anchored at the repository root, which is identical when the script is
-# run from the root as documented.)
-$TestDir = Join-Path $ProjectDir "build\test"
+# ctest runs in the build's test folder (as qbuild.sh does).
+$TestDir = Join-Path $ProjectDir "build\Release\test"
 
 function Check-Status {
     param([int]$ExitCode)
@@ -174,7 +168,7 @@ function Invoke-Test {
 
 function Invoke-Run {
     $exe = Join-Path $BuildDir "amcset-gui.exe"
-    & $exe @RunFlags
+    & $exe
     Check-Status $LASTEXITCODE
 }
 

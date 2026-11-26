@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX package manifest (tools/windows/make_msix.ps1 fills in @VERSION@ and
+  @PUBLISHER@; the publisher must equal the subject of the signing
+  certificate). A full-trust desktop application: the GUI in the Start menu,
+  `amcset-gui` and `amcset` as execution aliases (the CLI as a console
+  program), the installed files under AMCSET\ in the package.
+-->
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+         xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+         xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+         xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         IgnorableNamespaces="uap uap3 uap5 desktop desktop4 rescap">
+  <Identity Name="TexasAMUniversity.AMCSET" Publisher="@PUBLISHER@" Version="@VERSION@.0" ProcessorArchitecture="x64"/>
+  <Properties>
+    <DisplayName>AMCSET</DisplayName>
+    <PublisherDisplayName>Texas A&amp;M University</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Monte Carlo simulation of ions in matter and the radiation damage they cause (SRIM-compatible).</Description>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0"/>
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us"/>
+  </Resources>
+  <Applications>
+    <Application Id="AMCSET" Executable="AMCSET\bin\amcset-gui.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="AMCSET" Description="Ion transport and radiation damage simulator"
+                          BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png"
+                          Square44x44Logo="Assets\Square44x44Logo.png"/>
+      <Extensions>
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="AMCSET\bin\amcset-gui.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="amcset-gui.exe"/>
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+    <Application Id="AMCSETCommandLine" Executable="AMCSET\bin\amcset.exe" EntryPoint="Windows.FullTrustApplication"
+                 desktop4:Subsystem="console" desktop4:SupportsMultipleInstances="true">
+      <uap:VisualElements DisplayName="AMCSET command line" Description="AMCSET command-line program"
+                          BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png"
+                          Square44x44Logo="Assets\Square44x44Logo.png" AppListEntry="none"/>
+      <Extensions>
+        <uap5:Extension Category="windows.appExecutionAlias" Executable="AMCSET\bin\amcset.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:AppExecutionAlias desktop4:Subsystem="console">
+            <uap5:ExecutionAlias Alias="amcset.exe"/>
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust"/>
+  </Capabilities>
+</Package>

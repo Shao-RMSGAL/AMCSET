@@ -1,0 +1,170 @@
+.\" Manual page of amcset. Part of AMCSET (GPL-3.0-or-later).
+.TH AMCSET 1 "@AMCSET_RELEASE_DATE@" "AMCSET @PROJECT_VERSION@" "User Commands"
+.SH NAME
+amcset \- Monte Carlo transport of ions in matter and the radiation damage they cause
+.SH SYNOPSIS
+.B amcset run
+.I scenario.json
+.RI [ options ]
+.br
+.B amcset trim
+.I TRIM.IN
+.RI [ options ]
+.br
+.B amcset validate
+.IR scenario.json | TRIM.IN
+.br
+.B amcset convert
+.I in out
+.br
+.B amcset stopping
+.RI [ options ]
+.br
+.B amcset elements
+.RI [ symbol | Z ...]
+.br
+.B amcset cell
+.IR file " | " \fB\-\-structure\fP " " NAME
+.RI [ options ]
+.br
+.B amcset template
+.RB [ srim | native ]
+.RB [ \-o
+.IR FILE ]
+.br
+.B amcset version
+|
+.B help
+.SH DESCRIPTION
+.B amcset
+is the command-line program of AMCSET, a Monte Carlo simulator of ion (and
+electron) transport and radiation damage in layered amorphous and
+crystalline targets. Its SRIM mode reproduces SRIM-2013's TRIM: it reads
+TRIM.IN and TRIM.DAT, writes TRIM's output files as well as CSV, JSON and
+Parquet tables, and uses the SRIM-2013 stopping tables that come with it.
+A calculation is described by a scenario file (JSON); options override its
+keys. The graphical program is
+.BR amcset\-gui (1).
+.SH COMMANDS
+.TP
+.B run
+Run a scenario (SRIM mode or the native engine).
+.TP
+.B trim
+Run a TRIM batch input (TRIM.IN) in SRIM mode.
+.TP
+.B validate
+Check a scenario or TRIM.IN without running it.
+.TP
+.B convert
+Convert between TRIM.IN and scenario JSON.
+.TP
+.B stopping
+Electronic and nuclear stopping powers and ranges (like SRIM's SR Module).
+.TP
+.B elements
+Element data: masses, densities, surface binding energies, ionization potentials.
+.TP
+.B cell
+A crystal's unit cell from a file (CIF, POSCAR, LAMMPS data, extended XYZ) or
+a built-in structure: summary, conversion, the scenario's crystal object, beam
+directions.
+.TP
+.B template
+Print or save an example scenario.
+.SH OPTIONS
+The most used options of
+.BR run ,
+.B trim
+and
+.BR validate ;
+.B amcset help
+lists every option of every command.
+.TP
+.BR \-o ", " \-\-output " " \fIDIR\fP
+Output directory.
+.TP
+.BR \-n ", " \-\-ions " " \fIN\fP
+Number of incident ions.
+.TP
+.BR \-j ", " \-\-threads " " \fIN\fP
+Worker threads (default: all cores). Results do not depend on it.
+.TP
+.BR \-s ", " \-\-seed " " \fIS\fP
+Random number seed: the same seed gives the same results.
+.TP
+.BR \-\-damage " " kp | full | monolayer
+Quick (Kinchin-Pease) damage, full cascades, or monolayer collisions.
+.TP
+.BI \-\-set " KEY=VALUE"
+Override any scenario key, e.g.
+.B \-\-set
+"ion.energy=2 MeV" (repeatable). Physical values take units.
+.TP
+.BI \-\-formats " LIST"
+Output formats: any of trim, csv, json, parquet.
+.TP
+.B \-\-fix\-trim\-bugs
+Correct every bug of TRIM.exe that SRIM mode reproduces.
+.TP
+.BR \-q ", " \-\-quiet
+No progress bar.
+.TP
+.BR \-v ", " \-\-verbose
+Engine messages and the diagnostic log on standard error.
+.TP
+.BI \-\-log " FILE"
+Write the diagnostic log to FILE.
+.SH SIGNALS
+SIGINT (Ctrl+C), SIGTERM and SIGHUP stop a running calculation after the ions
+in progress; the results so far are written, then the program ends by the
+same signal (the shell reports 128 plus the signal number, 130 for SIGINT).
+A second signal ends the program at once. Other signals keep their default
+actions.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+An error in the scenario, the input files or the run.
+.TP
+.B 2
+A usage error (unknown command or option).
+.TP
+.B 3
+A crash; a crash report was written (its path is printed).
+.TP
+.B 128+n
+The run was interrupted by signal
+.I n
+(see SIGNALS).
+.SH ENVIRONMENT
+.TP
+.B AMCSET_DATA_DIR
+A directory with the stopping tables (srim2013/srim2013_stopping.amcset),
+searched before the installed ones.
+.SH FILES
+.TP
+.I /usr/share/amcset/srim2013/
+The bundled SRIM-2013 stopping tables (the path follows the installation
+prefix).
+.TP
+.I /usr/share/doc/amcset/
+Documentation: the scenario keys (docs/CLI.md), the output files
+(docs/OUTPUT.md), SRIM mode and its validation (docs/SRIM_MODE.md).
+.SH EXAMPLES
+.nf
+amcset template srim \-o fe.json
+amcset run fe.json \-n 10000 \-o out
+amcset trim TRIM.IN \-s 101 \-o out
+amcset stopping \-\-ion He \-\-target Si \-\-from 10keV \-\-to 10MeV
+.fi
+.SH COPYRIGHT
+Copyright 2025 Texas A&M University. License GPL-3.0-or-later. The bundled
+SRIM-2013 stopping tables are derived from SRIM (J. F. Ziegler) and are free
+for non-commercial use only.
+.SH SEE ALSO
+.BR amcset\-gui (1)
+.PP
+https://github.com/Shao-RMSGAL/AMCSET

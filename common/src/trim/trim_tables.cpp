@@ -23,6 +23,7 @@
 #include "config.h"
 #include "element_data.h"
 
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -713,6 +714,74 @@ output::Dataset make_dataset(const TrimSimulation &sim, const TrimTallies &t) {
     tb.columns.push_back(Column::real("z", "Lateral Z", Dimension::length, "A", z));
     tb.columns.push_back(Column::integer("vacancy", "Vacancy", vac));
     tb.columns.push_back(Column::integer("replacement", "Replacement", repl));
+    d.tables.push_back(std::move(tb));
+  }
+  if (const auto crystals = crystal_reports(c); !crystals.empty()) {
+    // The crystals' orientation (not TRIM): one row per crystal layer.
+    Table tb;
+    tb.key = "crystals";
+    tb.title = "Crystal orientation";
+    tb.description = "Each crystal layer: its orientation (Bunge angles relative to the sample, the crystal "
+                     "directions along the depth and the beam), the low-index axis nearest the beam with "
+                     "Lindhard's critical angle, and the rotation from the crystal frame to the output axes of "
+                     "the trajectory and event files (x, y lateral, z depth). Not TRIM.";
+    std::vector<double> layer, followed, phi1, Phi, phi2, beam_off, tilt, twist, temp, axis_angle, spacing, psi1,
+        critical;
+    std::vector<std::string> name, depth_dir, beam_dir, axis;
+    std::array<std::vector<double>, 9> rot;
+    for (const auto &r : crystals) {
+      layer.push_back(static_cast<double>(r.layer + 1));
+      name.push_back(r.cell_name);
+      followed.push_back(r.followed ? 1.0 : 0.0);
+      phi1.push_back(r.euler_deg[0]);
+      Phi.push_back(r.euler_deg[1]);
+      phi2.push_back(r.euler_deg[2]);
+      depth_dir.push_back(uvw_text(r.depth_uvw));
+      beam_dir.push_back(uvw_text(r.beam_uvw));
+      beam_off.push_back(r.beam_off_deg);
+      tilt.push_back(r.tilt_deg);
+      twist.push_back(r.twist_deg);
+      temp.push_back(r.temperature_K);
+      const bool any = !r.axes.empty();
+      axis.push_back(any ? uvw_text(r.axes.front().uvw) : std::string());
+      axis_angle.push_back(any ? r.axes.front().angle_deg : 0.0);
+      spacing.push_back(any ? r.axes.front().spacing_A : 0.0);
+      psi1.push_back(any ? r.axes.front().psi1_deg : 0.0);
+      critical.push_back(any ? r.axes.front().critical_deg : 0.0);
+      for (int i = 0; i < 3; ++i) {
+        for (int k = 0; k < 3; ++k) rot[static_cast<std::size_t>(3 * i + k)].push_back(r.to_output[i][k]);
+      }
+    }
+    tb.columns.push_back(Column::integer("layer", "Layer", layer));
+    tb.columns.push_back(Column::strings("crystal", "Crystal", name));
+    tb.columns.push_back(Column::integer("followed", "Followed", followed,
+                                         "1: the crystal transport follows the lattice; 0: treated as amorphous"));
+    tb.columns.push_back(Column::real("phi1", "phi1", Dimension::angle, "deg", phi1, "Bunge Euler angle"));
+    tb.columns.push_back(Column::real("Phi", "Phi", Dimension::angle, "deg", Phi, "Bunge Euler angle"));
+    tb.columns.push_back(Column::real("phi2", "phi2", Dimension::angle, "deg", phi2, "Bunge Euler angle"));
+    tb.columns.push_back(Column::strings("depth_direction", "Depth along", depth_dir,
+                                         "The low-index crystal direction nearest the inward surface normal"));
+    tb.columns.push_back(Column::strings("beam_direction", "Beam along", beam_dir,
+                                         "The low-index crystal direction nearest the beam"));
+    tb.columns.push_back(Column::real("beam_off", "Beam off it", Dimension::angle, "deg", beam_off));
+    tb.columns.push_back(Column::real("tilt", "Tilt", Dimension::angle, "deg", tilt, "ion.angle"));
+    tb.columns.push_back(Column::real("twist", "Twist", Dimension::angle, "deg", twist));
+    tb.columns.push_back(Column::real("temperature_K", "Temperature (K)", Dimension::dimensionless, "1", temp,
+                                      "Crystal temperature in kelvin"));
+    tb.columns.push_back(Column::strings("nearest_axis", "Nearest axis", axis,
+                                         "The low-index axis (indices up to 2) nearest the beam"));
+    tb.columns.push_back(Column::real("axis_angle", "Angle to it", Dimension::angle, "deg", axis_angle));
+    tb.columns.push_back(Column::real("axis_spacing", "Atom spacing on it", Dimension::length, "A", spacing));
+    tb.columns.push_back(Column::real("psi1", "Lindhard psi1", Dimension::angle, "deg", psi1,
+                                      "Lindhard's high-energy angle (2 Z1 Z2 e^2 / (E d))^1/2 for that axis"));
+    tb.columns.push_back(Column::real("critical_angle", "Critical angle", Dimension::angle, "deg", critical,
+                                      "Critical angle of channeling along that axis: psi1, or Lindhard's "
+                                      "low-energy psi2 below E' = 2 Z1 Z2 e^2 d / a^2"));
+    static const char *const rk[9] = {"r11", "r12", "r13", "r21", "r22", "r23", "r31", "r32", "r33"};
+    for (std::size_t i = 0; i < 9; ++i) {
+      tb.columns.push_back(Column::real(rk[i], rk[i], Dimension::dimensionless, "1", rot[i],
+                                        "Rotation crystal frame -> output axes (x, y lateral, z depth), row-major"));
+    }
     d.tables.push_back(std::move(tb));
   }
   return d;

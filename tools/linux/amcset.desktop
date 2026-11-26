@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=AMCSET
-GenericName=Ion transport and radiation damage simulator
-Comment=Monte Carlo transport of ions and electrons in layered targets (SRIM-compatible)
-Exec=amcset-gui
-Icon=amcset
-Terminal=false
-Categories=Science;Physics;Education;

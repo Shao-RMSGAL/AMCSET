@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Additions to the MSI that CPack's WiX generator builds (packaging/CMakeLists.txt):
+  the installation's bin folder at the end of the system PATH, so that
+  `amcset` runs from any console; removed again on uninstall. The Ids are
+  CPack's: CM_CP_<path> for a file's component, CM_DP_<path> for a folder.
+-->
+<CPackWiXPatch>
+  <CPackWiXFragment Id="CM_CP_bin.amcset.exe">
+    <Environment Id="AMCSET_PATH" Name="PATH" Value="[CM_DP_bin]" Permanent="no" Part="last" Action="set" System="yes"/>
+  </CPackWiXFragment>
+</CPackWiXPatch>

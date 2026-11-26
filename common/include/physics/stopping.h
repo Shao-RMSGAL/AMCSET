@@ -87,6 +87,27 @@ struct BetheBlochOptions {
 };
 
 /*!
+ * \brief Corrections of the SRIM-2013 stopping tables (not TRIM: off by
+ * default, so that SRIM mode reproduces TRIM.exe). docs/VALIDATION.md says
+ * what each corrects and the evidence.
+ */
+struct StoppingCorrections {
+  /*!
+   * \brief Ni projectiles: the electronic stopping is the geometric mean of
+   * Co's and Cu's at the same velocity, in the same target. SRIM-2013's Ni
+   * stopping is up to 40 % below that of both neighbours between about 0.02
+   * and 0.3 MeV/u, in every target (tools/validation/srim_table_scan.py), and
+   * the measured ranges of Ni ions in Fe and Mo are 1.3-1.5 times shorter
+   * than SRIM-2013's (Gurbich et al., Appl. Radiat. Isot. 215, 111590
+   * (2025)). Ni recoils take it too.
+   */
+  bool nickel_ions = false;
+
+  bool any() const noexcept { return nickel_ions; }
+  bool operator==(const StoppingCorrections &) const = default;
+};
+
+/*!
  * \brief Relativistic Bethe-Bloch electronic stopping cross section of one
  * target atom.
  *
@@ -285,6 +306,7 @@ struct StoppingComponent {
  * \param gas Use gas-phase tables where available.
  * \param atomic_density Total atomic density of the layer (sets the electron
  *        density for the Bethe-Bloch density effect).
+ * \param corrections Corrections of the SRIM tables (srim_tables only).
  */
 stopping_cross_section_quantity
 layer_stopping(ElectronicStoppingModel model,
@@ -292,7 +314,8 @@ layer_stopping(ElectronicStoppingModel model,
                mass_quantity m1, const std::vector<StoppingComponent> &layer,
                bool gas, double compound_correction, energy_quantity energy,
                number_density_quantity atomic_density,
-               const BetheBlochOptions &bethe = {});
+               const BetheBlochOptions &bethe = {},
+               const StoppingCorrections &corrections = {});
 
 /*!
  * \brief Fast electronic stopping power N*S_e(E) of one projectile species
@@ -316,6 +339,7 @@ public:
    * \param min_energy Lower grid limit (default 1 eV).
    * \param max_energy Upper grid limit (default 100 GeV).
    * \param points_per_decade Grid density (default 50).
+   * \param corrections Corrections of the SRIM tables (layer_stopping()).
    */
   StoppingCurve(ElectronicStoppingModel model,
                 const SrimStoppingDatabase *database, unsigned z1,
@@ -325,7 +349,8 @@ public:
                 const BetheBlochOptions &bethe = {},
                 energy_quantity min_energy = 1.0 * common::electron_volt,
                 energy_quantity max_energy = 100.0 * common::giga_electron_volt,
-                unsigned points_per_decade = 50);
+                unsigned points_per_decade = 50,
+                const StoppingCorrections &corrections = {});
 
   //! Electronic stopping power N*S_e at \p energy.
   stopping_power_quantity stopping_power(energy_quantity energy) const;

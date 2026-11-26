@@ -399,10 +399,6 @@ void TrimConfig::validate(bool complete) const {
       if (source != Source::beam) {
         fail("physics.transport: the crystal transport runs a beam only (no TRIM.DAT particle source yet)");
       }
-      if (auto_depth.enabled) {
-        fail("auto_depth: not available with the crystal transport (channeled ions go far beyond the "
-             "amorphous range the test runs would find); set the thickness");
-      }
     }
   }
   {
@@ -419,16 +415,12 @@ void TrimConfig::validate(bool complete) const {
         fail("output.trajectory_file: no trajectories are recorded; set output.trajectories to a number of "
              "ions or \"all\"");
       }
-      if (transport != Transport::trim2013) {
-        fail("output.trajectory_file: needs the trim2013 transport (physics.transport)");
-      }
       if (!(trajectory_export.min_energy >= 0.0 * electron_volt) || !finite(trajectory_export.min_energy)) {
         fail("output.trajectory_file.min_energy: must be >= 0 and finite, got " + eV(trajectory_export.min_energy));
       }
     }
     if (md_events.enabled()) {
       check_file(md_events.file, "output.md_events.file");
-      if (transport != Transport::trim2013) fail("output.md_events: needs the trim2013 transport (physics.transport)");
       if (damage == DamageCalculation::kinchin_pease) {
         fail("output.md_events: needs recoils that are followed: the full-cascade or monolayer damage "
              "calculation, not the quick (Kinchin-Pease) one");
@@ -1188,7 +1180,8 @@ TrimSimulation::TrimSimulation(TrimConfig config)
       for (const auto &e : lm.elements) comps.push_back({e.z, e.fraction});
       d.stopping = physics::StoppingCurve(config_.stopping_model, m.stopping_db.get(), sp.z,
                                           sp.mass, comps, lc.gas, lc.compound_correction,
-                                          lm.density, config_.bethe_bloch);
+                                          lm.density, config_.bethe_bloch, 1.0 * electron_volt,
+                                          100.0 * giga_electron_volt, 50, config_.stopping_corrections);
       if (config_.fast_math) d.stopping.enable_fast_lookup(); // no log/exp per lookup
       for (const auto &e : lm.elements) {
         // The ion (species 0) and the recoils may use different potentials.
@@ -1578,7 +1571,7 @@ public:
                                           : in_units(m.thickness, angstrom);
     // MD events (TrimConfig::md_events): the transition energies, and one
     // totals entry per E_c in this block's tallies.
-    md_on_ = cfg.md_events.enabled() && cfg.transport == TrimConfig::Transport::trim2013;
+    md_on_ = cfg.md_events.enabled();
     if (md_on_) {
       md_handoff_ = cfg.md_events.handoff;
       for (const auto &e : cfg.md_events.transition_energies) md_ec_eV_.push_back(in_units(e, electron_volt));
@@ -1597,6 +1590,9 @@ public:
   void run_ion(std::size_t ion_index, std::vector<CollisionPoint> *trajectory);
   //! Where the MD events of the following ions go (null: only their totals).
   void set_md_output(std::vector<MdEvent> *events) noexcept { md_out_ = events; }
+  //! Crystal transport: the last ion's entry point on the beam spot, in the
+  //! output axes (TRIM's y, z): the lateral offset of its lattice.
+  std::array<double, 2> lattice_offset_A() const noexcept { return {spot_y_, spot_z_}; }
 
 private:
   // Bin index of a depth (Angstrom), or -1 outside the window.
@@ -1798,6 +1794,16 @@ private:
     const auto &pt = trajectory->back();
     return pt.track == m.track ? pt.point_index : CollisionPoint::no_parent;
   }
+  //! The mover's collision point \p point (refined and crystal transports)
+  //! is where it ends: a stop, at the mover's position (a replacing atom
+  //! sits on the site it took).
+  void end_point(std::vector<CollisionPoint> *trajectory, std::uint32_t point, const Mover &m) const {
+    if (trajectory == nullptr || point == CollisionPoint::no_parent || point >= trajectory->size()) return;
+    auto &pt = (*trajectory)[point];
+    if (pt.track != m.track) return;
+    pt.coordinate = Coordinate(m.y, m.zz, m.x);
+    pt.kind = CollisionPoint::Kind::stop;
+  }
   //! Mark \p m's last recorded point as a stop or exit.
   void mark_last(std::vector<CollisionPoint> *trajectory, const Mover &m, CollisionPoint::Kind kind) const {
     if (trajectory == nullptr || trajectory->empty() || m.untracked) return;
@@ -1958,7 +1964,7 @@ private:
   void crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_index,
                       std::vector<CollisionPoint> *trajectory);
   bool crystal_strike(const Mover &mv, const CrystalTarget &target, const double recoil_dir[3], energy_quantity T,
-                      energy_quantity e1, bool may_replace);
+                      energy_quantity e1, bool may_replace, std::uint32_t parent_point);
   energy_quantity crystal_path_loss(const Mover &mv, const SpeciesLayer &d, double length_A, double share,
                                     LecuyerRandom &rng);
   double crystal_path_share(std::size_t species, std::size_t li);
@@ -2153,11 +2159,12 @@ void Transporter::follow(Mover mv, LecuyerRandom &rng, std::size_t ion_index,
   const energy_quantity stop_energy = mv.is_ion ? ion_stop_ : recoil_stop_;
   const bool full = mode_ != DamageCalculation::kinchin_pease;
   const bool monolayer_only = !cfg_.free_flight_path || mode_ == DamageCalculation::monolayer;
-  record_point(trajectory, mv);
+  record_point(trajectory, mv, CollisionPoint::Kind::birth);
 
   while (true) {
     if (mv.energy <= stop_energy) {
       stop_mover(mv, true, ion_index);
+      record_point(trajectory, mv, CollisionPoint::Kind::stop);
       return;
     }
     if (!(mv.energy >= 0.0 * electron_volt) || !std::isfinite(in_units(mv.x, angstrom))) {
@@ -2226,6 +2233,7 @@ void Transporter::follow(Mover mv, LecuyerRandom &rng, std::size_t ion_index,
     mv.y += L * mv.cy;
     mv.zz += L * mv.cz;
     mv.energy = e_start - de;
+    advance_time(mv, L, e_start);
     {
       const double x1 = in_units(mv.x, angstrom);
       const double ev = in_units(de, electron_volt);
@@ -2254,17 +2262,17 @@ void Transporter::follow(Mover mv, LecuyerRandom &rng, std::size_t ion_index,
     // --- Leaving the target? ---------------------------------------------
     if (mv.x < 0.0 * angstrom) {
       leave_front(mv, ion_index);
-      record_point(trajectory, mv);
+      record_point(trajectory, mv, CollisionPoint::Kind::exit);
       return;
     }
     if (mv.x > thickness_) {
       leave_back(mv, ion_index);
-      record_point(trajectory, mv);
+      record_point(trajectory, mv, CollisionPoint::Kind::exit);
       return;
     }
     if (mv.energy <= stop_energy) {
       stop_mover(mv, true, ion_index);
-      record_point(trajectory, mv);
+      record_point(trajectory, mv, CollisionPoint::Kind::stop);
       return;
     }
 
@@ -2298,6 +2306,20 @@ void Transporter::follow(Mover mv, LecuyerRandom &rng, std::size_t ion_index,
     const double txa = in_units(tx, angstrom);
     const double T_eV = in_units(T, electron_volt);
 
+    // The mover after the collision (deflected away from the struck atom:
+    // azimuth phi + pi). Its trajectory point is recorded now, before the
+    // points of the cascade this collision starts, so that they can name it.
+    Mover after = mv;
+    turn(after.cx, after.cy, after.cz, k.cos_projectile, k.sin_projectile, -cphi, -sphi);
+    after.energy = e1;
+    record_point(trajectory, after);
+    {
+      Mover before = mv;
+      before.energy = e_start;
+      annotate_collision(trajectory, before, after, T, de);
+    }
+    const std::uint32_t collision_point = last_point_of(trajectory, after);
+
     // Does the struck atom leave its site? Full cascades: T > Ed. Quick
     // (Kinchin-Pease) calculation: TRIM tests the damage energy instead,
     // so a primary recoil needs E_damage(T) >= Ed (e.g. T >= 45.3 eV for
@@ -2322,9 +2344,49 @@ void Transporter::follow(Mover mv, LecuyerRandom &rng, std::size_t ion_index,
       t_.total_energy_to_recoils += T_eV;
     }
 
+    // The struck atom, if it will be followed: built before the bookkeeping,
+    // with its lineage and clock, so that MD events are settled first (in
+    // the MD handoff mode MD takes it, and the BCA books nothing for it, as
+    // in the trim2013 transport). No random number is drawn here.
+    const bool surface_atom = !displaces && full && tx < cfg_.surface_atom_depth && T > el.es &&
+                              el.es > 0.0 * electron_volt;
+    const bool follows = full && ((displaces && T - el.eb > 0.0 * electron_volt &&
+                                   (cfg_.max_recoils_per_ion == 0 || recoils_this_ion_ < cfg_.max_recoils_per_ion)) ||
+                                  surface_atom);
+    Mover r;
+    bool struck_handed = false;
+    if (follows) {
+      r.species = el.species;
+      r.z = el.z;
+      r.x = tx;
+      r.y = mv.y + p * py;
+      r.zz = mv.zz + p * pz;
+      r.cx = mv.cx;
+      r.cy = mv.cy;
+      r.cz = mv.cz;
+      // Recoil direction: angle (pi - theta)/2 from the incident
+      // direction, towards the side of the struck atom (azimuth phi).
+      turn(r.cx, r.cy, r.cz, k.cos_recoil, k.sin_recoil, cphi, sphi);
+      r.energy = surface_atom ? T : T - el.eb;
+      r.is_ion = false;
+      r.surface_only = surface_atom;
+      if (surface_atom) r.origin_x = txa;
+      r.generation = mv.generation + 1;
+      r.tally_element = el.tally_index;
+      r.track = ++next_track_;
+      r.parent_track = mv.track;
+      r.parent_point = collision_point;
+      r.time = mv.time;
+      r.md_mask = mv.md_mask;
+      struck_handed = md_on_ && md_birth(r, T_eV, el);
+    }
+
     bool mover_stops = false;
     bool mover_interstitial = true;
-    if (displaces) {
+    if (struck_handed) {
+      // MD takes the struck atom (handoff mode).
+      if (e1 <= stop_energy) mover_stops = true;
+    } else if (displaces) {
       // Displacement.
       add(t_.displacements, txa, 1.0);
       t_.total_displacements += 1.0;
@@ -2373,25 +2435,9 @@ void Transporter::follow(Mover mv, LecuyerRandom &rng, std::size_t ion_index,
           add(t_.vacancies[el.tally_index], txa, 1.0);
           t_.total_vacancies += 1.0;
         }
-        // Follow the recoil (it is pushed and transported after the mover).
-        if (e2 > 0.0 * electron_volt &&
-            (cfg_.max_recoils_per_ion == 0 || recoils_this_ion_ < cfg_.max_recoils_per_ion)) {
-          Mover r;
-          r.species = el.species;
-          r.z = el.z;
-          r.x = tx;
-          r.y = mv.y + p * py;
-          r.zz = mv.zz + p * pz;
-          r.cx = mv.cx;
-          r.cy = mv.cy;
-          r.cz = mv.cz;
-          // Recoil direction: angle (pi - theta)/2 from the incident
-          // direction, towards the side of the struck atom (azimuth phi).
-          turn(r.cx, r.cy, r.cz, k.cos_recoil, k.sin_recoil, cphi, sphi);
-          r.energy = e2;
-          r.is_ion = false;
-          r.generation = mv.generation + 1;
-          r.tally_element = el.tally_index;
+        // Follow the recoil (built above; it is pushed and transported
+        // after the mover).
+        if (follows) {
           ++recoils_this_ion_;
           t_.recoils_followed += 1.0;
           if (mv.is_ion) {
@@ -2432,24 +2478,8 @@ void Transporter::follow(Mover mv, LecuyerRandom &rng, std::size_t ion_index,
         add(t_.energy_absorbed[el.tally_index], txa, T_eV);
         t_.total_energy_to_recoils += T_eV;
       }
-      // A surface atom set in motion below Ed: it is followed (it may be
-      // sputtered) but leaves no defect if it stays in the target.
-      Mover r;
-      r.species = el.species;
-      r.z = el.z;
-      r.x = tx;
-      r.y = mv.y + p * py;
-      r.zz = mv.zz + p * pz;
-      r.cx = mv.cx;
-      r.cy = mv.cy;
-      r.cz = mv.cz;
-      turn(r.cx, r.cy, r.cz, k.cos_recoil, k.sin_recoil, cphi, sphi);
-      r.energy = T;
-      r.is_ion = false;
-      r.surface_only = true;
-      r.origin_x = txa;
-      r.generation = mv.generation + 1;
-      r.tally_element = el.tally_index;
+      // A surface atom set in motion below Ed (built above): it is followed
+      // (it may be sputtered) but leaves no defect if it stays in the target.
       if (mv.is_ion) cascade(r, ion_index, trajectory); else stack_.push_back(r);
       if (e1 <= stop_energy) mover_stops = true;
     } else {
@@ -2464,10 +2494,14 @@ void Transporter::follow(Mover mv, LecuyerRandom &rng, std::size_t ion_index,
       if (e1 <= stop_energy) mover_stops = true;
     }
 
-    // Deflect the mover (away from the struck atom: azimuth phi + pi).
-    turn(mv.cx, mv.cy, mv.cz, k.cos_projectile, k.sin_projectile, -cphi, -sphi);
+    // Deflect the mover (as recorded above).
+    mv.cx = after.cx;
+    mv.cy = after.cy;
+    mv.cz = after.cz;
     mv.energy = e1;
-    record_point(trajectory, mv);
+    // MD events: the mover's energy may have fallen below an E_c here (the
+    // handoff mode then leaves it to MD).
+    if (md_on_ && md_crossing(mv, in_units(e_start, electron_volt))) return;
 
     if (mover_stops) {
       if (!mover_interstitial) {
@@ -2476,6 +2510,7 @@ void Transporter::follow(Mover mv, LecuyerRandom &rng, std::size_t ion_index,
         mv.y += p * py;
         mv.zz += p * pz;
       }
+      end_point(trajectory, collision_point, mv);
       if (mv.is_ion) {
         stop_mover(mv, true, ion_index);
       } else {
@@ -2498,7 +2533,7 @@ void Transporter::cascade(const Mover &primary, std::size_t ion_index,
 
 void Transporter::run_ion(std::size_t ion_index, std::vector<CollisionPoint> *trajectory) {
   ion_number_ = ion_index + 1;
-  timing_ = cfg_.transport == TrimConfig::Transport::trim2013 && (trajectory != nullptr || md_on_);
+  timing_ = trajectory != nullptr || md_on_;
   if (cfg_.transport == TrimConfig::Transport::trim2013) {
     run_ion_2013(ion_index, trajectory);
     return;
@@ -2520,6 +2555,8 @@ void Transporter::run_ion(std::size_t ion_index, std::vector<CollisionPoint> *tr
   mv.energy = ion.energy;
   mv.is_ion = true;
   mv.generation = 0;
+  mv.track = 0;
+  next_track_ = 0;
   stack_.clear();
   recoils_this_ion_ = 0;
   cascades_this_ion_ = 0;
@@ -2528,7 +2565,13 @@ void Transporter::run_ion(std::size_t ion_index, std::vector<CollisionPoint> *tr
   LecuyerRandom recoil_rng = make_stream(cfg_.seed, ion_index, 1);
   recoil_rng_ = &recoil_rng;
   details_ = ion_index < cfg_.collision_details_ions;
-  follow(mv, ion_rng, ion_index, trajectory);
+  // MD events: an ion entering below an E_c is an event at its start (the
+  // handoff mode then leaves the whole ion to MD).
+  if (md_on_ && md_ion_entry(mv)) {
+    record_point(trajectory, mv, CollisionPoint::Kind::birth);
+  } else {
+    follow(mv, ion_rng, ion_index, trajectory);
+  }
   recoil_rng_ = nullptr;
   t_.ions += 1;
 }
@@ -2576,7 +2619,11 @@ energy_quantity Transporter::crystal_path_loss(const Mover &mv, const SpeciesLay
                                                double share, LecuyerRandom &rng) {
   // Electronic loss along a straight flight of length_A from mv's position:
   // share S(E) L for the part of the flight inside the target, with the
-  // straggling of the refined transport scaled by the same share.
+  // straggling of the refined transport scaled by the same share. Always
+  // gamma-distributed (exact mean): the flights here are the ~1 A steps from
+  // one atom to the next, where the straggling exceeds the mean loss and
+  // TRIM's normal deviate clipped at zero would raise the mean loss (by 9 %
+  // for 100 keV He in Si, making ranges 7 % short).
   const double th = in_units(thickness_, angstrom);
   const double x0 = in_units(mv.x, angstrom);
   const double x1 = x0 + length_A * mv.cx;
@@ -2602,13 +2649,7 @@ energy_quantity Transporter::crystal_path_loss(const Mover &mv, const SpeciesLay
     const auto i = static_cast<std::size_t>(fi);
     const double w = fi - static_cast<double>(i);
     const double variance = (d.strag[i] + w * (d.strag[i + 1] - d.strag[i])) * inside * share;
-    if (variance > 0.0) {
-      if (cfg_.straggling_distribution == TrimConfig::StragglingDistribution::gamma) {
-        de = mean * gamma_deviate(mean * mean / variance, rng);
-      } else {
-        de = std::max(0.0, mean + std::sqrt(variance) * rng.gaussian());
-      }
-    }
+    if (variance > 0.0) de = mean * gamma_deviate(mean * mean / variance, rng);
   }
   de = std::min(de, in_units(mv.energy, electron_volt));
   if (mv.is_ion) {
@@ -2622,7 +2663,8 @@ energy_quantity Transporter::crystal_path_loss(const Mover &mv, const SpeciesLay
 }
 
 bool Transporter::crystal_strike(const Mover &mv, const CrystalTarget &target, const double recoil_dir[3],
-                                 energy_quantity T, energy_quantity e1, bool may_replace) {
+                                 energy_quantity T, energy_quantity e1, bool may_replace,
+                                 std::uint32_t parent_point) {
   // The struck atom: the damage bookkeeping of the refined transport
   // (Sec. V of the paper: displaced if T > Ed, leaving with T - Eb; the
   // projectile replaces it when it is of the same element and keeps less
@@ -2649,8 +2691,16 @@ bool Transporter::crystal_strike(const Mover &mv, const CrystalTarget &target, c
     add(t_.energy_absorbed[el.tally_index], txa, T_eV);
     t_.total_energy_to_recoils += T_eV;
   }
-  const auto recoil = [&](energy_quantity energy, bool surface_only) {
-    Mover r;
+  // The struck atom, if it will be followed: built before the bookkeeping,
+  // with its lineage and clock, so that MD events are settled first (in the
+  // MD handoff mode MD takes it and the BCA books nothing for it).
+  const bool surface_atom = !displaces && full && cfg_.surface_atom_depth > 0.0 * angstrom &&
+                            txa * angstrom < cfg_.surface_atom_depth && T > el.es && el.es > 0.0 * electron_volt;
+  const bool follows = full && ((displaces && T - el.eb > 0.0 * electron_volt &&
+                                 (cfg_.max_recoils_per_ion == 0 || recoils_this_ion_ < cfg_.max_recoils_per_ion)) ||
+                                surface_atom);
+  Mover r;
+  if (follows) {
     r.species = el.species;
     r.z = el.z;
     r.x = target.pos[0] * angstrom;
@@ -2659,14 +2709,23 @@ bool Transporter::crystal_strike(const Mover &mv, const CrystalTarget &target, c
     r.cx = recoil_dir[0];
     r.cy = recoil_dir[1];
     r.cz = recoil_dir[2];
-    r.energy = energy;
+    r.energy = surface_atom ? T : T - el.eb;
     r.is_ion = false;
-    r.surface_only = surface_only;
+    r.surface_only = surface_atom;
     r.origin_x = txa;
     r.generation = mv.generation + 1;
     r.tally_element = el.tally_index;
-    stack_.push_back(r);
-  };
+    r.track = ++next_track_;
+    r.parent_track = mv.track;
+    r.parent_point = parent_point;
+    r.time = mv.time;
+    r.md_mask = mv.md_mask;
+    if (md_on_ && md_birth(r, T_eV, el)) {
+      // MD takes it (handoff mode): it has left its site; nothing is booked.
+      if (target.on_site) vacated_.insert(target.id);
+      return false;
+    }
+  }
   bool replaced = false;
   if (displaces) {
     add(t_.displacements, txa, 1.0);
@@ -2714,9 +2773,8 @@ bool Transporter::crystal_strike(const Mover &mv, const CrystalTarget &target, c
         add(t_.vacancies[el.tally_index], txa, 1.0);
         t_.total_vacancies += 1.0;
       }
-      if (e2 > 0.0 * electron_volt &&
-          (cfg_.max_recoils_per_ion == 0 || recoils_this_ion_ < cfg_.max_recoils_per_ion)) {
-        recoil(e2, false);
+      if (follows) {
+        stack_.push_back(r);
         ++recoils_this_ion_;
         t_.recoils_followed += 1.0;
       } else if (e2 > 0.0 * electron_volt) {
@@ -2740,7 +2798,7 @@ bool Transporter::crystal_strike(const Mover &mv, const CrystalTarget &target, c
       t_.total_energy_to_recoils += T_eV;
     }
     if (target.on_site) vacated_.insert(target.id); // it left its site (and must not meet itself there)
-    recoil(T, true);
+    stack_.push_back(r);
   } else {
     // Sub-threshold transfer: the struck atom vibrates back (phonons).
     if (mv.is_ion) {
@@ -2775,14 +2833,27 @@ void Transporter::crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_i
     double turn_A;   // xi - x1: path length to the deflection point
   };
   std::vector<Outcome> outcomes;
-  record_point(trajectory, mv);
+  record_point(trajectory, mv, CollisionPoint::Kind::birth);
+  // The mover's last collision point, while it has not moved on (a stop
+  // there marks it instead of adding a point at the same place).
+  std::uint32_t at_point = CollisionPoint::no_parent;
+  // The path ahead of the mover whose electronic loss is already charged,
+  // in A: a flight is charged to the struck atoms' closest approach (xi),
+  // but the mover turns x1 = xi - turn before it (Eq. 11), and the next
+  // flight starts from there. Charging that part again would overstate the
+  // loss by x1/xi per collision; for heavy slow ions, whose x1 is a few per
+  // cent of a monolayer, the amorphous layers' ranges came out 2-5 % short.
+  double charged_A = 0.0;
 
   for (std::size_t step = 0;; ++step) {
     if (step > 200000000) throw std::runtime_error("crystal transport: a moving atom took too many steps");
     if (mv.energy <= stop_energy) {
       stop_mover(mv, true, ion_index);
+      if (at_point != CollisionPoint::no_parent) end_point(trajectory, at_point, mv);
+      else record_point(trajectory, mv, CollisionPoint::Kind::stop);
       return;
     }
+    const energy_quantity e_step = mv.energy; // (for the clock and the MD events)
     const double x = in_units(mv.x, angstrom);
     const double y = in_units(mv.y, angstrom);
     const double z = in_units(mv.zz, angstrom);
@@ -2792,12 +2863,12 @@ void Transporter::crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_i
     // Outside the target and moving away from it?
     if (x < 0.0 && mv.cx <= 0.0) {
       leave_front(mv, ion_index);
-      record_point(trajectory, mv);
+      record_point(trajectory, mv, CollisionPoint::Kind::exit);
       return;
     }
     if (x > th && mv.cx >= 0.0) {
       leave_back(mv, ion_index);
-      record_point(trajectory, mv);
+      record_point(trajectory, mv, CollisionPoint::Kind::exit);
       return;
     }
     const std::size_t li = m_.layer_index(std::clamp(x, 0.0, th) * angstrom);
@@ -2891,8 +2962,11 @@ void Transporter::crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_i
     } else {
       // Amorphous layer: one atom per cylinder of one monolayer length (the
       // monolayer collision step of the TRIM family), at a random impact
-      // parameter and azimuth.
-      const double length = in_units(layer.monolayer, angstrom);
+      // parameter and azimuth. The cylinder starts at the last struck atom's
+      // closest approach, which lies charged_A ahead of the deflection point
+      // (x1, hard-core approximation): one atom per monolayer of path, not
+      // per monolayer less x1.
+      const double length = in_units(layer.monolayer, angstrom) + charged_A;
       const double impact = in_units(layer.t13.pmax0, angstrom) * std::sqrt(rng());
       double cphi = 1.0;
       double sphi = 0.0;
@@ -2922,10 +2996,13 @@ void Transporter::crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_i
 
     previous = ahead;
     if (set.empty()) {
-      mv.energy -= crystal_path_loss(mv, d, free_step, share, rng);
+      mv.energy -= crystal_path_loss(mv, d, std::max(free_step - charged_A, 0.0), share, rng);
+      charged_A = std::max(charged_A - free_step, 0.0);
       mv.x += free_step * mv.cx * angstrom;
       mv.y += free_step * mv.cy * angstrom;
       mv.zz += free_step * mv.cz * angstrom;
+      advance_time(mv, free_step * angstrom, e_step);
+      at_point = CollisionPoint::no_parent;
       continue;
     }
 
@@ -2933,12 +3010,14 @@ void Transporter::crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_i
     double xi_mean = 0.0;
     for (const auto &t : set) xi_mean += t.xi;
     xi_mean /= static_cast<double>(set.size());
-    mv.energy -= crystal_path_loss(mv, d, xi_mean, share, rng);
+    mv.energy -= crystal_path_loss(mv, d, std::max(xi_mean - charged_A, 0.0), share, rng);
     const energy_quantity e_c = mv.energy;
     if (e_c <= stop_energy) {
       mv.x += xi_mean * mv.cx * angstrom;
       mv.y += xi_mean * mv.cy * angstrom;
       mv.zz += xi_mean * mv.cz * angstrom;
+      advance_time(mv, xi_mean * angstrom, e_step);
+      at_point = CollisionPoint::no_parent;
       continue; // stops at the top of the loop
     }
 
@@ -3019,11 +3098,13 @@ void Transporter::crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_i
       turn += o.turn_A;
     }
     turn = std::max(0.0, turn / static_cast<double>(outcomes.size()));
+    charged_A = std::max(xi_mean - turn, 0.0);
 
     // --- Move to the deflection point; the electronic loss of the collision --
     mv.x += turn * mv.cx * angstrom;
     mv.y += turn * mv.cy * angstrom;
     mv.zz += turn * mv.cz * angstrom;
+    advance_time(mv, turn * angstrom, e_step);
     if (sum_Q > 0.0) {
       const double xq = std::clamp(in_units(mv.x, angstrom), 0.0, th);
       if (mv.is_ion) {
@@ -3033,6 +3114,29 @@ void Transporter::crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_i
         add(t_.ionization_by_recoils, xq, sum_Q);
         t_.total_ionization_recoils += sum_Q;
       }
+    }
+
+    // --- The mover's point: recorded before the struck atoms set off, so that
+    // their points can name it as their parent ------------------------------
+    double ndir[3] = {mv.cx, mv.cy, mv.cz};
+    {
+      const double pn = std::sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
+      if (pn > 1e-12 * p0) {
+        for (int c = 0; c < 3; ++c) ndir[c] = p[c] / pn;
+      }
+    }
+    std::uint32_t collision_point = CollisionPoint::no_parent;
+    if (trajectory != nullptr) {
+      Mover after = mv;
+      after.cx = ndir[0];
+      after.cy = ndir[1];
+      after.cz = ndir[2];
+      after.energy = e1;
+      record_point(trajectory, after);
+      Mover before = mv;
+      before.energy = e_step;
+      annotate_collision(trajectory, before, after, sum_T * electron_volt, e_step - e_c + sum_Q * electron_volt);
+      collision_point = last_point_of(trajectory, after);
     }
 
     // --- The struck atoms ------------------------------------------------------
@@ -3048,7 +3152,7 @@ void Transporter::crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_i
       const double rdir[3] = {o.k.cos_recoil * dir[0] + o.k.sin_recoil * o.shat[0],
                               o.k.cos_recoil * dir[1] + o.k.sin_recoil * o.shat[1],
                               o.k.cos_recoil * dir[2] + o.k.sin_recoil * o.shat[2]};
-      if (crystal_strike(mv, set[i], rdir, o.T_eV * electron_volt, e1, i == hardest)) {
+      if (crystal_strike(mv, set[i], rdir, o.T_eV * electron_volt, e1, i == hardest, collision_point)) {
         replaced = true;
         mv.x = set[i].pos[0] * angstrom;
         mv.y = set[i].pos[1] * angstrom;
@@ -3058,15 +3162,19 @@ void Transporter::crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_i
     }
 
     // --- The mover after the collision -------------------------------------------
-    const double pn = std::sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
-    if (pn > 1e-12 * p0) {
-      mv.cx = p[0] / pn;
-      mv.cy = p[1] / pn;
-      mv.cz = p[2] / pn;
-    }
+    mv.cx = ndir[0];
+    mv.cy = ndir[1];
+    mv.cz = ndir[2];
     mv.energy = e1;
-    record_point(trajectory, mv);
+    at_point = collision_point;
+    // MD events: its energy may have fallen below an E_c here (the handoff
+    // mode then leaves it to MD; the cascades it started are still followed).
+    if (md_on_ && md_crossing(mv, in_units(e_step, electron_volt))) {
+      if (mv.is_ion) break;
+      return;
+    }
     if (replaced) {
+      end_point(trajectory, collision_point, mv);
       stop_mover(mv, false, ion_index);
       if (mv.is_ion) break;
       return;
@@ -3150,7 +3258,15 @@ void Transporter::run_ion_crystal(std::size_t ion_index, std::vector<CollisionPo
   mv.energy = ion.energy;
   mv.is_ion = true;
   mv.generation = 0;
-  crystal_follow(mv, ion_rng, ion_index, trajectory);
+  mv.track = 0;
+  next_track_ = 0;
+  // MD events: an ion entering below an E_c is an event at its start (the
+  // handoff mode then leaves the whole ion to MD).
+  if (md_on_ && md_ion_entry(mv)) {
+    record_point(trajectory, mv, CollisionPoint::Kind::birth);
+  } else {
+    crystal_follow(mv, ion_rng, ion_index, trajectory);
+  }
   recoil_rng_ = nullptr;
   t_.ions += 1;
 }
@@ -4077,6 +4193,7 @@ void TrimSimulation::run_block(std::size_t first_ion, std::size_t count, TrimTal
   Transporter tr(config_, *model_, out, bin_start(0), bin_width());
   const bool export_points = exported != nullptr && !config_.trajectory_export.file.empty();
   const bool export_events = exported != nullptr && config_.md_events.enabled();
+  const bool export_offsets = exported != nullptr && exports_lattice_offsets(config_);
   if (export_events) tr.set_md_output(&exported->events);
   for (std::size_t i = first_ion; i < first_ion + count; ++i) {
     if (cancel_.load(std::memory_order_relaxed)) return;
@@ -4094,6 +4211,7 @@ void TrimSimulation::run_block(std::size_t first_ion, std::size_t count, TrimTal
                                std::to_string(i - first_ion + 1) + " ions): " + e.what());
     }
     if (export_events) number_events(exported->events, first_event);
+    if (export_offsets) exported->lattice_offsets.emplace_back(i + 1, tr.lattice_offset_A());
     if (keep) {
       if (export_points) {
         for (const auto &pt : trajectory) {
