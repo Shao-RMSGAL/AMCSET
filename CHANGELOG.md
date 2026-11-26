@@ -41,6 +41,15 @@
 
 ### Fixed
 
+- **GUI: results never go to the working directory.** A new scenario's
+  output folder was the relative `output`, so an installed GUI (started in
+  its install folder) failed with a permission error. New scenarios now
+  write to `AMCSET/output` in the user's documents folder
+  (QStandardPaths::DocumentsLocation: Windows Documents, macOS ~/Documents,
+  Linux XDG_DOCUMENTS_DIR); *File, Output folder for new scenarios...*
+  changes it; a relative folder is taken relative to the scenario file or
+  that folder; *Open output folder* opens the folder that is written.
+
 - **The refined transport refuses particle sources.** It started every
   particle at the surface as a beam ion, so a TRIM.DAT source silently ran
   the beam; validation now says to use `trim2013` or `crystal`.

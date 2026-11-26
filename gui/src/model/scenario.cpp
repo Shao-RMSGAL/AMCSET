@@ -18,6 +18,7 @@
 
 #include "app/guard.h"
 #include "diagnostics.h"
+#include "model/output_location.h"
 #include "trim/trim_dat.h"
 #include "trim/trim_in.h"
 
@@ -65,6 +66,8 @@ bool is_trim_in(const QString &path) {
 Scenario::Scenario(QObject *parent) : QObject(parent) {
   config_ = config::example_config(config::Mode::srim);
   config_.trim.trajectory_ions = 200;
+  // (Never relative: an installed GUI starts in a folder the user cannot write.)
+  config_.trim.output_directory = new_scenario_output_directory();
   remember_transport();
   undo_.setClean();
 }
@@ -125,7 +128,10 @@ void Scenario::reset(const config::RunConfig &c, const QString &path) {
   emit file_path_changed(path_);
 }
 
-QString Scenario::load(const QString &path) {
+QString Scenario::load(const QString &given) {
+  // Absolute: the scenario's relative paths (output folder, particle and
+  // cell files) are relative to its folder, not to the working directory.
+  const QString path = QFileInfo(given).absoluteFilePath();
   try {
     config::RunConfig c;
     if (is_trim_in(path)) {

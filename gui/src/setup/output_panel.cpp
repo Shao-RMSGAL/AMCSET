@@ -47,6 +47,10 @@ OutputPanel::OutputPanel(Scenario *scenario, std::function<std::shared_ptr<const
   auto *ff = new QFormLayout(files);
   auto *dir = new QLineEdit(files);
   dir->setPlaceholderText(tr("(no files are written)"));
+  dir->setToolTip(tr("Folder for the result files (TRIM's text files, CSV, JSON, Parquet). A relative folder is "
+                     "taken relative to the scenario file's folder, or for an unsaved scenario to the output "
+                     "folder for new scenarios (File menu; by default AMCSET in your documents folder), never "
+                     "relative to where the program was started. Empty: no files are written."));
   auto *browse = new QPushButton(tr("Browse..."), files);
   auto *drow = new QHBoxLayout();
   drow->addWidget(dir, 1);

@@ -28,6 +28,7 @@ set(GUI_SOURCES
     src/model/scenario.cpp src/model/scenario.h
     src/model/target_models.cpp src/model/target_models.h
     src/model/quantity_text.cpp src/model/quantity_text.h
+    src/model/output_location.cpp src/model/output_location.h
     src/run/run_controller.cpp src/run/run_controller.h
     src/run/track_store.cpp src/run/track_store.h
     src/run/datasets.cpp src/run/datasets.h

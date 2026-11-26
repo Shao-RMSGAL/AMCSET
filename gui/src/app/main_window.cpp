@@ -19,6 +19,7 @@
 
 #include "config.h"
 #include "diagnostics.h"
+#include "model/output_location.h"
 #include "run/datasets.h"
 #include "run_config.h"
 #include "setup/calculation_panel.h"
@@ -294,6 +295,28 @@ void MainWindow::build_menus() {
   file->addAction(export_act_);
   file->addSeparator();
   file->addAction(results_act_);
+  file->addAction(tr("Output folder for new scenarios..."), this, guarded(this, tr("Menu"), [this] {
+    const QString now = output_root();
+    QMessageBox box(QMessageBox::Question, tr("Output folder for new scenarios"),
+                    tr("New scenarios write their results to %1, and a relative output folder of an unsaved "
+                       "scenario is taken relative to it. Choose another folder, or go back to the default (%2)?")
+                        .arg(QDir::toNativeSeparators(QDir(now).filePath(QStringLiteral("output"))),
+                             QDir::toNativeSeparators(default_output_root())),
+                    QMessageBox::Cancel, this);
+    auto *choose = box.addButton(tr("Choose..."), QMessageBox::AcceptRole);
+    auto *reset = box.addButton(tr("Default"), QMessageBox::ResetRole);
+    box.exec();
+    if (box.clickedButton() == choose) {
+      const QString d = QFileDialog::getExistingDirectory(this, tr("Output folder for new scenarios"), now);
+      if (d.isEmpty()) return;
+      set_output_root(d);
+    } else if (box.clickedButton() == reset) {
+      set_output_root({});
+    } else {
+      return;
+    }
+    log(tr("New scenarios write to %1.").arg(QDir::toNativeSeparators(QDir(output_root()).filePath(QStringLiteral("output")))));
+  }));
   file->addSeparator();
   file->addAction(quit_act_);
   rebuild_recent_menu();
@@ -309,8 +332,13 @@ void MainWindow::build_menus() {
   runm->addAction(extend_act_);
   runm->addSeparator();
   runm->addAction(tr("Open output folder"), this, guarded(this, tr("Menu"), [this] {
-    const QString d = QString::fromStdString(scenario_.config().trim.output_directory);
-    if (!d.isEmpty()) QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(d).absoluteFilePath()));
+    const QString d = QString::fromStdString(
+        absolute_output_directory(scenario_.config().trim.output_directory, scenario_.file_path()));
+    if (!QFileInfo::exists(d)) {
+      log(tr("The output folder %1 does not exist yet (it is made by the first run).").arg(d));
+      return;
+    }
+    QDesktopServices::openUrl(QUrl::fromLocalFile(d));
   }));
 
   auto *view = menuBar()->addMenu(tr("&View"));
@@ -528,6 +556,7 @@ void MainWindow::new_scenario() {
   if (!maybe_save()) return;
   auto c = config::example_config(config::Mode::srim);
   c.trim.trajectory_ions = 200;
+  c.trim.output_directory = new_scenario_output_directory();
   scenario_.reset(c);
   log(tr("New scenario."));
 }
@@ -644,7 +673,11 @@ void MainWindow::rebuild_recent_menu() {
 void MainWindow::run() {
   reset_run_notices();
   QString err;
-  if (!run_.start(scenario_.config(), &err)) {
+  // The output folder made absolute (relative ones: to the scenario's
+  // folder or the output root, never to the working directory).
+  config::RunConfig to_run = scenario_.config();
+  to_run.trim.output_directory = absolute_output_directory(to_run.trim.output_directory, scenario_.file_path());
+  if (!run_.start(to_run, &err)) {
     log(err, true);
     if (unattended_) QCoreApplication::exit(2);
     else QMessageBox::warning(this, tr("Cannot start"), err);
@@ -661,7 +694,9 @@ void MainWindow::run() {
 void MainWindow::extend() {
   reset_run_notices();
   QString err;
-  if (!run_.extend(scenario_.config(), static_cast<std::size_t>(more_ions_->value()), &err)) {
+  config::RunConfig to_run = scenario_.config();
+  to_run.trim.output_directory = absolute_output_directory(to_run.trim.output_directory, scenario_.file_path());
+  if (!run_.extend(to_run, static_cast<std::size_t>(more_ions_->value()), &err)) {
     QMessageBox::warning(this, tr("Cannot continue"), err);
     return;
   }

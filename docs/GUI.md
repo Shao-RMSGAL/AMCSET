@@ -8,6 +8,19 @@ hidden from the View menu).
 
 ## Setup
 
+**Where results go.** A new scenario writes to `AMCSET\output` in the
+user's documents folder (Windows `Documents\AMCSET\output`, macOS
+`~/Documents/AMCSET/output`, Linux the XDG documents folder, usually
+`~/Documents/AMCSET/output`). *File, Output folder for new scenarios...*
+chooses another folder (kept between sessions) or goes back to that
+default. A relative output folder is taken relative to the scenario file's
+folder, or for an unsaved scenario to that folder: never relative to where
+the program was started (an installed GUI starts in a folder the user
+cannot write to). An empty folder writes no files. The command line keeps
+the usual rules of a command-line program: `-o DIR` relative to the working
+directory, a scenario's `output.directory` relative to the scenario file,
+and `output` in the working directory for a TRIM.IN.
+
 - **Ion**: element (or the periodic table, *PT*), mass (default: most
   abundant isotope, as TRIM), energy and angle; values accept units
   ("2 MeV", "250 keV"). The particle source is either the ion beam or a list
