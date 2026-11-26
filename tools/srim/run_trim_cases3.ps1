@@ -4,7 +4,9 @@
 # A case is complete when results\trim\<case>\RANGE.txt and _done.txt exist. Cases finished by
 # version 1 (run_trim_cases.ps1) without those files are salvaged from the version-1 worker folder
 # when possible, otherwise re-run. At most -MaxProcs TRIM.exe processes run at once (all versions).
-param([int]$Workers = 0, [int]$MaxProcs = 0, [int]$TimeoutHours = 12, [string]$Filter = '*')
+# -CaseSet / -OutSet choose another batch (e.g. trim_cases4 -> results\trim4, gen_cases4.py).
+param([int]$Workers = 0, [int]$MaxProcs = 0, [int]$TimeoutHours = 12, [string]$Filter = '*',
+      [string]$CaseSet = 'trim_cases3', [string]$OutSet = 'trim3')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $srim = Split-Path -Parent $root
@@ -12,10 +14,10 @@ if ($Workers -le 0) { $Workers = [Math]::Max(1, [Environment]::ProcessorCount - 
 if ($MaxProcs -le 0) { $MaxProcs = $Workers }
 $work   = Join-Path $root 'work_trim2'
 $work1  = Join-Path $root 'work_trim'
-$out    = Join-Path $root 'results\trim3'
-$claim  = Join-Path $work 'claims3'
+$out    = Join-Path $root ('results\' + $OutSet)
+$claim  = Join-Path $work $(if ($OutSet -eq 'trim3') { 'claims3' } else { 'claims_' + $OutSet })
 New-Item -ItemType Directory -Force -Path $work, $out, $claim | Out-Null
-$cases = Get-ChildItem (Join-Path $root 'trim_cases3') -Directory -Filter $Filter | Sort-Object Name
+$cases = Get-ChildItem (Join-Path $root $CaseSet) -Directory -Filter $Filter | Sort-Object Name
 Write-Host ("TRIM reference cases: {0}, {1} workers, at most {2} TRIM processes" -f $cases.Count, $Workers, $MaxProcs)
 $skip = @('_amcset', 'SRIM Tutorials', 'SRIMHelp', 'SRIMPICS', 'Demo', 'SRIM-Setup', 'SR Module')
 for ($w = 0; $w -lt $Workers; $w++) {
