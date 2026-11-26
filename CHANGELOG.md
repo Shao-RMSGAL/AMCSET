@@ -13,6 +13,21 @@
   calculation keeps its seed. Tests `TrimEngine.RandomSeedIsDrawnRecordedAndRepeatable`,
   `Cli.RandomSeedKeyAndOption`.
 
+### Changed
+
+- **Automatic target depth shrinks to the ions and rounds.** The sized
+  target is accepted when the deepest test ion reaches
+  `auto_depth.shrink_below` of it (new key, default 0.7, GUI *Shrink
+  below*; before: the last 10 %, i.e. 0.9); shallower, the last layer is
+  made thinner so that the deepest stops at 1 − margin, now also when the
+  ions stop above the last layer (it is made about a monolayer thin;
+  before, it was left as it was). Every thickness tried is rounded up to
+  at most one decimal in the unit of its size. 5 MeV Fe → Fe, 1000 test
+  ions: 2.07 µm in 2 test runs before, now 2.4 µm in 1 (the first guess,
+  deepest ion at 78 %); bcc Fe (1 1 1), crystal transport: 4.29 µm → 4.3
+  µm. Sized thicknesses therefore differ from 1.0.0's. Tests `TrimAutoDepth.*` (new:
+  `ShrinkThresholdDecides`, `IonsStoppingAboveTheLastLayerMakeItThin`).
+
 ### Fixed
 
 - **MD events in the crystal transport: missing crossings** (a user's

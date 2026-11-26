@@ -679,7 +679,10 @@ struct TrimConfig {
   struct AutoDepth {
     bool enabled = false;
     std::size_t test_ions = 1000; //!< Ions per test run (quick mode)
-    double margin = 0.1;          //!< Fraction at the back the deepest ion must reach
+    double margin = 0.1;          //!< Sizing puts the deepest test ion this fraction before the back
+    //! Accepted while the deepest test ion reaches this fraction of the
+    //! target; shallower, the last layer shrinks (used as at most 1 - margin).
+    double shrink_below = 0.7;
     //! Front ends warn (without stopping) when ions leave through the back.
     bool warn_transmitted = true;
   };

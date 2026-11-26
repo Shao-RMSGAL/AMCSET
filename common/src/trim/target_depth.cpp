@@ -59,6 +59,21 @@ std::string length_text(double angstrom_value) {
   return num_text(angstrom_value) + " A";
 }
 
+//! \p a (Angstrom) rounded up to a clean length in the unit length_text()
+//! uses: one decimal below 100 of it, whole numbers from 100 (4.29 um ->
+//! 4.3 um, 856.4 nm -> 857 nm).
+double clean_length_A(double a) {
+  if (!(a > 0.0) || !std::isfinite(a)) return a;
+  double unit = 1.0;
+  if (a >= 1e10) unit = 1e10;
+  else if (a >= 1e7) unit = 1e7;
+  else if (a >= 1e4) unit = 1e4;
+  else if (a >= 10.0) unit = 10.0;
+  const double v = a / unit;
+  const double tenths = v < 100.0 ? 10.0 : 1.0;
+  return std::ceil(v * tenths - 1e-9) / tenths * unit;
+}
+
 //! The stopping of the ion in one layer: electronic (Bragg's rule with the
 //! configured model) plus ZBL nuclear stopping, in eV per Angstrom.
 class LayerStopping {
@@ -331,9 +346,20 @@ AutoDepthResult size_target(TrimConfig &c, const std::atomic<bool> *cancel) {
     throw std::invalid_argument("auto_depth.margin: must be above 0 and below 1, got " + num_text(opt.margin));
   }
   if (opt.test_ions == 0) throw std::invalid_argument("auto_depth.test_ions: must be positive");
+  if (!(opt.shrink_below > 0.0 && opt.shrink_below < 1.0)) {
+    throw std::invalid_argument("auto_depth.shrink_below: must be above 0 and below 1, got " +
+                                num_text(opt.shrink_below));
+  }
+  // (A shrunk target puts the deepest ion at 1 - margin, which must count as deep enough.)
+  const double shrink_below = std::min(opt.shrink_below, 1.0 - opt.margin);
   double top = 0.0; // Angstrom above the last layer
   for (std::size_t i = 0; i + 1 < c.layers.size(); ++i) top += in_units(c.layers[i].width, angstrom);
-  const double min_last = std::ceil(monolayer_A(c.layers.back()) * 1.01 * 100.0) / 100.0;
+  const double min_last = clean_length_A(monolayer_A(c.layers.back()) * 1.01);
+  constexpr double max_total_A = 1e11; // 10 m
+  // Every thickness tried is a clean number (rounded up), within the limits.
+  const auto clean_last = [&](double a) {
+    return std::clamp(clean_length_A(std::max(a, min_last)), min_last, std::max(min_last, max_total_A - top));
+  };
 
   // The crystal transport: channeled ions stop far beyond the estimate, which
   // knows no lattice (up to 16 times the amorphous range along an open axis,
@@ -351,16 +377,12 @@ AutoDepthResult size_target(TrimConfig &c, const std::atomic<bool> *cancel) {
   const double reach = in_units(estimate_penetration(c), angstrom);
   const double deepest_guess = in_units(estimate_deepest(c), angstrom);
   double last = in_units(c.layers.back().width, angstrom);
-  constexpr double max_total_A = 1e11; // 10 m
   if (std::isfinite(reach) && reach > 0.0) {
-    if (reach < top && !crystal) {
-      r.notes.push_back("automatic target depth: the ions are expected to stop above the last layer (reach about " +
-                        length_text(reach) + "); its thickness is left as it is");
-      return r;
-    }
-    last = crystal ? std::clamp(crystal_first * deepest_guess - top, min_last, max_total_A - top)
-                   : std::max(min_last, deepest_guess - top);
+    // (Ions expected to stop above the last layer: the test runs decide,
+    // and the last layer is then made thin.)
+    last = crystal ? crystal_first * deepest_guess - top : deepest_guess - top;
   }
+  last = clean_last(last);
   // Quick-mode test runs (only the depths matter).
   TrimConfig t = c;
   t.damage = DamageCalculation::kinchin_pease;
@@ -406,22 +428,27 @@ AutoDepthResult size_target(TrimConfig &c, const std::atomic<bool> *cancel) {
                           "; the depth was not increased further");
         break;
       }
-      last = std::min(max_total_A - top, std::max(growth * last, growth * total - top));
+      last = clean_last(std::max(growth * last, growth * total - top));
       continue;
     }
-    if (deepest < top) {
-      r.notes.push_back("automatic target depth: the ions stop above the last layer (deepest " +
-                        length_text(deepest) + "); its thickness is left at " + length_text(last));
-      done = true;
-      break;
-    }
-    if (deepest >= (1.0 - opt.margin) * total * (1.0 - 1e-12)) {
+    // Deep enough: the deepest ion reaches shrink_below of the target (or
+    // the last layer is as thin as it can be).
+    if (deepest >= shrink_below * total * (1.0 - 1e-12) || last <= min_last) {
+      if (deepest < top) {
+        r.notes.push_back("automatic target depth: the ions stop above the last layer (deepest " +
+                          length_text(deepest) + "); it is made as thin as it can be");
+      }
       done = true;
       break;
     }
     // Shrink: the deepest ion at the start of the last margin (the most
     // room behind it for the deeper tail of a longer run).
-    last = std::max(min_last, deepest / (1.0 - opt.margin) - top);
+    const double shrunk = clean_last(deepest / (1.0 - opt.margin) - top);
+    if (shrunk >= last) { // (rounding: no thinner clean thickness)
+      done = true;
+      break;
+    }
+    last = shrunk;
   }
   if (!done && r.notes.empty()) {
     r.notes.push_back("automatic target depth: no stable depth after " + std::to_string(r.runs) +

@@ -101,10 +101,12 @@ hidden from the View menu).
   and the evidence are in docs/SRIM_MODE.md §7 and
   docs/TRIM2013_ALGORITHM.md. The group *Target depth* (SRIM mode) has
   *Automatic target depth* (`auto_depth.enabled`, off by default: before
-  each run, quick test runs size the last layer so that the deepest test ion
-  stops in its last part; the sized thickness then appears on the Target
-  tab as an undoable edit), the number of *Test ions* (1000) and the
-  *Margin* (10 %), and *Warn when ions leave through the back* (on by
+  each run, quick test runs size the last layer, growing or shrinking it,
+  so that the deepest test ion stops near its back; the sized thickness, a
+  clean number such as 4.3 um, then appears on the Target tab as an
+  undoable edit), the number of *Test ions* (1000), the *Margin* (10 %:
+  where a resized target puts the deepest test ion), *Shrink below* (70 %:
+  a target whose deepest test ion stops shallower is made thinner), and *Warn when ions leave through the back* (on by
   default). docs/CLI.md "Checks and warnings" describes the procedure,
   also for the crystal transport (a deep box first, then trimmed to the
   deepest channeled ion).

@@ -1392,6 +1392,18 @@ std::string joined(const std::vector<std::string> &v) {
   return s;
 }
 
+//! A thickness the automatic depth may choose: at most one decimal in the
+//! unit of its size (A, nm, um, mm, m), whole numbers from 100 of it.
+bool clean_thickness(double a_A) {
+  double unit = 1.0;
+  if (a_A >= 1e10) unit = 1e10;
+  else if (a_A >= 1e7) unit = 1e7;
+  else if (a_A >= 1e4) unit = 1e4;
+  else if (a_A >= 10.0) unit = 10.0;
+  const double v = a_A / unit * (a_A / unit < 100.0 ? 10.0 : 1.0);
+  return std::abs(v - std::round(v)) < 1e-6 * std::max(1.0, v);
+}
+
 } // namespace
 
 // The path length exceeds the mean projected range; the first guess of the
@@ -1416,8 +1428,9 @@ TEST(TrimAutoDepth, EstimateCoversTheDeepestIons) {
 }
 
 // From a far too thin and a far too thick last layer, the sized target stops
-// every test ion, the deepest within the last margin; only the thickness
-// changes, and the result does not depend on the starting thickness.
+// every test ion, the deepest beyond auto_depth.shrink_below of the target
+// (a too thick one is made thinner); only the thickness changes, it is a
+// clean number, and it does not depend on the starting thickness.
 TEST(TrimAutoDepth, DeepestTestIonStopsInTheLastMargin) {
   std::vector<double> sized;
   for (const double start_A : {50.0, 1e6}) {
@@ -1432,7 +1445,8 @@ TEST(TrimAutoDepth, DeepestTestIonStopsInTheLastMargin) {
     const double total = in_units(c.target_thickness(), angstrom);
     const double deepest = in_units(r.deepest, angstrom);
     EXPECT_LE(deepest, total);
-    EXPECT_GE(deepest, (1.0 - c.auto_depth.margin) * total * (1.0 - 1e-9)) << joined(r.notes);
+    EXPECT_GE(deepest, c.auto_depth.shrink_below * total * (1.0 - 1e-9)) << joined(r.notes);
+    EXPECT_TRUE(clean_thickness(total)) << total << " A";
     EXPECT_EQ(in_units(r.last_layer_width, angstrom), total);
     EXPECT_EQ(c.damage, DamageCalculation::full_cascade);
     EXPECT_EQ(c.ion_count, 10u);
@@ -1445,17 +1459,41 @@ TEST(TrimAutoDepth, DeepestTestIonStopsInTheLastMargin) {
   EXPECT_EQ(sized[0], sized[1]);
 }
 
-TEST(TrimAutoDepth, IonsStoppingAboveTheLastLayerLeaveItAlone) {
+// Ions that stop above the last layer: it is made as thin as it can be (the
+// domain shrinks to the ions), the layers above are kept.
+TEST(TrimAutoDepth, IonsStoppingAboveTheLastLayerMakeItThin) {
   auto c = fe_on_fe(10.0, DamageCalculation::kinchin_pease, 10, 1e5); // 10 um; 10 keV Fe stops in nm
   auto back = c.layers.front();
   back.name = "Fe back";
   back.width = 1000.0 * angstrom;
   c.layers.push_back(back);
   const auto r = size_target(c);
-  EXPECT_FALSE(r.changed);
-  EXPECT_EQ(r.runs, 0u);
-  EXPECT_EQ(in_units(c.layers.back().width, angstrom), 1000.0);
-  EXPECT_NE(joined(r.notes).find("left as it is"), std::string::npos) << joined(r.notes);
+  EXPECT_TRUE(r.changed);
+  EXPECT_GE(r.runs, 1u);
+  EXPECT_EQ(in_units(c.layers.front().width, angstrom), 1e5);
+  const double last = in_units(c.layers.back().width, angstrom);
+  EXPECT_LT(last, 5.0); // about a monolayer
+  EXPECT_TRUE(clean_thickness(last)) << last;
+  EXPECT_NE(joined(r.notes).find("as thin as it can be"), std::string::npos) << joined(r.notes);
+  EXPECT_NO_THROW(c.validate());
+}
+
+// The threshold: a deepest ion between shrink_below and the back keeps the
+// target; a higher threshold sizes it tighter.
+TEST(TrimAutoDepth, ShrinkThresholdDecides) {
+  auto c = fe_on_fe(100.0, DamageCalculation::kinchin_pease, 10, 1e6);
+  c.auto_depth.enabled = true;
+  c.auto_depth.test_ions = 200;
+  c.auto_depth.shrink_below = 0.85;
+  auto r = size_target(c);
+  const double total = in_units(c.target_thickness(), angstrom);
+  EXPECT_GE(in_units(r.deepest, angstrom), 0.85 * total * (1.0 - 1e-9)) << joined(r.notes);
+  // A sized target is kept: sizing it again changes nothing.
+  r = size_target(c);
+  EXPECT_EQ(in_units(c.target_thickness(), angstrom), total) << joined(r.notes);
+  auto bad = c;
+  bad.auto_depth.shrink_below = 1.0;
+  EXPECT_THROW(size_target(bad), std::invalid_argument);
 }
 
 TEST(TrimAutoDepth, RecoilSourcesAndCancellationKeepTheTarget) {
@@ -2174,7 +2212,8 @@ TEST(TrimCrystal, AutomaticDepthHoldsTheChanneledIons) {
     const double total = in_units(c.target_thickness(), angstrom);
     const double deepest = in_units(r.deepest, angstrom);
     EXPECT_LE(deepest, total);
-    EXPECT_GE(deepest, (1.0 - c.auto_depth.margin) * total * (1.0 - 1e-9)) << joined(r.notes);
+    EXPECT_GE(deepest, c.auto_depth.shrink_below * total * (1.0 - 1e-9)) << joined(r.notes);
+    EXPECT_TRUE(clean_thickness(total)) << total << " A";
     // Channeled along <001>: deeper than the estimate that knows no lattice.
     EXPECT_GT(deepest, 1.5 * in_units(estimate_deepest(c), angstrom)) << joined(r.notes);
     EXPECT_EQ(c.damage, DamageCalculation::full_cascade);

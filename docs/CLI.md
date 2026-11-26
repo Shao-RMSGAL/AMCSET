@@ -75,7 +75,7 @@ amcset trim TRIM.IN -o out --fix-trim-bugs                  # correct TRIM's bug
 | `--md-ec LIST` | Transition energies E_c, ascending: `"1 keV"`, `"0.5,1,2,5 keV"` or `"500 eV,1 keV"` (repeatable) |
 | `--md-emin E` | Recoils below E are not events (default `Ed`: the struck element's displacement energy) |
 | `--md-handoff` | Handoff mode: the BCA stops following events (one E_c). Not TRIM: the tables then cover the BCA part only. Use `--fix-trim-bugs` for MD coupling |
-| `--auto-depth` | Automatic target depth (`auto_depth.enabled`): before the run, quick test runs size the last layer so that the deepest test ion stops in its last 10 % (see "Checks and warnings" below) |
+| `--auto-depth` | Automatic target depth (`auto_depth.enabled`): before the run, quick test runs size the last layer (grow or shrink, rounded to clean thicknesses) so that no test ion is transmitted and the deepest reaches at least 70 % of the target (`auto_depth.shrink_below`), 90 % after a resize (see "Checks and warnings" below) |
 | `--log FILE` | Write the diagnostic log (configuration, threads, files written, warnings, errors) to FILE; crash reports go to the same folder |
 | `-q, --quiet` / `-v, --verbose` | No progress bar / engine log messages and the diagnostic log (with debug lines) on stderr |
 
@@ -128,9 +128,14 @@ kinematics). The reach is the ions' path length from the stopping powers
 **Automatic target depth** (`--auto-depth`, `auto_depth.enabled`): quick
 test runs (Kinchin-Pease, fast approximations, `auto_depth.test_ions` ions,
 default 1000) resize the **last** layer until no test ion is transmitted and
-the deepest stops in the last `auto_depth.margin` (default 10 %) of the
-target: the layer grows (doubles) while ions are transmitted and shrinks to
-deepest/(1 - margin) when the deepest ion stops shallower. With the crystal
+the deepest reaches at least `auto_depth.shrink_below` (default 70 %) of
+the target depth: the layer grows (doubles) while ions are transmitted and
+shrinks to deepest/(1 - `auto_depth.margin`) (default margin 10 %: the
+deepest test ion then stops at 90 %) when the deepest ion stops shallower,
+also when the ions stop above the last layer (it is then made as thin as
+it can be, about a monolayer). Every thickness is rounded up to a clean
+number: at most one decimal in the unit of its size (4.3 um, 857 nm,
+12.5 mm). With the crystal
 transport, channeled ions stop far beyond any estimate that knows no lattice
 (up to 16 times the amorphous range, "Why ranges in a crystal are longer"),
 and a test run costs the same in any box: the first one is made in a box 32
@@ -143,8 +148,8 @@ along it (nuclear collisions straggle the range most); from 1 keV to 1 GeV
 and from H to U it took 2 test runs (about 0.3 s). The new thickness is
 printed (`Note: ...`) and used for the run (`--save-config` writes it); a
 depth window that ended beyond the new target is reset to the whole target.
-It is not used for recoil sources (TRIM.DAT atoms start at given depths) or
-when the ions stop above the last layer. Leave it off to study transmission
+It is not used for recoil sources (TRIM.DAT atoms start at given depths).
+Leave it off to study transmission
 through a given target.
 
 **Transmitted ions.** During a SRIM-mode beam run, the first ion that
@@ -284,7 +289,8 @@ Keys:
   handoff mode. Every column and rule: `docs/OUTPUT.md`.
 - `auto_depth` (written only when not the defaults): `enabled` (default
   `false`), `test_ions` (1 to 10 000 000, default 1000), `margin` (0.01 to
-  0.5, default 0.1), `warn_transmitted` (default `true`); see "Checks and
+  0.5, default 0.1), `shrink_below` (0.1 to 0.99, default 0.7; used as at
+  most 1 - margin), `warn_transmitted` (default `true`); see "Checks and
   warnings" above.
 - `output`: `directory`, `depth_window` (TRIM's plot window, `["0 A","0 A"]`
   = whole target), `bins` (100 like TRIM), `range_3d`, `exit_lists`,

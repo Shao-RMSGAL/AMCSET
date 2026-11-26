@@ -367,17 +367,20 @@ TEST(Cli, AutoDepthOptionAndKeys) {
   EXPECT_TRUE(c.trim.auto_depth.enabled);
   apply_override(c, "auto_depth.test_ions=500");
   apply_override(c, "auto_depth.margin=0.2");
+  apply_override(c, "auto_depth.shrink_below=0.6");
   apply_override(c, "auto_depth.warn_transmitted=false");
   const auto back = parse_config(to_json(c));
   EXPECT_TRUE(back.trim.auto_depth.enabled);
   EXPECT_EQ(back.trim.auto_depth.test_ions, 500u);
   EXPECT_EQ(back.trim.auto_depth.margin, 0.2);
+  EXPECT_EQ(back.trim.auto_depth.shrink_below, 0.6);
   EXPECT_FALSE(back.trim.auto_depth.warn_transmitted);
   const std::string base = R"({"ion": {"element": "Fe", "energy": "1 MeV"},
     "layers": [{"thickness": "1 um", "elements": [{"element": "Fe"}]}], )";
   EXPECT_NO_THROW(parse_config(base + R"("auto_depth": {"enabled": true}})"));
   EXPECT_THROW(parse_config(base + R"("auto_depth": {"margin": 0.9}})"), std::invalid_argument);
   EXPECT_THROW(parse_config(base + R"("auto_depth": {"test_ions": 0}})"), std::invalid_argument);
+  EXPECT_THROW(parse_config(base + R"("auto_depth": {"shrink_below": 1.2}})"), std::invalid_argument);
   EXPECT_THROW(parse_config(base + R"("auto_depth": {"test_ions": 1e9}})"), std::invalid_argument);
   EXPECT_THROW(parse_config(base + R"("auto_depth": {"depth": "1 um"}})"), std::invalid_argument);
   EXPECT_THROW(parse_config(base + R"("auto_depth": {"enabled": "maybe"}})"), std::exception);

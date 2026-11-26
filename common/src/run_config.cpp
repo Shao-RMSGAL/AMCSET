@@ -1088,7 +1088,7 @@ RunConfig parse_config(std::string_view json_text, const std::filesystem::path &
   {
     // Automatic target depth (trim::size_target) and the escape warning.
     const Reader a(r.object("auto_depth"), "auto_depth");
-    a.reject_unknown({"enabled", "test_ions", "margin", "warn_transmitted"});
+    a.reject_unknown({"enabled", "test_ions", "margin", "shrink_below", "warn_transmitted"});
     auto &ad = t.auto_depth;
     ad.enabled = a.flag("enabled", ad.enabled);
     ad.test_ions = a.count("test_ions", ad.test_ions, 10000000);
@@ -1097,6 +1097,11 @@ RunConfig parse_config(std::string_view json_text, const std::filesystem::path &
     if (!(ad.margin >= 0.01 && ad.margin <= 0.5)) {
       throw std::invalid_argument("auto_depth.margin: the fraction at the back of the target in which the "
                                   "deepest ion must stop, 0.01 to 0.5 (default 0.1)");
+    }
+    ad.shrink_below = a.num("shrink_below", ad.shrink_below);
+    if (!(ad.shrink_below >= 0.1 && ad.shrink_below <= 0.99)) {
+      throw std::invalid_argument("auto_depth.shrink_below: the fraction of the target the deepest test ion "
+                                  "must reach before the target is made thinner, 0.1 to 0.99 (default 0.7)");
     }
     ad.warn_transmitted = a.flag("warn_transmitted", ad.warn_transmitted);
   }
@@ -1472,11 +1477,12 @@ json::object to_object(const RunConfig &c) {
     const trim::TrimConfig::AutoDepth d;
     const auto &ad = t.auto_depth;
     if (ad.enabled != d.enabled || ad.test_ions != d.test_ions || ad.margin != d.margin ||
-        ad.warn_transmitted != d.warn_transmitted) {
+        ad.shrink_below != d.shrink_below || ad.warn_transmitted != d.warn_transmitted) {
       json::object a;
       a["enabled"] = ad.enabled;
       a["test_ions"] = ad.test_ions;
       a["margin"] = ad.margin;
+      a["shrink_below"] = ad.shrink_below;
       a["warn_transmitted"] = ad.warn_transmitted;
       root["auto_depth"] = std::move(a);
     }

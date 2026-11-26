@@ -256,10 +256,11 @@ CalculationPanel::CalculationPanel(Scenario *scenario, QWidget *parent)
   auto *auto_depth = new QCheckBox(tr("Automatic target depth"), depth);
   auto_depth->setToolTip(
       tr("Before the calculation, quick test runs (Kinchin-Pease, fast approximations) size the last layer so "
-         "that the deepest test ion stops inside the target, in its last part (Margin): the layer grows while "
-         "ions are transmitted and shrinks while the deepest stops shallower. The first guess comes from the "
-         "stopping powers (the ions' path length). The sized thickness replaces the last layer's and can be "
-         "undone.\n\nWith the crystal transport, channeled ions stop far beyond that guess: the first test run "
+         "that the deepest test ion stops inside the target, near its back (Margin): the layer grows while "
+         "ions are transmitted and shrinks while the deepest stops short of the Shrink below fraction (also when "
+         "the ions stop above the last layer, which is then made thin). The first guess comes from the stopping "
+         "powers (the ions' path length); thicknesses are rounded up to clean values (4.3 um, 857 nm). The sized "
+         "thickness replaces the last layer's and can be undone.\n\nWith the crystal transport, channeled ions stop far beyond that guess: the first test run "
          "is made in a box 32 times as deep, which is then trimmed to the deepest ion (two test runs as a "
          "rule; they take as long per ion as the calculation itself).\n\nLeave this off to study "
          "transmission through a given target, and for recoil sources "
@@ -274,6 +275,12 @@ CalculationPanel::CalculationPanel(Scenario *scenario, QWidget *parent)
   margin->setToolTip(tr("The deepest test ion must stop within this fraction of the target at its back; a "
                         "larger margin leaves more room for the deepest ions of the full calculation. "
                         "(auto_depth.margin)"));
+  auto *shrink = new QSpinBox(depth);
+  shrink->setRange(10, 99);
+  shrink->setSuffix(tr(" %"));
+  shrink->setToolTip(tr("The target is accepted while the deepest test ion reaches this fraction of its depth; if "
+                        "the ions stop shallower, the last layer is made thinner, so that the deepest stops at the "
+                        "start of the margin. At most 100 % minus the margin. (auto_depth.shrink_below)"));
   auto *warn = new QCheckBox(tr("Warn when ions leave through the back"), depth);
   warn->setToolTip(tr("During a calculation, report ions transmitted through the target (the calculation goes "
                       "on) and offer to run again with the automatic target depth. Turn it off for "
@@ -281,6 +288,7 @@ CalculationPanel::CalculationPanel(Scenario *scenario, QWidget *parent)
   df->addRow(QString(), auto_depth);
   df->addRow(tr("Test ions"), test_ions);
   df->addRow(tr("Margin"), margin);
+  df->addRow(tr("Shrink below"), shrink);
   df->addRow(QString(), warn);
   lay->addWidget(depth);
 
@@ -294,13 +302,17 @@ CalculationPanel::CalculationPanel(Scenario *scenario, QWidget *parent)
   binder_->spin(margin, tr("Margin"),
                 [](const config::RunConfig &c) { return static_cast<int>(std::lround(c.trim.auto_depth.margin * 100.0)); },
                 [](config::RunConfig &c, int v) { c.trim.auto_depth.margin = v / 100.0; });
+  binder_->spin(shrink, tr("Shrink below"),
+                [](const config::RunConfig &c) { return static_cast<int>(std::lround(c.trim.auto_depth.shrink_below * 100.0)); },
+                [](config::RunConfig &c, int v) { c.trim.auto_depth.shrink_below = v / 100.0; });
   binder_->check(warn, tr("Warn when ions escape"), [](const config::RunConfig &c) { return c.trim.auto_depth.warn_transmitted; },
                  [](config::RunConfig &c, bool on) { c.trim.auto_depth.warn_transmitted = on; });
-  binder_->custom([depth, test_ions, margin](const config::RunConfig &c) {
+  binder_->custom([depth, test_ions, margin, shrink](const config::RunConfig &c) {
     depth->setVisible(c.mode == config::Mode::srim);
     const bool on = c.trim.auto_depth.enabled && c.trim.source == trim::TrimConfig::Source::beam;
     test_ions->setEnabled(on);
     margin->setEnabled(on);
+    shrink->setEnabled(on);
   });
 
   // --- Bugs of TRIM.exe ----------------------------------------------------------
