@@ -39,6 +39,7 @@ Then read what your task needs:
 | [RELEASING.md](RELEASING.md) | the packages and how they are built, the release workflow, code signing (options, setting up Azure Artifact Signing), catalogues | maintainers |
 | [PLATFORM.md](PLATFORM.md) | Windows' desktop-app requirements and Linux standards, and how AMCSET 1.0 meets each | maintainers |
 | [ROADMAP.md](ROADMAP.md) | prioritised improvement backlog | developers |
+| [CRYSTAL_DATABASE.md](CRYSTAL_DATABASE.md) | the crystal database: what it holds, where every value comes from, how to search it (GUI, `amcset crystals`, `"material"`) and the automatic crystals | users, developers |
 | [CRYSTAL_DESIGN.md](CRYSTAL_DESIGN.md) | crystalline targets: the design, what is built (unit cells, orientation, cell files, the scenario's `crystal`, the crystal transport, common crystals, the GUI tab, a first comparison with measurements; user guide in CLI.md "Crystals" and GUI.md) and what is still a proposal (polycrystals, the dose-dependent lattice, a fitted stopping division) | developers |
 | [GLOSSARY.md](GLOSSARY.md) | terms and their names in the code | everyone |
 

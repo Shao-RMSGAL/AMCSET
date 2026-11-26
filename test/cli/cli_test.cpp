@@ -934,6 +934,38 @@ TEST(Cli, CellCommand) {
   EXPECT_THROW(fails({"missing_file.cif"}), std::runtime_error);
 }
 
+// A layer's crystal named from the crystal database ("material"), and
+// physics.crystal.auto_crystal.
+TEST(RunConfig, CrystalFromTheDatabase) {
+  const auto c = parse_config(R"({
+    "ion": {"element": "B", "energy": "30 keV"},
+    "layers": [{"thickness": "1 um", "crystal": {"material": "GaAs", "orientation": {"surface": [1, 1, 0]}}},
+               {"thickness": "1 um", "crystal": {"material": "Si"}},
+               {"thickness": "1 um", "elements": [{"element": "Ti"}]}],
+    "physics": {"transport": "crystal", "crystal": {"auto_crystal": true}}
+  })");
+  const auto &gaas = c.trim.layers[0];
+  ASSERT_TRUE(gaas.crystal.has_value());
+  EXPECT_EQ(gaas.crystal->cell.composition().size(), 2u);
+  EXPECT_NEAR(in_units(gaas.crystal->cell.lattice.a(), angstrom), 5.654, 1e-12); // Gemmell's value
+  EXPECT_NEAR(in_units(gaas.density, gram_per_cubic_centimeter), 5.32, 0.02);
+  EXPECT_EQ(gaas.crystal->orientation.surface, (std::vector<double>{1, 1, 0}));
+  EXPECT_TRUE(gaas.crystal->vibrations.empty()); // no Debye temperature in the database
+  const auto &si = c.trim.layers[1];
+  ASSERT_EQ(si.crystal->vibrations.size(), 1u);
+  EXPECT_EQ(in_units(*si.crystal->vibrations.front().debye_temperature, kelvin), 543.0);
+  EXPECT_TRUE(c.trim.crystal.auto_crystal);
+  EXPECT_FALSE(c.trim.layers[2].crystal.has_value()); // (the engine assigns it)
+  const auto b = parse_config(to_json(c));
+  EXPECT_TRUE(b.trim.crystal.auto_crystal);
+  EXPECT_TRUE(*b.trim.layers[0].crystal == *gaas.crystal);
+  const std::string base = R"({"ion": {"element": "B", "energy": "30 keV"}, "layers": [{"thickness": "1 um", )";
+  EXPECT_THROW(parse_config(base + R"("crystal": {"material": "Unobtainium"}}]})"), std::invalid_argument);
+  EXPECT_THROW(parse_config(base + R"("crystal": {"material": "GaAs", "a": "5 A"}}]})"), std::invalid_argument);
+  EXPECT_THROW(parse_config(base + R"("crystal": {"material": "GaAs", "structure": "bcc"}}]})"),
+               std::invalid_argument);
+}
+
 TEST(RunConfig, CrystalTransportKeys) {
   // The transport, its settings and the beam spot.
   const auto c = parse_config(R"({

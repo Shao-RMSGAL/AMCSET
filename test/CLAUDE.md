@@ -8,7 +8,7 @@ validation workflow: `docs/TESTING.md`.
 | File | Executable | Suites |
 |---|---|---|
 | `common/trim_test.cpp` | `common-test` | `TrimRandom`, `TrimKinchinPease`, `TrimConfig`, `TrimBugs`, `TrimIn`, `TrimDat`, `TrimEngine`, `TrimTables`, `TrimRegression`, `TrimAutoDepth`, `TrimMdEvents`, `TrimTrajectories`, `TrimDamageModels`, `TrimCrystal`, `DataFiles` |
-| `common/crystal_test.cpp` | `common-test` | `CrystalGeometry`, `CrystalLattice`, `CrystalStructures`, `CrystalOrientation`, `CrystalVibrations`, `CrystalFiles`, `CrystalSearch`, `CrystalMaterials`, `CrystalGrains` |
+| `common/crystal_test.cpp` | `common-test` | `CrystalGeometry`, `CrystalLattice`, `CrystalStructures`, `CrystalOrientation`, `CrystalVibrations`, `CrystalFiles`, `CrystalSearch`, `CrystalMaterials`, `CrystalDatabase`, `CrystalGrains` |
 | `common/physics_test.cpp` | `common-test` | `Units`, `Elements`, `Stopping`, `StoppingTable`, `Scattering` |
 | `common/output_test.cpp` | `common-test` | `OutputUnits`, `OutputFormat`, `OutputSpec`, `OutputWriters` |
 | `common/fast_math_test.cpp` | `common-test` | `Scattering` (shared exponentials, half-angle kinematics, `MagicTable`), `FastMath` |

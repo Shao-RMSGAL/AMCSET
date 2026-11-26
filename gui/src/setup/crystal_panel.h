@@ -90,6 +90,8 @@ private:
 
   void set_kind(int index);
   void choose_material(int index);
+  //! The crystal database: search it and give the layer the chosen crystal.
+  void choose_from_database(const QString &query);
   void build_structure();
   void import_cell();
   void export_cell();
@@ -110,6 +112,7 @@ private:
   QComboBox *layer_ = nullptr;
   QComboBox *kind_ = nullptr;
   QLabel *transport_note_ = nullptr;
+  QLabel *match_ = nullptr; // an amorphous layer whose composition is a database crystal
   QCheckBox *follow_ = nullptr; // the crystal transport on/off (as in the Calculation tab)
   QComboBox *material_ = nullptr;
   QCheckBox *keep_shape_ = nullptr;

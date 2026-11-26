@@ -24,6 +24,21 @@
   target". Tests `TrimDat.RepeatRunsEachParticleSeveralTimes`,
   `TrimCrystal.RecoilStartsFromItsSite`, `Cli.RecoilOptionAndRepeatKey`.
 
+- **Crystal database.** 122 crystals in the built-in structures:
+  Gemmell's 43 (unchanged) plus 35 elements (bcc, fcc, hcp, sc; lattice
+  constants from Mathematica's ElementData, Debye temperatures from
+  Kittel where listed) and 44 compounds (zinc blende, wurtzite, rock salt
+  including transition-metal nitrides and carbides, CsCl, cubic
+  perovskites; lattice constants at 300 K with the reference each row of
+  Wikipedia's "Lattice constant" table gives). Every value names its
+  source. Searchable in the GUI (Crystal tab, *Database...*) and the CLI
+  (`amcset crystals WORDS`); a scenario names one with
+  `layers.N.crystal.material`; `physics.crystal.auto_crystal` (and its GUI
+  box) makes amorphous layers of a database crystal's composition that
+  crystal in the crystal transport, and the Crystal tab offers it for such a
+  layer. docs/CRYSTAL_DATABASE.md. Tests `CrystalDatabase.*`,
+  `TrimCrystal.AutoCrystalFromTheDatabase`, `RunConfig.CrystalFromTheDatabase`.
+
 ### Changed
 
 - **Automatic target depth shrinks to the ions and rounds.** The sized

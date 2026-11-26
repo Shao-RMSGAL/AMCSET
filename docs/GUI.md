@@ -48,10 +48,18 @@ and `output` in the working directory for a TRIM.IN.
   between its solid and gas values, as TRIM does.
 - **Crystal** (not TRIM): the crystal of a layer. Choose the layer and
   *Single crystal*; a pure element of the table of common crystals becomes
-  that crystal, anything else is asked for. The unit cell comes from
+  that crystal, anything else is asked for. An amorphous layer whose
+  composition is a crystal of the database says so, with a link that gives
+  it that crystal; the crystal transport's settings have *Amorphous layers
+  of a database crystal's composition become that crystal*
+  (`physics.crystal.auto_crystal`). The unit cell comes from
   *Common crystals...* (43 cubic crystals with their lattice constants and,
   for the elements, Debye temperatures: Gemmell, Rev. Mod. Phys. 46, 129
-  (1974)), from *Structure...* (a built-in structure with the elements of
+  (1974)), from *Database...* (the crystal database, docs/CRYSTAL_DATABASE.md:
+  a search field over 122 elements and compounds in the built-in
+  structures, with the lattice constants, Debye temperatures where known
+  and the source of each value; *Give the layer this crystal*), from
+  *Structure...* (a built-in structure with the elements of
   its sublattices, substitutional mixtures such as "Fe 0.9, Cr 0.1",
   interstitial atoms, and the lattice constant or the density) or from
   *Import...* (CIF, VASP POSCAR, LAMMPS data, extended XYZ); *Export...*

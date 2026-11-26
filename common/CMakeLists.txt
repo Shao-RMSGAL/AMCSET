@@ -50,6 +50,7 @@ add_library(amcset-common STATIC
     ${PROJECT_SOURCE_DIR}/common/src/crystal/cell_io.cpp
     ${PROJECT_SOURCE_DIR}/common/src/crystal/lattice_search.cpp
     ${PROJECT_SOURCE_DIR}/common/src/crystal/materials.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/crystal/crystal_database.cpp
     ${PROJECT_SOURCE_DIR}/common/src/crystal/grain_map.cpp
     ${PROJECT_SOURCE_DIR}/common/src/crystal/grain_io.cpp
     # Output tables and file formats

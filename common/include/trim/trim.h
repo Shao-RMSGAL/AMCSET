@@ -504,6 +504,14 @@ struct TrimConfig {
     double local_stopping_fraction = 0.5;
     double local_stopping_decay = 0.3; //!< 0.3: the slowest exponential of the Moliere screening function
     bool thermal_vibrations = true;    //!< false: a static lattice whatever the crystals say
+    /*!
+     * Layers without a crystal whose composition is a crystal of the
+     * database (crystal::match_composition: "Fe" -> bcc Fe, "Ga As" ->
+     * zinc-blende GaAs) are given that crystal ((0 0 1) surface, 293 K) when
+     * the engine is built; it says so in its warnings. The layer's density
+     * becomes the crystal's. Off by default (such layers stay amorphous).
+     */
+    bool auto_crystal = false;
 
     bool operator==(const CrystalPhysics &) const = default;
   };

@@ -41,6 +41,7 @@
 #include "run_config.h"
 #include "data_files.h"
 #include "amcset_common.h"
+#include "crystal/crystal_database.h"
 #include "trim/random.h"
 #include "trim/single_precision.h"
 #include "trim/trim.h"
@@ -2328,6 +2329,38 @@ TEST(TrimCrystal, RecoilStartsFromItsSite) {
   const auto ti = run_tallies(ions);
   EXPECT_EQ(ti.ions, 6u);
   EXPECT_GT(ti.total_ionization_ion, 0.0);
+}
+
+// physics.crystal.auto_crystal: an amorphous layer of a database crystal's
+// composition runs as that crystal (exactly as if it had been given it),
+// says so, and nothing changes with the switch off or another transport.
+TEST(TrimCrystal, AutoCrystalFromTheDatabase) {
+  auto amorphous = md_case(20.0, 20); // amorphous Fe
+  amorphous.transport = TrimConfig::Transport::crystal;
+  amorphous.damage = DamageCalculation::kinchin_pease;
+  auto automatic = amorphous;
+  automatic.crystal.auto_crystal = true;
+  TrimSimulation a(automatic);
+  bool said = false;
+  for (const auto &w : a.warnings()) said = said || w.find("followed as the crystal Fe (bcc") != std::string::npos;
+  EXPECT_TRUE(said);
+  ASSERT_TRUE(a.config().layers[0].crystal.has_value());
+  auto given = amorphous;
+  given.layers[0].crystal = crystal::make_database_crystal(crystal::find_database_crystal("Fe"));
+  apply_crystal(given.layers[0]);
+  a.run();
+  const auto t_given = run_tallies(given);
+  EXPECT_EQ(a.tallies().range.s1, t_given.range.s1);
+  EXPECT_EQ(a.tallies().total_vacancies, t_given.total_vacancies);
+  // Off, or with another transport: the layer stays amorphous.
+  EXPECT_FALSE(TrimSimulation(amorphous).config().layers[0].crystal.has_value());
+  auto trim = automatic;
+  trim.transport = TrimConfig::Transport::trim2013;
+  EXPECT_FALSE(TrimSimulation(trim).config().layers[0].crystal.has_value());
+  // An alloy matches nothing.
+  auto alloy = automatic;
+  alloy.layers[0].elements.push_back(TargetElement::defaults(24, 0.2));
+  EXPECT_FALSE(TrimSimulation(alloy).config().layers[0].crystal.has_value());
 }
 
 TEST(TrimCrystal, ThermalVibrationsDechannel) {

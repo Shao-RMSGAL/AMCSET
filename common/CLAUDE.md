@@ -60,8 +60,11 @@ Qt and must not.
   numbers and distances against the textbook values
   (`CrystalStructures`); do not add material constants (lattice constants,
   Debye temperatures) without a cited source. The ones that are built in
-  (`crystal/materials.h`) are Tables IV and V of Gemmell, Rev. Mod. Phys.
-  46, 129 (1974), and nothing else.
+  are Tables IV and V of Gemmell, Rev. Mod. Phys. 46, 129 (1974)
+  (`crystal/materials.h`) and the crystal database
+  (`crystal/crystal_database.h`), every row of which names its source
+  (`database_sources()`, docs/CRYSTAL_DATABASE.md); add rows only with a
+  source, and keep Gemmell's rows first and unchanged.
 - **No front-end code** here: no Qt, no printing to stdout/stderr from
   library code (return warnings; throw exceptions with the key name).
 

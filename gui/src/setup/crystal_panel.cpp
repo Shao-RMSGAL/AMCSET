@@ -18,6 +18,7 @@
 
 #include "app/guard.h"
 #include "crystal/cell_io.h"
+#include "crystal/crystal_database.h"
 #include "crystal/lattice_search.h"
 #include "crystal/materials.h"
 #include "element_data.h"
@@ -497,9 +498,16 @@ CrystalPanel::CrystalPanel(Scenario *scenario, QWidget *parent)
                                   "(as TRIM does), with the unit cell's composition and density."),
                                this);
   transport_note_->setWordWrap(true);
+  match_ = new QLabel(this);
+  match_->setWordWrap(true);
+  match_->setTextFormat(Qt::RichText);
+  match_->setToolTip(tr("The layer's elements and stoichiometry are those of a crystal of the database (the form "
+                        "most common at room temperature). \"Give it this crystal\" makes the layer that single "
+                        "crystal ((0 0 1) surface, 293 K); its density becomes the crystal's."));
   auto *note_row = new QVBoxLayout();
   note_row->addWidget(follow_);
   note_row->addWidget(transport_note_);
+  note_row->addWidget(match_);
 
   // --- unit cell --------------------------------------------------------------
   auto *cell_group = new QGroupBox(tr("Unit cell"), this);
@@ -514,6 +522,15 @@ CrystalPanel::CrystalPanel(Scenario *scenario, QWidget *parent)
   material_->setToolTip(tr("Give the layer one of 43 common cubic crystals: structure and lattice constant at room "
                            "temperature and, for the 19 elements, the Debye temperature, from Gemmell, Rev. Mod. "
                            "Phys. 46, 129 (1974), Tables IV and V. The layer's elements and density are replaced."));
+  auto *database = button(cell_group, tr("Database..."),
+                          tr("Search the crystal database (%1 elements and compounds in the built-in structures, "
+                             "with lattice constants, Debye temperatures where known, and the source of every "
+                             "value) and give the layer one of them. The layer's elements and density are "
+                             "replaced.")
+                              .arg(crystal::crystal_database().size()));
+  needs_layer_.push_back(database);
+  connect(database, &QToolButton::clicked, this,
+          guarded(this, tr("Crystal database"), [this] { choose_from_database({}); }));
   auto *structure = button(cell_group, tr("Structure..."),
                            tr("Build one of the built-in structures (bcc, fcc, hcp, diamond, zinc blende, wurtzite, "
                               "rock salt, CsCl, fluorite, perovskite, L1_2, L1_0, sc) from elements and a lattice "
@@ -527,6 +544,7 @@ CrystalPanel::CrystalPanel(Scenario *scenario, QWidget *parent)
   needs_crystal_.push_back(export_button);
   widen_popup(material_);
   auto *source_row = new QHBoxLayout();
+  source_row->addWidget(database);
   source_row->addWidget(structure);
   source_row->addWidget(import_button);
   source_row->addWidget(export_button);
@@ -740,6 +758,17 @@ CrystalPanel::CrystalPanel(Scenario *scenario, QWidget *parent)
   pf->addRow(tr("Impact parameter up to"), impact);
   pf->addRow(tr("Simultaneous within"), simultaneous);
   pf->addRow(QString(), vibrate);
+  auto *auto_crystal = new QCheckBox(tr("Amorphous layers of a database crystal's composition become that crystal"),
+                                     transport_group);
+  auto_crystal->setToolTip(tr("When the calculation starts, every layer without a crystal whose elements and "
+                              "stoichiometry are those of a crystal of the database (Fe: bcc iron; Ga + As 1:1: "
+                              "zinc-blende GaAs; the form most common at room temperature) is followed as that "
+                              "single crystal, (0 0 1) surface, 293 K; the log says which, and the layer's density "
+                              "becomes the crystal's. Off: such layers stay amorphous. "
+                              "(physics.crystal.auto_crystal)"));
+  pf->addRow(QString(), auto_crystal);
+  binder_->check(auto_crystal, tr("Automatic crystals"), [](const config::RunConfig &c) { return c.trim.crystal.auto_crystal; },
+                 [](config::RunConfig &c, bool on) { c.trim.crystal.auto_crystal = on; });
   pf->addRow(tr("Beam spot"), spot);
   pf->addRow(tr("Spot width"), spot_width);
   pf->addRow(tr("Spot height"), spot_height);
@@ -903,6 +932,17 @@ CrystalPanel::CrystalPanel(Scenario *scenario, QWidget *parent)
           guarded(this, tr("Crystal transport"), [this](bool on) { set_crystal_transport(on); }));
   connect(material_, &QComboBox::activated, this,
           guarded(this, tr("Common crystal"), [this](int i) { choose_material(i); }));
+  connect(match_, &QLabel::linkActivated, this, guarded(this, tr("Database crystal"), [this](const QString &) {
+    const auto *l = current_layer();
+    if (l == nullptr || l->crystal) return;
+    std::vector<std::pair<unsigned, double>> composition;
+    for (const auto &e : l->elements) composition.emplace_back(e.z, e.stoichiometry);
+    if (const auto *row = crystal::match_composition(composition)) {
+      const auto made = crystal::make_database_crystal(*row);
+      const std::string layer_name = l->name; // (l does not survive the change)
+      set_cell(tr("Crystal %1").arg(view_of(row->name)), made.cell, &made.vibrations, layer_name, std::nullopt);
+    }
+  }));
   connect(structure, &QToolButton::clicked, this, guarded(this, tr("Crystal structure"), [this] { build_structure(); }));
   connect(import_button, &QToolButton::clicked, this, guarded(this, tr("Import a unit cell"), [this] { import_cell(); }));
   connect(export_button, &QToolButton::clicked, this, guarded(this, tr("Export the unit cell"), [this] { export_cell(); }));
@@ -1085,6 +1125,24 @@ void CrystalPanel::refresh(const config::RunConfig &c) {
   const bool following = c.trim.transport == trim::TrimConfig::Transport::crystal;
   follow_->setChecked(following); // (clicked() is not emitted for this)
   transport_note_->setVisible(any && !following);
+  // An amorphous layer whose composition is a crystal of the database.
+  {
+    const crystal::DatabaseCrystal *match = nullptr;
+    if (l != nullptr && cr == nullptr && !l->gas) {
+      std::vector<std::pair<unsigned, double>> composition;
+      for (const auto &e : l->elements) composition.emplace_back(e.z, e.stoichiometry);
+      match = crystal::match_composition(composition);
+    }
+    match_->setVisible(match != nullptr);
+    if (match != nullptr) {
+      match_->setText(tr("This layer's composition is the crystal %1 (%2, a = %3 A) of the database. "
+                         "<a href=\"use\">Give it this crystal</a>%4")
+                          .arg(view_of(match->name), view_of(match->structure), format_number(match->a_A, 5),
+                               c.trim.crystal.auto_crystal && following
+                                   ? tr(" (with automatic crystals on, the calculation does so by itself).")
+                                   : QStringLiteral(".")));
+    }
+  }
 
   if (cr == nullptr) {
     summary_->setText(l == nullptr ? tr("The target has no layer.")
@@ -1254,6 +1312,90 @@ void CrystalPanel::set_kind(int index) {
   }
   build_structure();
   binder_->refresh(); // back to "Amorphous" if nothing was built
+}
+
+void CrystalPanel::choose_from_database(const QString &query) {
+  const auto *l = current_layer();
+  if (l == nullptr) return;
+  QDialog d(this);
+  d.setWindowTitle(tr("Crystal database"));
+  d.resize(860, 520);
+  auto *search = new QLineEdit(query, &d);
+  search->setPlaceholderText(tr("Search: a name, elements, a structure or a word of the note (\"GaAs\", \"Ga As\", "
+                                "\"iron\", \"nitride\", \"wurtzite\", \"hcp\")"));
+  search->setClearButtonEnabled(true);
+  auto *table = new QTableWidget(&d);
+  const QStringList headers{tr("Name"), tr("Structure"), tr("a (A)"), tr("c (A)"), tr("Debye (K)"), tr("Source"),
+                            tr("Note")};
+  table->setColumnCount(static_cast<int>(headers.size()));
+  table->setHorizontalHeaderLabels(headers);
+  table->setSelectionBehavior(QAbstractItemView::SelectRows);
+  table->setSelectionMode(QAbstractItemView::SingleSelection);
+  table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  table->verticalHeader()->setVisible(false);
+  table->horizontalHeader()->setStretchLastSection(true);
+  auto *citation = new QLabel(&d);
+  citation->setWordWrap(true);
+  citation->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &d);
+  buttons->button(QDialogButtonBox::Ok)->setText(tr("Give the layer this crystal"));
+  auto *lay = new QVBoxLayout(&d);
+  lay->addWidget(search);
+  lay->addWidget(table, 1);
+  lay->addWidget(citation);
+  lay->addWidget(buttons);
+  std::vector<const crystal::DatabaseCrystal *> shown;
+  const auto fill = [&] {
+    shown = crystal::search_crystal_database(search->text().toStdString());
+    table->setRowCount(static_cast<int>(shown.size()));
+    for (int i = 0; i < static_cast<int>(shown.size()); ++i) {
+      const auto &r = *shown[static_cast<std::size_t>(i)];
+      QString source = view_of(r.lattice_source);
+      if (!r.debye_source.empty() && r.debye_source != r.lattice_source) source += QStringLiteral(" / ") + view_of(r.debye_source);
+      QString note = view_of(r.note);
+      if (!r.preferred) note += (note.isEmpty() ? QString() : QStringLiteral("; ")) + tr("not chosen for its composition");
+      const QStringList cells{view_of(r.name), view_of(r.structure), format_number(r.a_A, 6),
+                              r.c_A > 0.0 ? format_number(r.c_A, 6) : QString(),
+                              r.debye_temperature_K > 0.0 ? QString::number(r.debye_temperature_K) : QString(), source,
+                              note};
+      for (int k = 0; k < static_cast<int>(cells.size()); ++k) table->setItem(i, k, new QTableWidgetItem(cells[k]));
+    }
+    table->resizeColumnsToContents();
+    if (!shown.empty()) table->selectRow(0);
+    buttons->button(QDialogButtonBox::Ok)->setEnabled(!shown.empty());
+  };
+  const auto cite = [&] {
+    const int i = table->currentRow();
+    if (i < 0 || i >= static_cast<int>(shown.size())) {
+      citation->setText(tr("%1 crystals match.").arg(shown.size()));
+      return;
+    }
+    const auto &r = *shown[static_cast<std::size_t>(i)];
+    QString text = tr("Lattice: %1").arg(view_of(crystal::database_citation(r.lattice_source)));
+    if (!r.debye_source.empty()) text += QStringLiteral("\n") + tr("Debye temperature: %1").arg(view_of(crystal::database_citation(r.debye_source)));
+    else text += QStringLiteral("\n") + tr("No Debye temperature: its atoms stand still unless you give one (Thermal vibrations).");
+    citation->setText(text);
+  };
+  QObject::connect(search, &QLineEdit::textChanged, &d, [&] {
+    fill();
+    cite();
+  });
+  QObject::connect(table, &QTableWidget::currentCellChanged, &d, [&] { cite(); });
+  QObject::connect(table, &QTableWidget::cellDoubleClicked, &d, [&] { d.accept(); });
+  QObject::connect(buttons, &QDialogButtonBox::accepted, &d, &QDialog::accept);
+  QObject::connect(buttons, &QDialogButtonBox::rejected, &d, &QDialog::reject);
+  fill();
+  cite();
+  if (d.exec() != QDialog::Accepted) return;
+  const int i = table->currentRow();
+  if (i < 0 || i >= static_cast<int>(shown.size())) return;
+  const auto &row = *shown[static_cast<std::size_t>(i)];
+  const auto made = crystal::make_database_crystal(row);
+  if (set_cell(tr("Crystal %1").arg(view_of(row.name)), made.cell, &made.vibrations, std::string(row.name),
+               std::nullopt) &&
+      !row.note.empty()) {
+    emit message(tr("%1: %2").arg(view_of(row.name), view_of(row.note)));
+  }
 }
 
 void CrystalPanel::choose_material(int index) {

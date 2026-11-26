@@ -22,6 +22,7 @@
 
 #include "amcset_common.h"
 #include "crystal/cell_io.h"
+#include "crystal/crystal_database.h"
 #include "crystal/grain_io.h"
 #include "element_data.h"
 #include "isotope_data.h"
@@ -473,7 +474,7 @@ std::vector<crystal::Occupant> parse_occupants(const json::value &v, const std::
 
 CrystalDescription parse_crystal_object(const Reader &cr, const std::filesystem::path &base_dir) {
   const std::string &where = cr.path();
-  cr.reject_unknown({"name", "structure", "a", "a_A", "c_over_a", "u", "sublattices", "interstitials", "file",
+  cr.reject_unknown({"name", "material", "structure", "a", "a_A", "c_over_a", "u", "sublattices", "interstitials", "file",
                      "format", "elements", "lammps_types", "atom_style", "lattice", "sites", "orientation",
                      "temperature", "temperature_K", "vibrations", "polycrystal"});
   const auto pl = [](std::string_view s, const std::string &w) { return parse_length(s, w); };
@@ -482,9 +483,11 @@ CrystalDescription parse_crystal_object(const Reader &cr, const std::filesystem:
   const bool by_structure = cr.has("structure");
   const bool by_file = cr.has("file");
   const bool by_sites = cr.has("lattice") || cr.has("sites");
-  if (static_cast<int>(by_structure) + static_cast<int>(by_file) + static_cast<int>(by_sites) != 1) {
-    throw std::invalid_argument(where + ": give exactly one of \"structure\" (a built-in structure), \"file\" (a "
-                                        "cell file) or \"lattice\" with \"sites\"");
+  const bool by_material = cr.has("material");
+  if (static_cast<int>(by_structure) + static_cast<int>(by_file) + static_cast<int>(by_sites) +
+          static_cast<int>(by_material) != 1) {
+    throw std::invalid_argument(where + ": give exactly one of \"material\" (the crystal database), \"structure\" (a "
+                                        "built-in structure), \"file\" (a cell file) or \"lattice\" with \"sites\"");
   }
   const auto only_with = [&](std::initializer_list<const char *> keys, const char *owner) {
     for (const char *k : keys) {
@@ -493,7 +496,18 @@ CrystalDescription parse_crystal_object(const Reader &cr, const std::filesystem:
   };
   CrystalDescription out;
   crystal::UnitCell &cell = out.crystal.cell;
-  if (by_structure) {
+  if (by_material) {
+    // A crystal of the database (crystal_database.h): its cell and, unless
+    // "vibrations" says otherwise, its Debye temperature.
+    for (const char *k : {"a", "a_A", "c_over_a", "u", "sublattices", "interstitials", "format", "elements",
+                          "lammps_types", "atom_style"}) {
+      if (cr.has(k)) throw std::invalid_argument(cr.where(k) + ": not with \"material\" (it fixes the cell)");
+    }
+    const auto *row = with_where(cr.where("material"), [&] { return &crystal::find_database_crystal(cr.str("material")); });
+    const auto made = crystal::make_database_crystal(*row);
+    cell = made.cell;
+    if (!cr.has("vibrations")) out.crystal.vibrations = made.vibrations;
+  } else if (by_structure) {
     only_with({"format", "elements", "lammps_types", "atom_style"}, "file");
     crystal::StructureSpec spec;
     spec.name = cr.str("structure");
@@ -1195,7 +1209,7 @@ RunConfig parse_config(std::string_view json_text, const std::filesystem::path &
       // Settings of the crystal transport (not TRIM).
       const Reader cp(p.object("crystal"), "physics.crystal");
       cp.reject_unknown({"max_impact_parameter", "simultaneous_distance", "local_stopping_fraction",
-                         "local_stopping_decay", "thermal_vibrations"});
+                         "local_stopping_decay", "thermal_vibrations", "auto_crystal"});
       const auto pl = [](std::string_view s, const std::string &w) { return parse_length(s, w); };
       auto &cr = t.crystal;
       if (const auto *v = cp.get("max_impact_parameter"); v && v->is_string() && lower(v->as_string()) == "auto") {
@@ -1207,6 +1221,7 @@ RunConfig parse_config(std::string_view json_text, const std::filesystem::path &
       cr.local_stopping_fraction = cp.num("local_stopping_fraction", cr.local_stopping_fraction);
       cr.local_stopping_decay = cp.num("local_stopping_decay", cr.local_stopping_decay);
       cr.thermal_vibrations = cp.flag("thermal_vibrations", cr.thermal_vibrations);
+      cr.auto_crystal = cp.flag("auto_crystal", cr.auto_crystal);
     }
     if (p.has("pair_potentials")) t.pair_potentials = parse_pair_use(p.str("pair_potentials"), p.where("pair_potentials"));
     if (p.has("scattering")) t.scattering = parse_scattering(p.str("scattering"), p.where("scattering"));
@@ -1537,6 +1552,7 @@ json::object to_object(const RunConfig &c) {
     cr["local_stopping_fraction"] = t.crystal.local_stopping_fraction;
     cr["local_stopping_decay"] = t.crystal.local_stopping_decay;
     cr["thermal_vibrations"] = t.crystal.thermal_vibrations;
+    if (t.crystal.auto_crystal) cr["auto_crystal"] = true;
     p["crystal"] = std::move(cr);
   }
   p["pair_potentials"] = to_string(t.pair_potentials);

@@ -107,6 +107,7 @@ common/                     amcset-common (static library): everything except th
                               tilt/twist), crystal.h (Debye amplitudes), cell_io.h (CIF, POSCAR,
                               LAMMPS data, extended XYZ), lattice_search.h (collision partners
                               on lattice sites), materials.h (common crystals: Gemmell 1974),
+                              crystal_database.h (122 crystals with sources; search, matching),
                               grain_map.h (polycrystals: grains, generated Voronoi), grain_io.h
                               (grain files, Neper, EBSD)
   include/data_files.h        Locates data/ (the bundled SRIM tables) at run time
@@ -119,7 +120,7 @@ common/                     amcset-common (static library): everything except th
                               trim_in.cpp, trim_dat.cpp, single_precision.cpp
   src/physics/                stopping.cpp, scattering.cpp (shared physics)
   src/crystal/                unit_cell.cpp, orientation.cpp, crystal.cpp, cell_io.cpp, lattice_search.cpp,
-                              materials.cpp, grain_map.cpp, grain_io.cpp
+                              materials.cpp, crystal_database.cpp, grain_map.cpp, grain_io.cpp
   src/output/                 table.cpp (shaping), units.cpp, writers.cpp (CSV/JSON), parquet.cpp
   src/run_config.cpp          JSON <-> RunConfig, overrides, make_engine (incl. native adapter)
   src/*.cpp                   Native engine (ion.cpp holds all ion models)
@@ -373,6 +374,7 @@ in **`docs/HOWTO.md`**.
 | Open bugs and limitations | `docs/KNOWN_ISSUES.md` |
 | Improvement backlog | `docs/ROADMAP.md` |
 | Crystalline targets: design, phases, what is built | `docs/CRYSTAL_DESIGN.md` (user guide: `docs/CLI.md` "Crystals") |
+| The crystal database (rows, sources, matching) | `docs/CRYSTAL_DATABASE.md` |
 | Terms (Ed, Eb, Es, KP, PKA, monolayer, ε, ...) | `docs/GLOSSARY.md` |
 | Version history | `CHANGELOG.md` |
 | Installing the packages | `docs/INSTALL.md` |

@@ -31,6 +31,7 @@
 
 #include "crystal/cell_io.h"
 #include "crystal/crystal.h"
+#include "crystal/crystal_database.h"
 #include "crystal/grain_io.h"
 #include "crystal/grain_map.h"
 #include "crystal/lattice_search.h"
@@ -1293,6 +1294,84 @@ TEST(CrystalMaterials, ThermalAmplitudeFallsBackToTheTable) {
 // ---------------------------------------------------------------------------
 // Polycrystals: grain maps, generated grains, grain files, Neper, EBSD
 // ---------------------------------------------------------------------------
+
+// The crystal database: every row builds its structure, names known
+// sources, and (for the elements) gives the density of AMCSET's element
+// table within 4 %: an independent check of the transcribed lattice
+// constants and structures.
+TEST(CrystalDatabase, EveryRowBuildsWithItsSources) {
+  const auto &rows = crystal_database();
+  EXPECT_GE(rows.size(), 122u);
+  std::size_t elements = 0;
+  for (const auto &r : rows) {
+    SCOPED_TRACE(std::string(r.name) + " " + std::string(r.structure));
+    EXPECT_FALSE(database_citation(r.lattice_source).empty());
+    if (r.debye_temperature_K > 0.0) EXPECT_FALSE(database_citation(r.debye_source).empty());
+    EXPECT_EQ(r.sublattices.size(), structure_info(r.structure).sublattices.size());
+    EXPECT_EQ(structure_info(r.structure).hexagonal, r.c_A > 0.0);
+    const Crystal c = make_database_crystal(r);
+    EXPECT_NO_THROW(c.cell.validate("database"));
+    // (Not for C, whose table density is graphite's, nor Ra, whose table
+    // density, 5.0 g/cm3, is an estimate.)
+    if (r.sublattices.size() == 1 && r.sublattices.front() != 6 && r.sublattices.front() != 88) {
+      ++elements;
+      const auto &e = Element::by_z(r.sublattices.front());
+      const double rho = in_units(c.cell.density({{e.z(), e.natural_mass()}}), gram_per_cubic_centimeter);
+      const double table = in_units(e.solid_density(), gram_per_cubic_centimeter);
+      EXPECT_NEAR(rho / table, 1.0, 0.04) << rho << " against " << table << " g/cm3";
+    }
+  }
+  EXPECT_GT(elements, 50u); // (52 of the 54 elements)
+  // Gemmell's rows come first and unchanged.
+  ASSERT_GE(rows.size(), reference_crystals().size());
+  for (std::size_t i = 0; i < reference_crystals().size(); ++i) {
+    EXPECT_EQ(rows[i].name, reference_crystals()[i].name);
+    EXPECT_EQ(rows[i].a_A, reference_crystals()[i].lattice_constant_A);
+  }
+}
+
+TEST(CrystalDatabase, SearchMatchAndFind) {
+  const auto names = [](const std::vector<const DatabaseCrystal *> &v) {
+    std::string s;
+    for (const auto *r : v) s += std::string(r->name) + " ";
+    return s;
+  };
+  EXPECT_EQ(names(search_crystal_database("GaAs")), "GaAs ");
+  EXPECT_EQ(names(search_crystal_database("ga as")), "GaAs ");
+  EXPECT_EQ(names(search_crystal_database("iron")), "Fe ");
+  EXPECT_EQ(search_crystal_database("nitride rocksalt").size(), 6u);
+  EXPECT_GE(search_crystal_database("wurtzite").size(), 6u);
+  EXPECT_EQ(search_crystal_database("").size(), crystal_database().size());
+  EXPECT_TRUE(search_crystal_database("unobtainium").empty());
+  // A composition picks the form most common at room temperature.
+  const auto match = [](std::vector<std::pair<unsigned, double>> c) -> std::string {
+    const auto *r = match_composition(c);
+    return r ? std::string(r->name) + " " + std::string(r->structure) : "none";
+  };
+  EXPECT_EQ(match({{26, 1.0}}), "Fe bcc");
+  EXPECT_EQ(match({{22, 1.0}}), "Ti hcp");
+  EXPECT_EQ(match({{31, 1.0}, {33, 1.0}}), "GaAs zincblende");
+  EXPECT_EQ(match({{33, 0.5}, {31, 0.5}}), "GaAs zincblende");
+  EXPECT_EQ(match({{30, 1.0}, {16, 1.0}}), "ZnS zincblende");
+  EXPECT_EQ(match({{48, 1.0}, {16, 1.0}}), "CdS wurtzite");
+  EXPECT_EQ(match({{30, 1.0}, {8, 1.0}}), "ZnO wurtzite");
+  EXPECT_EQ(match({{92, 1.0}, {8, 2.0}}), "UO2 fluorite");
+  EXPECT_EQ(match({{38, 1.0}, {22, 1.0}, {8, 3.0}}), "SrTiO3 perovskite");
+  EXPECT_EQ(match({{26, 0.9}, {24, 0.1}}), "none"); // an alloy
+  EXPECT_EQ(match({{92, 1.0}, {8, 1.9}}), "none");  // off stoichiometry
+  // Names in scenarios.
+  EXPECT_EQ(find_database_crystal("zns").structure, "zincblende");
+  EXPECT_EQ(find_database_crystal("ZnS wurtzite").structure, "wurtzite");
+  EXPECT_EQ(find_database_crystal("silicon").name, "Si");
+  EXPECT_THROW(find_database_crystal("Xx"), std::invalid_argument);
+  EXPECT_THROW(find_database_crystal("nitride"), std::invalid_argument);
+  // The crystal: the row's constants, 293 K, Debye temperatures if known.
+  const Crystal ti = make_database_crystal(find_database_crystal("Ti"));
+  EXPECT_NEAR(in_units(ti.cell.lattice.c(), angstrom), 4.6855, 1e-9);
+  ASSERT_EQ(ti.vibrations.size(), 1u);
+  EXPECT_EQ(in_units(*ti.vibrations.front().debye_temperature, kelvin), 420.0);
+  EXPECT_TRUE(make_database_crystal(find_database_crystal("GaN")).vibrations.empty());
+}
 
 TEST(CrystalGrains, LookupMatchesBruteForce) {
   // The grain of a point and its distance to the nearest grain boundary,

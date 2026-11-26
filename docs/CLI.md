@@ -380,8 +380,14 @@ checked.
 
 ### `layers.N.crystal`
 
-Give exactly one of a built-in structure, a cell file, or a lattice with
-sites:
+Give exactly one of a crystal of the database (`"material": "GaAs"`, with
+`orientation`, `temperature` and `vibrations` as below; the database's
+Debye temperature unless `vibrations` is given), a built-in structure, a
+cell file, or a lattice with sites. `amcset crystals [WORDS]` searches the
+database (`amcset crystals nitride`); `physics.crystal.auto_crystal: true`
+makes every amorphous layer whose composition is a database crystal that
+crystal when the crystal transport runs. docs/CRYSTAL_DATABASE.md lists the
+crystals' sources and the rules.
 
 ```json
 "layers": [{
@@ -513,6 +519,7 @@ What it does, after M. T. Robinson and I. M. Torrens, Phys. Rev. B 9, 5008
 | `physics.crystal.local_stopping_fraction` | The fraction of the electronic stopping lost in the collisions (default 0.5; 0 = all along the path, 1 = all in the collisions). **This decides the depth of channeling tails and is not calibrated**: the measurements in docs/VALIDATION.md §6 allow 0.25 to 1. |
 | `physics.crystal.local_stopping_decay` | The loss in a collision falls off as exp(−decay · R/a), R the distance of closest approach, a the screening length (default 0.3). |
 | `physics.crystal.thermal_vibrations` | `false`: atoms stand exactly on their sites, whatever the crystals say (default `true`). |
+| `physics.crystal.auto_crystal` | `true`: every layer without a crystal whose elements and atomic fractions are those of a crystal of the database becomes that crystal ((0 0 1) surface, 293 K; the warnings say which; the density becomes the crystal's). Default `false`. docs/CRYSTAL_DATABASE.md |
 | `ion.spot` | Where the ions meet the surface: `{"shape": "rectangle", "width": "1 um", "height": "1 um"}` (the default), `"circle"` (`"diameter"`), `"gaussian"` (`"fwhm"`, or `width`/`height` as full widths at half maximum) or `"point"`. Each ion enters at a random point of the spot; with `"point"` every ion meets the lattice at the same place (with a static lattice and no straggling: the same trajectory, repeated). Positions in the results stay relative to each ion's entry point. Only the crystal transport uses it. |
 
 Atoms need their thermal vibrations (`crystal.vibrations`). A crystal of one

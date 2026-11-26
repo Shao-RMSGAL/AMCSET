@@ -29,6 +29,7 @@
 #include "config.h"
 #include "crystal/grain_map.h"
 #include "crystal/lattice_search.h"
+#include "crystal/crystal_database.h"
 #include "crystal/materials.h"
 #include "element_data.h"
 #include "physics/fast_math.h"
@@ -988,6 +989,26 @@ constexpr double ln10 = 2.302585092994046;
 TrimSimulation::TrimSimulation(TrimConfig config)
     : config_(std::move(config)), model_(std::make_unique<TargetModel>()) {
   const auto t_setup = std::chrono::steady_clock::now();
+  // physics.crystal.auto_crystal: layers without a crystal whose composition
+  // is a database crystal become that crystal (the crystal transport only).
+  if (config_.transport == TrimConfig::Transport::crystal && config_.crystal.auto_crystal) {
+    for (auto &layer : config_.layers) {
+      if (layer.crystal || layer.gas) continue;
+      std::vector<std::pair<unsigned, double>> composition;
+      for (const auto &e : layer.elements) composition.emplace_back(e.z, e.stoichiometry);
+      const auto *row = crystal::match_composition(composition);
+      if (row == nullptr) continue;
+      const double before = in_units(layer.density, gram_per_cubic_centimeter);
+      layer.crystal = crystal::make_database_crystal(*row);
+      apply_crystal(layer);
+      char buf[64];
+      std::snprintf(buf, sizeof buf, "%.5g A, density %.4g g/cm3 (was %.4g)", row->a_A,
+                    in_units(layer.density, gram_per_cubic_centimeter), before);
+      warnings_.push_back("layer '" + layer.name + "': followed as the crystal " + std::string(row->name) + " (" +
+                          std::string(row->structure) + ", a = " + buf + ") of the crystal database, (0 0 1) " +
+                          "surface, 293 K (physics.crystal.auto_crystal)");
+    }
+  }
   config_.validate();
   // A random seed is drawn once, here: the run is then deterministic, and
   // config() and the outputs carry the seed it used (random_seed stays set

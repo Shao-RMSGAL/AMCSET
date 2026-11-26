@@ -24,6 +24,7 @@
 #include "amcset_common.h"
 #include "cli.h"
 #include "config.h"
+#include "crystal/crystal_database.h"
 #include "diagnostics.h"
 #include "element_data.h"
 #include "interrupts.h"
@@ -46,6 +47,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <mutex>
 #include <sstream>
 #include <thread>
@@ -75,6 +77,9 @@ Usage:
   amcset elements [symbol|Z ...]            Element data (masses, densities, Es, I)
   amcset cell <file> | --structure NAME     A crystal's unit cell: summary, conversion,
                                             scenario "crystal" object, beam directions
+  amcset crystals [WORDS ...]               Search the crystal database (elements and compounds
+                                            with lattice constants, Debye temperatures, sources):
+                                            amcset crystals nitride, amcset crystals Ga As
   amcset template [srim|native] [-o FILE]   Print (or save) an example scenario
   amcset validate <scenario.json|TRIM.IN>   Check a scenario without running it
   amcset version | help
@@ -457,6 +462,46 @@ int cmd_elements(const cli::Options &opt) {
   return 0;
 }
 
+int cmd_crystals(const cli::Options &opt) {
+  // The crystal database: every row that matches all words of the query.
+  std::string query;
+  for (const auto &p : opt.positional) query += p + " ";
+  const auto rows = crystal::search_crystal_database(query);
+  if (rows.empty()) {
+    std::cout << "No crystal of the database matches '" << query << "'.\n";
+    return 1;
+  }
+  std::cout << "Name       Structure        a (A)     c (A)    rho(g/cm3)  Debye(K)  Sources               Note\n";
+  std::vector<std::string_view> used;
+  for (const auto *r : rows) {
+    const auto c = crystal::make_database_crystal(*r);
+    std::map<unsigned, mass_quantity> masses;
+    for (const auto &[z, n] : c.cell.composition()) masses[z] = Element::by_z(z).natural_mass();
+    const std::string sources = std::string(r->lattice_source) +
+                                (r->debye_source.empty() || r->debye_source == r->lattice_source
+                                     ? ""
+                                     : "/" + std::string(r->debye_source));
+    char c_buf[32] = "";
+    if (r->c_A > 0.0) std::snprintf(c_buf, sizeof c_buf, "%.5g", r->c_A);
+    const std::string c_text = c_buf;
+    char buf[400];
+    std::snprintf(buf, sizeof buf, "%-10s %-15s %8.5g  %8s  %9.4g   %8s  %-21s %s%s\n", std::string(r->name).c_str(),
+                  std::string(r->structure).c_str(), r->a_A,
+                  c_text.c_str(),
+                  in_units(c.cell.density(masses), gram_per_cubic_centimeter),
+                  r->debye_temperature_K > 0.0 ? std::to_string(static_cast<int>(r->debye_temperature_K)).c_str() : "",
+                  sources.c_str(), std::string(r->note).c_str(), r->preferred ? "" : " (not the form chosen for its composition)");
+    std::cout << buf;
+    for (const auto k : {r->lattice_source, r->debye_source}) {
+      if (!k.empty() && std::find(used.begin(), used.end(), k) == used.end()) used.push_back(k);
+    }
+  }
+  std::cout << "\n" << rows.size() << " crystal(s). Use one in a scenario as layers.N.crystal: {\"material\": \"NAME\"}.\n"
+            << "Sources:\n";
+  for (const auto k : used) std::cout << "  " << k << ": " << crystal::database_citation(k) << "\n";
+  return 0;
+}
+
 int cmd_stopping(const cli::Options &opt) {
   return cli::print_stopping_table(opt, std::cout);
 }
@@ -544,6 +589,7 @@ int main(int argc, char **argv) {
     if (opt.command == "elements") return cmd_elements(opt);
     if (opt.command == "stopping") return cmd_stopping(opt);
     if (opt.command == "cell") return cmd_cell(opt);
+    if (opt.command == "crystals") return cmd_crystals(opt);
     if (opt.command == "diag-crash") return cmd_diag_crash(opt);
     throw cli::UsageError("unknown command '" + opt.command + "'");
   } catch (const cli::UsageError &e) {
