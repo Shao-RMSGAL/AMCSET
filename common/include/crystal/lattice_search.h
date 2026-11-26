@@ -106,6 +106,15 @@ public:
    * position (with thermal displacement). False if the site is vacant.
    */
   bool atom_at(const SiteId &id, std::uint64_t seed, unsigned &z, Vec3 &position) const noexcept;
+  /*!
+   * \brief The atom of element \p z (0: any) nearest to \p r in
+   * configuration \p seed, among the sites with lattice x in [\p x_lo,
+   * \p x_hi) within two cells of \p r: its site and position (with thermal
+   * displacement). False if there is none. (Where a recoil that starts in
+   * the crystal comes from.)
+   */
+  bool nearest_atom(const Vec3 &r, std::uint64_t seed, unsigned z, double x_lo, double x_hi, SiteId &id,
+                    Vec3 &position) const noexcept;
 
   double max_impact_A() const noexcept { return max_impact_; }
   double reach_A() const noexcept { return reach_; }

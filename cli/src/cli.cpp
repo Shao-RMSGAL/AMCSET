@@ -128,6 +128,7 @@ Options parse_arguments(const std::vector<std::string> &args) {
     else if (a == "--number-format") o.number_format = value(a);
     else if (a == "--particles") o.particles = value(a);
     else if (a == "--source") o.source = value(a);
+    else if (a == "--recoil") o.recoil = value(a);
     else if (a == "--exyz") o.exyz = value(a);
     else if (a == "--trajectory-file") o.trajectory_file = value(a);
     else if (a == "--trajectory-points") o.trajectory_points = value(a);
@@ -311,6 +312,57 @@ void apply_options(config::RunConfig &c, const Options &o) {
                             : trim::TrimConfig::Source::particle_ions;
     }
     if (!o.ions) c.trim.ion_count = 0;
+  }
+  if (o.recoil) {
+    // --recoil ELEMENT,ENERGY,DEPTH[,COSX,COSY,COSZ]: one target atom set in
+    // motion at DEPTH (TRIM's x; lateral 0), run as many times as there are
+    // ions (each with its own random stream).
+    std::vector<std::string> parts;
+    std::string part;
+    for (const char ch : *o.recoil + ",") {
+      if (ch == ',') {
+        parts.push_back(part);
+        part.clear();
+      } else {
+        part += ch;
+      }
+    }
+    if (parts.size() != 3 && parts.size() != 6) {
+      throw UsageError("--recoil: expected ELEMENT,ENERGY,DEPTH[,COSX,COSY,COSZ], e.g. Fe,10keV,50nm");
+    }
+    trim::SourceParticle sp;
+    sp.name = "PKA";
+    try {
+      sp.z = Element::by_symbol(parts[0]).z();
+    } catch (const std::exception &) {
+      throw UsageError("--recoil: unknown element '" + parts[0] + "'");
+    }
+    sp.energy = config::parse_energy(parts[1], "--recoil energy");
+    sp.x = config::parse_length(parts[2], "--recoil depth");
+    sp.y = 0.0 * angstrom;
+    sp.z_position = 0.0 * angstrom;
+    if (parts.size() == 6) {
+      double v[3];
+      for (int k = 0; k < 3; ++k) {
+        try {
+          std::size_t used = 0;
+          v[k] = std::stod(parts[3 + static_cast<std::size_t>(k)], &used);
+          if (used != parts[3 + static_cast<std::size_t>(k)].size()) throw std::invalid_argument("trailing");
+        } catch (const std::exception &) {
+          throw UsageError("--recoil: the direction is three numbers (cosines along depth, y, z)");
+        }
+      }
+      sp.cos_x = v[0];
+      sp.cos_y = v[1];
+      sp.cos_z = v[2];
+    }
+    c.trim.source = trim::TrimConfig::Source::particle_recoils;
+    c.trim.particles = {sp};
+    c.trim.particles_title = "PKA from --recoil";
+    c.trim.particle_repeat = std::max<std::size_t>(c.trim.ion_count, 1);
+    c.trim.ion_count = 0;
+    // (TRIM's ion energy is the highest particle energy the stopping tables cover.)
+    if (c.trim.ion.energy < sp.energy) c.trim.ion.energy = sp.energy;
   }
   if (o.exyz) c.trim.exyz_interval = config::parse_energy(*o.exyz, "--exyz");
 }

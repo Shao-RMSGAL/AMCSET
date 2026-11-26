@@ -205,7 +205,8 @@ int TrimConfig::trim_code() const {
 
 std::size_t TrimConfig::particle_count() const {
   if (source == Source::beam) return ion_count;
-  return ion_count == 0 ? particles.size() : std::min(ion_count, particles.size());
+  const std::size_t all = particles.size() * std::max<std::size_t>(particle_repeat, 1);
+  return ion_count == 0 ? all : std::min(ion_count, all);
 }
 
 length_quantity TrimConfig::target_thickness() const {
@@ -382,8 +383,18 @@ void TrimConfig::validate(bool complete) const {
     if (ion_count == 0) fail("ions: the number of ions must be positive");
   } else {
     if (complete && particles.empty()) fail("the particle source (TRIM.DAT) has no particles");
+    if (particle_repeat < 1 || particle_repeat > max_particle_repeat) {
+      fail("source.repeat: 1 to " + std::to_string(max_particle_repeat) + " runs of every particle, got " +
+           std::to_string(particle_repeat));
+    }
     if (source == Source::particle_ions && damage == DamageCalculation::monolayer) {
       fail("TRIM.DAT ions run with the quick (Kinchin-Pease) or full-cascade damage calculation");
+    }
+    // (The refined transport starts every ion at the surface: it would run
+    // the beam in place of the list.)
+    if (transport == Transport::refined) {
+      fail("physics.transport: the refined transport runs a beam only; particle sources (TRIM.DAT ions or "
+           "recoils) run with trim2013 or crystal");
     }
   }
   if (threads > max_threads) {
@@ -416,11 +427,6 @@ void TrimConfig::validate(bool complete) const {
         if (!(a > 0.0) || !(a <= 1e10)) {
           fail(std::string(key) + ": above 0 and at most 1 m, got " + num_text(a) + " A");
         }
-      }
-    }
-    if (transport == Transport::crystal) {
-      if (source != Source::beam) {
-        fail("physics.transport: the crystal transport runs a beam only (no TRIM.DAT particle source yet)");
       }
     }
   }
@@ -1320,12 +1326,14 @@ TrimSimulation::TrimSimulation(TrimConfig config)
     if (m.sources.empty()) {
       throw std::invalid_argument("no usable particle in the particle source (TRIM.DAT)");
     }
-    total_ = config_.ion_count == 0 ? m.sources.size()
-                                    : std::min(config_.ion_count, m.sources.size());
-    if (config_.first_ion >= m.sources.size()) {
+    // Every particle runs source.repeat times, one after the other (run i is
+    // particle i / repeat, with its own random-number stream).
+    const std::size_t runs = m.sources.size() * config_.particle_repeat;
+    total_ = config_.ion_count == 0 ? runs : std::min(config_.ion_count, runs);
+    if (config_.first_ion >= runs) {
       throw std::invalid_argument("first_ion is beyond the end of the particle list");
     }
-    total_ = std::min(total_, m.sources.size() - config_.first_ion);
+    total_ = std::min(total_, runs - config_.first_ion);
   } else {
     total_ = config_.ion_count;
   }
@@ -1988,6 +1996,7 @@ private:
     SiteKey id;
   };
   void run_ion_crystal(std::size_t ion_index, std::vector<CollisionPoint> *trajectory);
+  void run_source_crystal(std::size_t ion_index, LecuyerRandom &ion_rng, std::vector<CollisionPoint> *trajectory);
   void crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_index,
                       std::vector<CollisionPoint> *trajectory);
   bool crystal_strike(const Mover &mv, const CrystalTarget &target, const double recoil_dir[3], energy_quantity T,
@@ -3250,6 +3259,14 @@ void Transporter::run_ion_crystal(std::size_t ion_index, std::vector<CollisionPo
   // One frozen configuration of the lattices (occupancy, thermal
   // displacements) per ion history.
   history_seed_ = crystal::site_hash({}, (static_cast<std::uint64_t>(cfg_.seed) << 32) ^ ion_index);
+  if (cfg_.source != TrimConfig::Source::beam) {
+    spot_y_ = 0.0;
+    spot_z_ = 0.0;
+    run_source_crystal(ion_index, ion_rng, trajectory);
+    recoil_rng_ = nullptr;
+    t_.ions += 1;
+    return;
+  }
 
   // The entry point on the surface (BeamSpot): it shifts the lattice, so
   // positions in the results stay relative to it.
@@ -3309,6 +3326,137 @@ void Transporter::run_ion_crystal(std::size_t ion_index, std::vector<CollisionPo
   }
   recoil_rng_ = nullptr;
   t_.ions += 1;
+}
+
+void Transporter::run_source_crystal(std::size_t ion_index, LecuyerRandom &ion_rng,
+                                     std::vector<CollisionPoint> *trajectory) {
+  // A particle of the source (TRIM.DAT, or one recoil atom repeated): not
+  // TRIM's algorithm, but its bookkeeping (run_recoil_event_2013): the event
+  // counts as an ion that stops where the particle starts.
+  const ResolvedParticle &rp = m_.sources[ion_index / cfg_.particle_repeat];
+  const SourceParticle &sp = rp.particle;
+  double dir[3] = {sp.cos_x, sp.cos_y, sp.cos_z};
+  {
+    const double n = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+    for (double &c : dir) c /= n; // (validated non-zero)
+  }
+  if (cfg_.source == TrimConfig::Source::particle_ions) {
+    Mover mv;
+    mv.species = 0;
+    mv.z = cfg_.ion.z;
+    mv.x = sp.x;
+    mv.y = sp.y;
+    mv.zz = sp.z_position;
+    mv.cx = dir[0];
+    mv.cy = dir[1];
+    mv.cz = dir[2];
+    mv.energy = sp.energy;
+    mv.is_ion = true;
+    mv.generation = 0;
+    mv.track = 0;
+    next_track_ = 0;
+    if (md_on_ && md_ion_entry(mv)) {
+      record_point(trajectory, mv, CollisionPoint::Kind::birth);
+    } else {
+      crystal_follow(mv, ion_rng, ion_index, trajectory);
+    }
+    return;
+  }
+
+  // A recoil atom: a target atom set in motion where it is. In a crystal
+  // layer it is the nearest atom of its element on the lattice, which starts
+  // from its own (thermally displaced) position and leaves its site empty;
+  // elsewhere it starts at the given point.
+  const LayerModel &own = m_.layers[rp.element_layer];
+  const ElementModel &el = own.elements[rp.element];
+  CrystalTarget target;
+  target.layer = rp.element_layer;
+  target.element = rp.element;
+  target.pos[0] = in_units(sp.x, angstrom);
+  target.pos[1] = in_units(sp.y, angstrom);
+  target.pos[2] = in_units(sp.z_position, angstrom);
+  const std::size_t li = rp.layer;
+  const LayerModel &layer = m_.layers[li];
+  const double top = in_units(layer.top, angstrom);
+  const double bottom = in_units(layer.bottom, angstrom);
+  const double x = target.pos[0];
+  const double y = target.pos[1];
+  const double z = target.pos[2];
+  // The lattice there, as crystal_follow() finds it (the layer's, or the
+  // grain's in a polycrystal; none in a grain-boundary slab).
+  const crystal::LatticeSearch *lattice = layer.lattice.get();
+  crystal::Vec3 origin;
+  std::uint32_t domain = layer.domain;
+  std::uint64_t configuration = history_seed_ + 0x9E3779B97F4A7C15ull * (li + 1);
+  if (lattice != nullptr && layer.grains) {
+    const double look = lattice->reach_A() + lattice->max_impact_A() + lattice->max_displacement_A() +
+                        layer.boundary_half_A + 1.0;
+    const auto here = layer.grains->at({x - top, y, z}, look);
+    if (here.grain < 0 || here.boundary_A < layer.boundary_half_A) {
+      lattice = nullptr;
+    } else {
+      lattice = &layer.grain_lattices[static_cast<std::size_t>(here.grain)];
+      origin = layer.grains->grain(here.grain).origin_A;
+      domain += static_cast<std::uint32_t>(here.grain);
+      configuration += 0xD1B54A32D192ED03ull * (static_cast<std::uint64_t>(here.grain) + 1);
+    }
+  }
+  bool has_element = false;
+  for (const auto &e : layer.elements) has_element = has_element || e.z == el.z;
+  if (lattice != nullptr && has_element) {
+    crystal::SiteId id;
+    crystal::Vec3 at;
+    if (lattice->nearest_atom({x - top - origin.x, y - origin.y, z - origin.z}, configuration, el.z, -origin.x,
+                              bottom - top - origin.x, id, at)) {
+      target.layer = li;
+      target.element = layer.element_of(el.z);
+      target.pos[0] = at.x + origin.x + top;
+      target.pos[1] = at.y + origin.y;
+      target.pos[2] = at.z + origin.z;
+      target.on_site = true;
+      target.id = SiteKey{domain, id};
+    }
+  }
+  const ElementModel &struck = m_.layers[target.layer].elements[target.element];
+  const double xa = std::clamp(target.pos[0], 0.0, in_units(thickness_, angstrom));
+  {
+    Mover at_start;
+    at_start.x = xa * angstrom;
+    at_start.y = target.pos[1] * angstrom;
+    at_start.zz = target.pos[2] * angstrom;
+    at_start.is_ion = true;
+    at_start.energy = 0.0 * electron_volt;
+    stop_mover(at_start, false, ion_index);
+  }
+  const energy_quantity T = sp.energy;
+  const double T_eV = in_units(T, electron_volt);
+  if (mode_ != DamageCalculation::kinchin_pease && !(T > struck.ed)) {
+    // Not displaced (the crystal transport takes TRIM's bugs fixed): its
+    // energy becomes phonons where it is.
+    add(t_.phonons_by_recoils, xa, T_eV);
+    t_.total_phonons_recoils += T_eV;
+    return;
+  }
+  // A virtual collision gives it the energy: its "projectile" is the event
+  // (booked as the ion's primary knock-on), a root without a track.
+  Mover event;
+  event.x = target.pos[0] * angstrom;
+  event.y = target.pos[1] * angstrom;
+  event.zz = target.pos[2] * angstrom;
+  event.cx = dir[0];
+  event.cy = dir[1];
+  event.cz = dir[2];
+  event.is_ion = true;
+  event.z = 0; // (never the struck atom's element: no replacement)
+  event.generation = 0;
+  event.track = CollisionPoint::no_parent;
+  next_track_ = 0;
+  crystal_strike(event, target, dir, T, 0.0 * electron_volt, false, CollisionPoint::no_parent);
+  while (!stack_.empty()) {
+    const Mover r = stack_.back();
+    stack_.pop_back();
+    crystal_follow(r, *recoil_rng_, ion_index, trajectory);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3938,7 +4086,7 @@ void Transporter::run_recoil_event_2013(std::size_t ion_index,
   // motion at the given point and direction, without an incident ion. TRIM
   // goes straight to STARTRECOIL (no depth-window check, no DIRCOS) with the
   // atom's energy as the transferred energy.
-  const ResolvedParticle &rp = m_.sources[ion_index];
+  const ResolvedParticle &rp = m_.sources[ion_index / cfg_.particle_repeat];
   const SourceParticle &sp = rp.particle;
   LecuyerRandom rng = make_stream(cfg_.seed, ion_index, 0);
   next_track_ = 0;
@@ -4035,7 +4183,7 @@ void Transporter::run_ion_2013(std::size_t ion_index, std::vector<CollisionPoint
     // coordinate is replaced by a random point within one monolayer of
     // layer 1, and an ion starting at the surface has no randomised flights
     // pending (other starts keep TRIM's counter from the previous ion).
-    const SourceParticle &sp = m_.sources[ion_index].particle;
+    const SourceParticle &sp = m_.sources[ion_index / cfg_.particle_repeat].particle;
     mv.x = sp.x;
     mv.cx = sp.cos_x;
     mv.cy = sp.cos_y;

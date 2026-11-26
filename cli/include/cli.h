@@ -75,6 +75,7 @@ struct Options {
   // particle source
   std::optional<std::string> particles;     //!< --particles TRIM.DAT
   std::optional<std::string> source;        //!< --source beam|ions|recoils
+  std::optional<std::string> recoil;        //!< --recoil ELEMENT,ENERGY,DEPTH[,COSX,COSY,COSZ]
   std::optional<std::string> exyz;          //!< --exyz "10 keV"
   // trajectory and MD event files (output.trajectory_file, output.md_events)
   std::optional<std::string> trajectory_file;   //!< --trajectory-file FILE

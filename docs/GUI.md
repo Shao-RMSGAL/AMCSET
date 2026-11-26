@@ -17,7 +17,15 @@ hidden from the View menu).
   (code 6) each atom starts a cascade, with monolayer steps (code 7) it
   moves like an ion.
   BACKSCAT.txt, TRANSMIT.txt, SPUTTER.txt and TRIMOUT.txt can be loaded as
-  lists too.
+  lists too. *One recoil atom in the target (PKA)* starts a target atom at
+  a point inside the target, without an ion: the group *Recoil atom (PKA)*
+  sets its element (one of the target's), energy, depth, direction (polar
+  angle from the depth axis, azimuth from y) and how many times it runs
+  (each run its own cascade; scenario `source.repeat`). Choosing it
+  switches to full cascades (to follow them) and the paths views show the
+  cascades of the first recorded runs (Output, paths to record); in a
+  crystal layer the atom starts from the nearest lattice site of its
+  element. docs/CLI.md "A recoil inside the target".
 - **Target**: layers from the surface (name, thickness, density, gas phase,
   Bragg compound correction) and the elements of the selected layer
   (stoichiometry, mass, Ed, Eb, Es). Cells accept units ("1.5 um",

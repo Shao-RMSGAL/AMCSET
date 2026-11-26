@@ -12,6 +12,17 @@
   run table; entering it as the seed repeats the run. A continued GUI
   calculation keeps its seed. Tests `TrimEngine.RandomSeedIsDrawnRecordedAndRepeatable`,
   `Cli.RandomSeedKeyAndOption`.
+- **A recoil atom (PKA) inside the target, in the CLI and the GUI.**
+  `source.repeat` (new key) runs every particle of a source N times, each
+  with its own random numbers; `--recoil EL,E,DEPTH[,CX,CY,CZ]` sets up one
+  recoil atom run `-n` times, and the GUI's Ion tab has *One recoil atom in
+  the target (PKA)* (element, energy, depth, direction, number of runs),
+  whose cascades the path views show. The crystal transport now runs
+  particle sources (before: refused): TRIM.DAT ions start at their points,
+  a recoil atom at the nearest lattice atom of its element, leaving its site
+  empty (`LatticeSearch::nearest_atom`). docs/CLI.md "A recoil inside the
+  target". Tests `TrimDat.RepeatRunsEachParticleSeveralTimes`,
+  `TrimCrystal.RecoilStartsFromItsSite`, `Cli.RecoilOptionAndRepeatKey`.
 
 ### Changed
 
@@ -29,6 +40,10 @@
   `ShrinkThresholdDecides`, `IonsStoppingAboveTheLastLayerMakeItThin`).
 
 ### Fixed
+
+- **The refined transport refuses particle sources.** It started every
+  particle at the surface as a beam ion, so a TRIM.DAT source silently ran
+  the beam; validation now says to use `trim2013` or `crystal`.
 
 - **MD events in the crystal transport: missing crossings** (a user's
   report). The steps with no atom within reach (`crystal_follow`'s free

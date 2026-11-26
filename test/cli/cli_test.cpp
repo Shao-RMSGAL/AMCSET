@@ -356,6 +356,39 @@ TEST(Cli, RandomSeedKeyAndOption) {
   EXPECT_THROW(parse_config(R"({"seed": "often"})"), std::invalid_argument);
 }
 
+TEST(Cli, RecoilOptionAndRepeatKey) {
+  auto c = parse_config(alloy_json);
+  const auto o = cli::parse_arguments(
+      std::vector<std::string>{"run", "x.json", "-n", "25", "--recoil", "Fe,10keV,50nm,0,0.6,0.8"});
+  cli::apply_options(c, o);
+  EXPECT_EQ(c.trim.source, trim::TrimConfig::Source::particle_recoils);
+  ASSERT_EQ(c.trim.particles.size(), 1u);
+  const auto &p = c.trim.particles.front();
+  EXPECT_EQ(p.z, 26u);
+  EXPECT_DOUBLE_EQ(in_units(p.energy, electron_volt), 10000.0);
+  EXPECT_DOUBLE_EQ(in_units(p.x, angstrom), 500.0);
+  EXPECT_DOUBLE_EQ(p.cos_y, 0.6);
+  EXPECT_EQ(c.trim.particle_repeat, 25u);
+  EXPECT_EQ(c.trim.ion_count, 0u);
+  EXPECT_EQ(c.trim.particle_count(), 25u);
+  EXPECT_GE(in_units(c.trim.ion.energy, electron_volt), 10000.0);
+  // The repeat survives the JSON round trip (written only when not 1).
+  const auto back = parse_config(to_json(c));
+  EXPECT_EQ(back.trim.particle_repeat, 25u);
+  ASSERT_EQ(back.trim.particles.size(), 1u);
+  EXPECT_EQ(back.trim.particles.front().name, "PKA");
+  EXPECT_EQ(to_json(parse_config(alloy_json)).find("repeat"), std::string::npos);
+  for (const char *bad : {"Fe,10keV", "Xx,10keV,5nm", "Fe,10keV,5nm,1,0", "Fe,10keV,5nm,a,b,c"}) {
+    auto d = parse_config(alloy_json);
+    EXPECT_ANY_THROW(cli::apply_options(d, cli::parse_arguments(std::vector<std::string>{"run", "x.json", "--recoil", bad})))
+        << bad;
+  }
+  const std::string base = R"({"ion": {"element": "Fe", "energy": "20 keV"},
+    "layers": [{"thickness": "1 um", "elements": [{"element": "Fe"}]}], )";
+  EXPECT_THROW(parse_config(base + R"("source": {"type": "recoils", "repeat": 0, "particles": []}})"),
+               std::invalid_argument);
+}
+
 TEST(Cli, AutoDepthOptionAndKeys) {
   auto c = parse_config(alloy_json);
   EXPECT_FALSE(c.trim.auto_depth.enabled);

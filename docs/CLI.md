@@ -63,6 +63,7 @@ amcset trim TRIM.IN -o out --fix-trim-bugs                  # correct TRIM's bug
 | `--json` | Print the summary as JSON |
 | `--particles FILE` | Particle source: a TRIM.DAT list (ions, or recoils with `--source recoils`), or BACKSCAT/TRANSMIT/SPUTTER/TRIMOUT.txt (recoils) |
 | `--source beam\|ions\|recoils` | Kind of particle source (TRIM's cascade codes 1-3, 4-5, 6-7) |
+| `--recoil EL,E,DEPTH[,CX,CY,CZ]` | One recoil atom (a PKA) inside the target, without an ion: element EL (a target element), energy E, starting depth DEPTH (lateral position 0), direction cosines along depth, y, z (default `1,0,0`); run `-n` times (`source.repeat`). See "A recoil inside the target" below |
 | `--exyz ENERGY` | Write EXYZ.txt: the ion's position every ENERGY of energy loss |
 | `--formats LIST` | Output formats: any of `trim,csv,json,parquet` (default `trim,csv,json`) |
 | `--output-units LIST` | Output units per dimension, e.g. `length=nm,energy=keV` or just `nm,keV` |
@@ -169,6 +170,31 @@ Visual Studio or WinDbg) is written next to it (`AMCSET_MINIDUMP=0` turns
 it off). `amcset diag-crash segv|abort|terminate|thread-exception|stack-overflow`
 crashes on purpose, to check the reports on a machine.
 
+### A recoil inside the target
+
+A primary knock-on atom (PKA) can start anywhere in the target, without an
+ion: the recoil source (TRIM's cascade code 6) with one particle, run many
+times. Each run has its own random numbers, so the runs are independent
+cascades of the same PKA:
+
+```bash
+amcset run fe.json --recoil Fe,10keV,50nm -n 200 --damage full \
+       --trajectory-file paths.csv -o pka_out
+```
+
+The scenario form is `"source": {"type": "recoils", "repeat": 200,
+"particles": [{"name": "PKA", "element": "Fe", "energy": "10 keV", "x":
+"50 nm", "direction": [1, 0, 0]}]}`; the GUI sets it up on the Ion tab
+(*One recoil atom in the target (PKA)*) and shows the cascades in its path
+views. Every run is booked as TRIM books a TRIM.DAT recoil: an "ion" that
+stops where the atom starts (RANGE.txt), its cascade's vacancies,
+replacements, phonons and ionisation; with full cascades it is displaced if
+its energy exceeds Ed. The `trim2013` and `crystal` transports run recoil
+sources (the refined transport runs a beam only). In a layer with a crystal
+the atom is the nearest atom of its element on the lattice, which leaves
+its (thermally displaced) position and its site empty. The trajectory file,
+MD events and every output work as for a beam.
+
 ## Output (SRIM mode)
 
 The output directory receives TRIM's file set in TRIM's formats (format
@@ -257,7 +283,9 @@ Keys:
   (as in TRIM); recoils are target atoms set in motion without an ion
   (`full-cascade`: TRIM's code 6, each atom starts a cascade; `monolayer`:
   code 7, each atom moves like an ion in monolayer steps).
-  Every particle is run unless `ions` limits the number.
+  Every particle is run unless `ions` limits the number; `"repeat": N`
+  (default 1) runs every particle N times in a row, each with its own random
+  numbers (one PKA repeated: "A recoil inside the target" above).
 - `stopping`: `model` (default `srim`) and `table` (default: the SRIM-2013
   tables that come with AMCSET); `srim_data`.
 - `physics`: the SRIM-mode model switches described in `docs/SRIM_MODE.md` §3:
@@ -608,7 +636,9 @@ displaced for that ion only); a site emptied in a history is not refilled by
 the atom that replaces it; at an interface the atoms of the next layer are
 met only after crossing into it; local electronic losses use the layer's
 mean stopping per atom (exact for one element); no COLLISON.txt or dpa
-table (those need `trim2013`); TRIM.DAT sources are refused. The trajectory and MD event files work as in the other transports,
+table (those need `trim2013`). Particle sources run: TRIM.DAT ions start at
+their points, recoil atoms at the nearest lattice atom of their element (a
+PKA leaves its own site; code 6 and code 7 both start a cascade there). The trajectory and MD event files work as in the other transports,
 with the lattice offset of each ion and the crystals' orientation
 (docs/OUTPUT.md "Other transports and crystals"; every run with a crystal
 also reports the orientation in summary.json and the `crystals` table). It is slower than `trim2013`: 2000 ions of

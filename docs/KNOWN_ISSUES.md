@@ -345,7 +345,9 @@ Details, numbers and diagnostics: `docs/VALIDATION.md` and `docs/SRIM_MODE.md` �
   15 % above TRIM's in the one case compared (not understood). Missing:
   damage build-up (so channeling tails of implants at about 10¹⁴ cm⁻² and
   above, where earlier ions' damage dechannels later ones, come out too
-  deep), TRIM.DAT sources, COLLISON.txt and dpa outputs. Polycrystals run from a scenario but have no GUI, and their
+  deep), COLLISON.txt and dpa outputs. Particle sources (TRIM.DAT ions and
+  recoils, one PKA repeated) run since 1.0.1 but are checked by one test
+  only (a PKA starts from a lattice site, cascades, thread independence). Polycrystals run from a scenario but have no GUI, and their
   Neper and EBSD readers are tested on hand-written files only: check the
   orientation convention with a known grain (docs/CLI.md "Polycrystals",
   Limits; what is left: docs/CRYSTAL_DESIGN.md §13). The GUI's Crystal tab has no

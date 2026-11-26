@@ -24,11 +24,16 @@
 
 class QButtonGroup;
 class QComboBox;
+class QGroupBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QSpinBox;
 
 namespace amcset {
+namespace config {
+struct RunConfig;
+}
 namespace gui {
 
 class FormBinder;
@@ -56,7 +61,19 @@ private:
   QLineEdit *particles_file_;
   QLabel *particles_info_;
   QPushButton *load_;
+  // One recoil atom (a PKA) at a point: source "recoils" with one particle
+  // named "PKA", repeated (TrimConfig::particle_repeat).
+  QGroupBox *pka_box_;
+  QComboBox *pka_element_;
+  QLineEdit *pka_energy_;
+  QLineEdit *pka_depth_;
+  QLineEdit *pka_theta_;
+  QLineEdit *pka_phi_;
+  QSpinBox *pka_count_;
 };
+
+//! True if \p c runs one recoil atom set up on the Ion tab (a PKA).
+bool is_single_recoil(const config::RunConfig &c);
 
 } // namespace gui
 } // namespace amcset

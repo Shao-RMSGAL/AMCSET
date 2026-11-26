@@ -112,6 +112,13 @@ Options for run/trim/validate:
       --particles FILE      Particle source: a TRIM.DAT (ions, or recoils with
                             --source recoils), or BACKSCAT/TRANSMIT/SPUTTER.txt
       --source beam|ions|recoils
+      --recoil EL,E,DEPTH[,CX,CY,CZ]
+                            One recoil atom (a PKA) of element EL with energy E
+                            starting at DEPTH in the target (direction cosines
+                            along depth, y, z; default 1,0,0), run -n times:
+                            --recoil Fe,10keV,50nm -n 100 (source.repeat). In a
+                            crystal it starts from the nearest site of EL;
+                            --trajectory-file F writes its cascades' paths
       --exyz ENERGY         Write EXYZ.txt (ion position every ENERGY of loss)
 
 Trajectory and MD event files (SRIM mode, every transport; not TRIM outputs;

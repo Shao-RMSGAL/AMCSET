@@ -1021,6 +1021,34 @@ TEST(TrimDat, RecoilSourceMakesCascadesWithoutAnIon) {
   }
 }
 
+// source.repeat: every particle runs that many times in a row, exactly as
+// a list with each line repeated; ions limits the runs.
+TEST(TrimDat, RepeatRunsEachParticleSeveralTimes) {
+  auto c = fe_on_fe(50.0, DamageCalculation::full_cascade, 0, 5000.0);
+  c.source = TrimConfig::Source::particle_recoils;
+  const auto list = sample_particles(26, 2, 2e4, 2000.0);
+  auto repeated = c;
+  repeated.particles = list.particles;
+  repeated.particle_repeat = 3;
+  EXPECT_EQ(repeated.particle_count(), 6u);
+  auto listed = c;
+  for (const auto &p : list.particles) {
+    for (int k = 0; k < 3; ++k) listed.particles.push_back(p);
+  }
+  TrimSimulation a(repeated);
+  TrimSimulation b(listed);
+  EXPECT_EQ(a.total_count(), 6u);
+  a.run();
+  b.run();
+  EXPECT_EQ(a.tallies().ions, 6u);
+  EXPECT_EQ(a.tallies().total_vacancies, b.tallies().total_vacancies);
+  EXPECT_EQ(a.tallies().total_phonons_recoils, b.tallies().total_phonons_recoils);
+  repeated.ion_count = 4;
+  EXPECT_EQ(TrimSimulation(repeated).total_count(), 4u);
+  repeated.particle_repeat = 0;
+  EXPECT_THROW(repeated.validate(), std::invalid_argument);
+}
+
 TEST(TrimEngine, ExyzRecordsTheIonEveryInterval) {
   auto c = fe_on_fe(100.0, DamageCalculation::kinchin_pease, 5);
   c.exyz_interval = 10.0 * kilo_electron_volt;
@@ -2063,7 +2091,9 @@ TEST(TrimCrystal, NamesAndValidation) {
   bad = c;
   bad.source = TrimConfig::Source::particle_recoils;
   bad.particles = sample_particles(14, 3, 1e3, 100.0).particles;
-  EXPECT_THROW(bad.validate(), std::invalid_argument); // a beam only
+  EXPECT_NO_THROW(bad.validate()); // particle sources run (TrimCrystal.RecoilStartsFromItsSite)
+  bad.transport = TrimConfig::Transport::refined;
+  EXPECT_THROW(bad.validate(), std::invalid_argument); // the refined transport runs a beam only
 
   // Warnings: the transport is not calibrated; atoms without thermal data stand still.
   const auto has = [](const TrimConfig &cfg, const char *text) {
@@ -2229,6 +2259,75 @@ TEST(TrimCrystal, AutomaticDepthHoldsTheChanneledIons) {
     sized.push_back(total);
   }
   EXPECT_EQ(sized[0], sized[1]);
+}
+
+// A recoil atom (PKA) that starts inside a crystal: it starts from the
+// nearest lattice site of its element (not the given point), sets off a
+// cascade, every run is booked as an event, and the results do not depend
+// on the thread count. TRIM.DAT ions start at their points as well.
+TEST(TrimCrystal, RecoilStartsFromItsSite) {
+  auto c = crystal_config(26, 20.0, crystal_layer("bcc", {26}, 2.8665, 3000.0, 420.0), 0,
+                          DamageCalculation::full_cascade);
+  c.layers[0].elements[0].displacement_energy = 40.0 * electron_volt;
+  SourceParticle p;
+  p.name = "PKA";
+  p.z = 26;
+  p.energy = 5000.0 * electron_volt;
+  p.x = 1000.0 * angstrom;
+  p.y = 0.3 * angstrom;
+  p.z_position = 0.2 * angstrom;
+  p.cos_x = 0.6;
+  p.cos_y = 0.8;
+  p.cos_z = 0.0;
+  c.source = TrimConfig::Source::particle_recoils;
+  c.particles = {p};
+  c.particle_repeat = 12;
+  c.trajectory_ions = TrimConfig::all_ions;
+  c.threads = 1;
+  TrimSimulation one(c);
+  EXPECT_EQ(one.total_count(), 12u);
+  one.run();
+  const auto &t = one.tallies();
+  EXPECT_EQ(t.ions, 12u);
+  EXPECT_EQ(t.range.n, 12.0);                 // booked where it starts (as TRIM's code 6)
+  EXPECT_EQ(t.total_ionization_ion, 0.0);     // no ion
+  EXPECT_GT(t.total_displacements, 12.0 * 5.0); // the PKA and its cascade
+  std::vector<common::CollisionPoint> pts;
+  std::size_t runs = 0;
+  std::set<double> starts;
+  while (one.try_pop_trajectory(pts)) {
+    ++runs;
+    ASSERT_FALSE(pts.empty());
+    const auto &b = pts.front();
+    EXPECT_EQ(b.kind, common::CollisionPoint::Kind::birth);
+    EXPECT_EQ(b.parent_track, common::CollisionPoint::no_parent);
+    const double dx = in_units(b.coordinate.z_, angstrom) - 1000.0; // (output axes: z = depth)
+    const double dy = in_units(b.coordinate.x_, angstrom) - 0.3;
+    const double dz = in_units(b.coordinate.y_, angstrom) - 0.2;
+    const double d = std::sqrt(dx * dx + dy * dy + dz * dz);
+    EXPECT_GT(d, 1e-6) << "the PKA did not move to a lattice site";
+    EXPECT_LT(d, 2.0) << "the nearest site of bcc Fe is within 2 A of any point";
+    starts.insert(in_units(b.coordinate.z_, angstrom));
+    EXPECT_GT(pts.size(), 3u);
+  }
+  EXPECT_EQ(runs, 12u);
+  EXPECT_GT(starts.size(), 1u); // thermal displacements differ between histories
+  auto four = c;
+  four.threads = 4;
+  four.trajectory_ions = 0;
+  const auto t4 = run_tallies(four);
+  EXPECT_EQ(t4.total_displacements, t.total_displacements);
+  EXPECT_EQ(t4.total_ionization_recoils, t.total_ionization_recoils);
+
+  // TRIM.DAT ions in the crystal transport.
+  auto ions = c;
+  ions.source = TrimConfig::Source::particle_ions;
+  ions.particles = sample_particles(26, 6, 2e4, 1000.0).particles;
+  ions.particle_repeat = 1;
+  ions.trajectory_ions = 0;
+  const auto ti = run_tallies(ions);
+  EXPECT_EQ(ti.ions, 6u);
+  EXPECT_GT(ti.total_ionization_ion, 0.0);
 }
 
 TEST(TrimCrystal, ThermalVibrationsDechannel) {

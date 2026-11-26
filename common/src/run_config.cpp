@@ -1109,7 +1109,9 @@ RunConfig parse_config(std::string_view json_text, const std::filesystem::path &
   // --- Particle source (TRIM.DAT) ----------------------------------------------
   if (r.has("source")) {
     const Reader sr(r.object("source"), "source");
-    sr.reject_unknown({"type", "file", "particles", "title"});
+    sr.reject_unknown({"type", "file", "particles", "title", "repeat"});
+    t.particle_repeat = sr.count("repeat", 1, trim::TrimConfig::max_particle_repeat);
+    if (t.particle_repeat == 0) throw std::invalid_argument("source.repeat: at least 1");
     const std::string type = lower(sr.str("type", "beam"));
     if (type == "beam") {
       t.source = trim::TrimConfig::Source::beam;
@@ -1495,6 +1497,7 @@ json::object to_object(const RunConfig &c) {
     json::object so;
     so["type"] = t.source == trim::TrimConfig::Source::particle_ions ? "ions" : "recoils";
     if (!t.particles_title.empty()) so["title"] = t.particles_title;
+    if (t.particle_repeat != 1) so["repeat"] = t.particle_repeat;
     json::array ps;
     for (const auto &sp : t.particles) {
       json::object po;

@@ -32,8 +32,14 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QSpinBox>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+#include <vector>
 
 namespace amcset {
 namespace gui {
@@ -82,9 +88,42 @@ IonPanel::IonPanel(Scenario *scenario, QWidget *parent)
   auto *recoils = new QRadioButton(tr("Recoil atoms from a list (TRIM.DAT)"), src);
   recoils->setToolTip(tr("Each line sets one target atom in motion, without an ion: damage from neutrons, "
                          "electrons or photons computed by another program"));
+  auto *pka = new QRadioButton(tr("One recoil atom in the target (PKA)"), src);
+  pka->setToolTip(tr("A target atom set in motion at a point inside the target, without an ion (a primary "
+                     "knock-on atom), run as many times as you choose: its cascades are shown in the path "
+                     "views and tallied like TRIM's. In a crystal layer it starts from the nearest lattice "
+                     "site of its element. (Scenario: source type recoils, one particle named PKA, "
+                     "source.repeat; CLI --recoil.)"));
   source_->addButton(beam, 0);
   source_->addButton(ions, 1);
   source_->addButton(recoils, 2);
+  source_->addButton(pka, 3);
+
+  pka_box_ = new QGroupBox(tr("Recoil atom (PKA)"), this);
+  pka_element_ = new QComboBox(pka_box_);
+  pka_element_->setToolTip(tr("Element of the recoil: an element of the target"));
+  pka_energy_ = new QLineEdit(pka_box_);
+  pka_energy_->setToolTip(tr("Its kinetic energy, e.g. \"10 keV\" (a bare number is keV). With full cascades it "
+                             "is displaced if the energy exceeds its Ed and leaves with the energy less Eb."));
+  pka_depth_ = new QLineEdit(pka_box_);
+  pka_depth_->setToolTip(tr("Depth below the surface where it starts, e.g. \"50 nm\" (lateral position 0)"));
+  pka_theta_ = new QLineEdit(pka_box_);
+  pka_theta_->setToolTip(tr("Angle of its direction from the depth axis (0 deg: into the target, 90 deg: "
+                            "parallel to the surface, 180 deg: towards the surface)"));
+  pka_phi_ = new QLineEdit(pka_box_);
+  pka_phi_->setToolTip(tr("Azimuth of its direction about the depth axis, from the y axis"));
+  pka_count_ = new QSpinBox(pka_box_);
+  pka_count_->setRange(1, 1'000'000'000);
+  pka_count_->setGroupSeparatorShown(true);
+  pka_count_->setToolTip(tr("How many times the recoil is run, each with its own random numbers "
+                            "(source.repeat). The path views show the first ones (Output, paths to record)."));
+  auto *pf = new QFormLayout(pka_box_);
+  pf->addRow(tr("Element"), pka_element_);
+  pf->addRow(tr("Energy"), pka_energy_);
+  pf->addRow(tr("Depth"), pka_depth_);
+  pf->addRow(tr("Polar angle"), pka_theta_);
+  pf->addRow(tr("Azimuth"), pka_phi_);
+  pf->addRow(tr("Recoils"), pka_count_);
   particles_file_ = new QLineEdit(src);
   particles_file_->setReadOnly(true);
   particles_file_->setPlaceholderText(tr("no list loaded"));
@@ -99,12 +138,14 @@ IonPanel::IonPanel(Scenario *scenario, QWidget *parent)
   sl->addWidget(beam);
   sl->addWidget(ions);
   sl->addWidget(recoils);
+  sl->addWidget(pka);
   sl->addLayout(file_row);
   sl->addWidget(particles_info_);
 
   auto *lay = new QVBoxLayout(this);
   lay->addWidget(ion);
   lay->addWidget(src);
+  lay->addWidget(pka_box_);
   lay->addStretch(1);
 
   // --- bindings ---------------------------------------------------------------
@@ -148,12 +189,42 @@ IonPanel::IonPanel(Scenario *scenario, QWidget *parent)
                   c.trim.ion.angle = a;
                 });
   binder_->custom([this](const config::RunConfig &c) {
-    const int id = static_cast<int>(c.trim.source);
+    const bool single = is_single_recoil(c);
+    const int id = single ? 3 : static_cast<int>(c.trim.source);
     if (auto *b = source_->button(id)) b->setChecked(true);
-    const bool list = c.trim.source != trim::TrimConfig::Source::beam;
+    const bool list = c.trim.source != trim::TrimConfig::Source::beam && !single;
     load_->setEnabled(list);
     particles_file_->setEnabled(list);
-    if (!list) {
+    pka_box_->setVisible(single);
+    if (single) {
+      // The target's elements (the recoil must be one of them).
+      std::vector<unsigned> zs;
+      for (const auto &l : c.trim.layers) {
+        for (const auto &e : l.elements) {
+          if (std::find(zs.begin(), zs.end(), e.z) == zs.end()) zs.push_back(e.z);
+        }
+      }
+      const unsigned z = c.trim.particles.front().z;
+      if (std::find(zs.begin(), zs.end(), z) == zs.end()) zs.push_back(z);
+      pka_element_->clear();
+      for (const unsigned zi : zs) {
+        const auto &el = Element::by_z(zi);
+        pka_element_->addItem(QStringLiteral("%1  %2").arg(QString::fromStdString(std::string(el.symbol())),
+                                                           QString::fromStdString(std::string(el.name()))),
+                              zi);
+      }
+      pka_element_->setCurrentIndex(pka_element_->findData(z));
+    }
+    if (single) {
+      particles_info_->setText(
+          tr("%1 recoil atom(s) of %2, without an ion. %3")
+              .arg(c.trim.particle_repeat)
+              .arg(format_energy(c.trim.particles.front().energy))
+              .arg(c.trim.damage == trim::DamageCalculation::kinchin_pease
+                       ? tr("With the quick damage calculation only the Kinchin-Pease estimate is made: choose full "
+                            "cascades (Calculation) to follow and see its cascade.")
+                       : tr("Its cascades appear in the path views.")));
+    } else if (!list) {
       particles_info_->setText(tr("Every ion starts at the surface point with the energy and angle above."));
     } else if (c.trim.particles.empty()) {
       particles_info_->setText(tr("Load a particle list. The ion energy above must be at least the highest "
@@ -178,8 +249,47 @@ IonPanel::IonPanel(Scenario *scenario, QWidget *parent)
                              : tr("Kinetic energy, e.g. \"1 MeV\", \"250 keV\" (a bare number is keV)"));
   });
   connect(source_, &QButtonGroup::idClicked, this, guarded(this, tr("Ion settings (idClicked)"), [this](int id) {
+    if (id == 3) {
+      if (is_single_recoil(scenario_->config())) return;
+      binder_->apply(tr("Recoil atom (PKA)"),
+                     [&](config::RunConfig &c) {
+                       // A first atom of the target, 10 keV, halfway through the
+                       // first layer (at most 50 nm deep), into the target.
+                       trim::SourceParticle p;
+                       p.name = "PKA";
+                       p.z = c.trim.layers.empty() || c.trim.layers.front().elements.empty()
+                                 ? c.trim.ion.z
+                                 : c.trim.layers.front().elements.front().z;
+                       p.energy = 10.0 * common::kilo_electron_volt;
+                       p.x = c.trim.layers.empty() ? 500.0 * common::angstrom
+                                                   : std::min(0.5 * c.trim.layers.front().width, 500.0 * common::angstrom);
+                       p.y = 0.0 * common::angstrom;
+                       p.z_position = 0.0 * common::angstrom;
+                       c.trim.source = trim::TrimConfig::Source::particle_recoils;
+                       c.trim.particles = {p};
+                       c.trim.particles_title = "PKA";
+                       c.trim.particle_repeat = 100;
+                       c.trim.ion_count = 0;
+                       if (c.trim.ion.energy < p.energy) c.trim.ion.energy = p.energy;
+                       if (c.trim.damage == trim::DamageCalculation::kinchin_pease) {
+                         c.trim.damage = trim::DamageCalculation::full_cascade; // (to follow the cascade)
+                       }
+                       if (c.trim.transport == trim::TrimConfig::Transport::refined) {
+                         c.trim.transport = trim::TrimConfig::Transport::trim2013; // (beam only)
+                       }
+                     },
+                     -1);
+      return;
+    }
     binder_->apply(tr("Particle source"),
                    [&](config::RunConfig &c) {
+                     if (is_single_recoil(c)) {
+                       // Leaving the PKA: its particle is not a list.
+                       c.trim.particles.clear();
+                       c.trim.particles_title.clear();
+                       c.trim.particle_repeat = 1;
+                       if (id == 0) c.trim.ion_count = 1000;
+                     }
                      c.trim.source = static_cast<trim::TrimConfig::Source>(id);
                      if (c.trim.source == trim::TrimConfig::Source::particle_ions) {
                        if (c.trim.damage == trim::DamageCalculation::monolayer) {
@@ -191,7 +301,103 @@ IonPanel::IonPanel(Scenario *scenario, QWidget *parent)
     if (id != 0 && scenario_->config().trim.particles.empty()) load_particles();
   }));
   connect(load_, &QPushButton::clicked, this, guarded(this, tr("Ion settings (clicked)"), [this] { load_particles(); }));
+
+  // --- The recoil atom (PKA) ------------------------------------------------------
+  // (Its fields edit the one particle; they are shown only for a PKA.)
+  const auto pka_of = [](config::RunConfig &c) -> trim::SourceParticle & {
+    if (!is_single_recoil(c)) throw std::invalid_argument("not a single recoil atom");
+    return c.trim.particles.front();
+  };
+  const auto pka_get = [](const config::RunConfig &c) -> const trim::SourceParticle * {
+    return is_single_recoil(c) ? &c.trim.particles.front() : nullptr;
+  };
+  connect(pka_element_, &QComboBox::activated, this, guarded(this, tr("Recoil element"), [this, pka_of](int i) {
+    const unsigned z = pka_element_->itemData(i).toUInt();
+    binder_->apply(tr("Recoil element"), [&](config::RunConfig &c) { pka_of(c).z = z; }, -1);
+  }));
+  binder_->text(pka_energy_, tr("Recoil energy"),
+                [pka_get](const config::RunConfig &c) {
+                  const auto *p = pka_get(c);
+                  return p ? format_energy(p->energy) : QString();
+                },
+                [pka_of](config::RunConfig &c, const QString &t) {
+                  const auto e = parse_energy(t, "keV");
+                  if (!(e > 0.0 * common::electron_volt)) throw std::invalid_argument("must be positive");
+                  pka_of(c).energy = e;
+                  if (c.trim.ion.energy < e) c.trim.ion.energy = e; // (the tables' upper end)
+                });
+  binder_->text(pka_depth_, tr("Recoil depth"),
+                [pka_get](const config::RunConfig &c) {
+                  const auto *p = pka_get(c);
+                  return p ? format_length(p->x) : QString();
+                },
+                [pka_of](config::RunConfig &c, const QString &t) {
+                  const auto x = parse_length(t, "A");
+                  if (!(x >= 0.0 * common::angstrom) || x > c.trim.target_thickness()) {
+                    throw std::invalid_argument("must be inside the target (0 to its thickness)");
+                  }
+                  pka_of(c).x = x;
+                });
+  // The direction as a polar angle from the depth axis and an azimuth from y.
+  const auto angles = [](const trim::SourceParticle &p, double &theta_deg, double &phi_deg) {
+    const double n = std::sqrt(p.cos_x * p.cos_x + p.cos_y * p.cos_y + p.cos_z * p.cos_z);
+    theta_deg = n > 0.0 ? std::acos(std::clamp(p.cos_x / n, -1.0, 1.0)) * 180.0 / common::pi_v : 0.0;
+    phi_deg = std::atan2(p.cos_z, p.cos_y) * 180.0 / common::pi_v;
+    if (std::abs(p.cos_y) < 1e-12 && std::abs(p.cos_z) < 1e-12) phi_deg = 0.0;
+  };
+  const auto set_angles = [](trim::SourceParticle &p, double theta_deg, double phi_deg) {
+    const double t = theta_deg * common::pi_v / 180.0;
+    const double f = phi_deg * common::pi_v / 180.0;
+    p.cos_x = std::cos(t);
+    p.cos_y = std::sin(t) * std::cos(f);
+    p.cos_z = std::sin(t) * std::sin(f);
+  };
+  binder_->text(pka_theta_, tr("Recoil polar angle"),
+                [pka_get, angles](const config::RunConfig &c) {
+                  const auto *p = pka_get(c);
+                  if (!p) return QString();
+                  double t = 0.0, f = 0.0;
+                  angles(*p, t, f);
+                  return QStringLiteral("%1 deg").arg(t, 0, 'g', 6);
+                },
+                [pka_of, angles, set_angles](config::RunConfig &c, const QString &text) {
+                  const double t = common::in_units(parse_angle(text), common::degree);
+                  if (!(t >= 0.0 && t <= 180.0)) throw std::invalid_argument("must be 0 to 180 degrees");
+                  auto &p = pka_of(c);
+                  double t0 = 0.0, f = 0.0;
+                  angles(p, t0, f);
+                  set_angles(p, t, f);
+                });
+  binder_->text(pka_phi_, tr("Recoil azimuth"),
+                [pka_get, angles](const config::RunConfig &c) {
+                  const auto *p = pka_get(c);
+                  if (!p) return QString();
+                  double t = 0.0, f = 0.0;
+                  angles(*p, t, f);
+                  return QStringLiteral("%1 deg").arg(f, 0, 'g', 6);
+                },
+                [pka_of, angles, set_angles](config::RunConfig &c, const QString &text) {
+                  const double f = common::in_units(parse_angle(text), common::degree);
+                  if (!std::isfinite(f)) throw std::invalid_argument("must be a number of degrees");
+                  auto &p = pka_of(c);
+                  double t = 0.0, f0 = 0.0;
+                  angles(p, t, f0);
+                  set_angles(p, t, f);
+                });
+  binder_->spin(pka_count_, tr("Recoils"),
+                [](const config::RunConfig &c) {
+                  return static_cast<int>(std::min<std::size_t>(c.trim.particle_repeat, 1'000'000'000));
+                },
+                [](config::RunConfig &c, int v) {
+                  if (!is_single_recoil(c)) return;
+                  c.trim.particle_repeat = static_cast<std::size_t>(std::max(v, 1));
+                });
   binder_->refresh();
+}
+
+bool is_single_recoil(const config::RunConfig &c) {
+  return c.trim.source == trim::TrimConfig::Source::particle_recoils && c.trim.particles.size() == 1 &&
+         c.trim.particles.front().name == "PKA";
 }
 
 void IonPanel::load_particles() {

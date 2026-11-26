@@ -148,6 +148,47 @@ bool LatticeSearch::atom_at(const SiteId &id, std::uint64_t seed, unsigned &z, V
   return true;
 }
 
+bool LatticeSearch::nearest_atom(const Vec3 &r, std::uint64_t seed, unsigned z_wanted, double x_lo, double x_hi,
+                                 SiteId &id, Vec3 &position) const noexcept {
+  const Vec3 f = reciprocal_ * r;
+  const double fi = std::floor(f.x), fj = std::floor(f.y), fk = std::floor(f.z);
+  const auto ci = static_cast<std::int32_t>(fi);
+  const auto cj = static_cast<std::int32_t>(fj);
+  const auto ck = static_cast<std::int32_t>(fk);
+  const Vec3 local = r - vectors_.transposed() * Vec3{fi, fj, fk};
+  const double eps = 1e-7; // (as candidates())
+  double best = std::numeric_limits<double>::infinity();
+  bool found = false;
+  for (int di = -2; di <= 2; ++di) {
+    for (int dj = -2; dj <= 2; ++dj) {
+      for (int dk = -2; dk <= 2; ++dk) {
+        const Vec3 cell = vectors_[0] * double(di) + vectors_[1] * double(dj) + vectors_[2] * double(dk) - local;
+        for (std::size_t s = 0; s < occupied_.size(); ++s) {
+          const Vec3 d = cell + offset_[s];
+          const double site_x = r.x + d.x;
+          if (site_x < x_lo - eps || site_x >= x_hi - eps) continue;
+          const SiteId sid{ci + di, cj + dj, ck + dk, occupied_[s]};
+          std::uint64_t state = site_hash(sid, seed);
+          unsigned z = 0;
+          double sigma = 0.0;
+          if (!occupant(sites_[occupied_[s]], state, z, sigma)) continue;
+          if (z_wanted != 0 && z != z_wanted) continue;
+          Vec3 dd = d;
+          if (sigma > 0.0) dd += next_gaussians(state, displacement_cut) * sigma;
+          const double d2 = dot(dd, dd);
+          if (d2 < best) {
+            best = d2;
+            id = sid;
+            position = r + dd;
+            found = true;
+          }
+        }
+      }
+    }
+  }
+  return found;
+}
+
 void LatticeSearch::candidates(const Vec3 &r, const Vec3 &dir, std::uint64_t seed, double x_lo, double x_hi,
                                std::vector<Candidate> &out) const {
   out.clear();

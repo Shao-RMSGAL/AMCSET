@@ -411,6 +411,11 @@ struct TrimConfig {
   Source source = Source::beam;
   std::vector<SourceParticle> particles; //!< TRIM.DAT particles
   std::string particles_title;          //!< TRIM.DAT title (line 8)
+  //! Every particle of the source runs this many times in a row, each run
+  //! with its own random stream (scenario source.repeat; not TRIM): one
+  //! recoil atom (a PKA) at a point, repeated, gives its cascades' statistics.
+  std::size_t particle_repeat = 1;
+  static constexpr std::size_t max_particle_repeat = 1'000'000'000;
   //! Number of ions (beam source); for particle sources the number of
   //! particles to run (0 = all).
   std::size_t ion_count = 1000;
