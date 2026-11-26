@@ -837,7 +837,7 @@ struct Moments {
 struct MdEvent {
   enum class Kind : std::uint8_t {
     birth,    //!< A recoil set in motion with E_min <= T < E_c (E = T)
-    crossing  //!< A moving atom whose energy fell below E_c at a collision (E after it)
+    crossing  //!< A moving atom whose energy fell below E_c at a collision or on a crystal free step (E after it)
   };
   std::size_t ion = 0;              //!< 1-based incident particle
   std::size_t event = 0;            //!< 1-based within the ion and E_c, in time order

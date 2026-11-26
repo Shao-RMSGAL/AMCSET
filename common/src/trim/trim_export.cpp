@@ -110,7 +110,7 @@ Table event_schema(bool lattice_offsets) {
   r("E_c_eV", "E_c", Dimension::energy, "eV", "The transition energy the event belongs to");
   t.columns.push_back(Column::strings("kind", "Kind", {},
                                       "birth: a recoil set in motion below E_c (E = the energy transferred); "
-                                      "crossing: a moving atom whose energy fell below E_c at a collision"));
+                                      "crossing: a moving atom whose energy fell below E_c (at a collision, or in the crystal transport on a step with no atom within reach)"));
   r("t_ps", "Time", Dimension::time, "ps", "Since the ion entered the target");
   r("x_A", "x", Dimension::length, "A", "Lateral position");
   r("y_A", "y", Dimension::length, "A", "Lateral position");

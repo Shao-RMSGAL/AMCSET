@@ -3003,6 +3003,14 @@ void Transporter::crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_i
       mv.zz += free_step * mv.cz * angstrom;
       advance_time(mv, free_step * angstrom, e_step);
       at_point = CollisionPoint::no_parent;
+      // MD events: the step's electronic loss may take it below an E_c (in a
+      // channel most of the path is such steps). Without this check the next
+      // step starts below E_c and that level never sees the crossing.
+      if (md_on_ && md_crossing(mv, in_units(e_step, electron_volt))) {
+        record_point(trajectory, mv); // handoff: where MD takes it
+        if (mv.is_ion) break;
+        return;
+      }
       continue;
     }
 
@@ -3018,6 +3026,11 @@ void Transporter::crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_i
       mv.zz += xi_mean * mv.cz * angstrom;
       advance_time(mv, xi_mean * angstrom, e_step);
       at_point = CollisionPoint::no_parent;
+      if (md_on_ && md_crossing(mv, in_units(e_step, electron_volt))) { // (as for a free step)
+        record_point(trajectory, mv);
+        if (mv.is_ion) break;
+        return;
+      }
       continue; // stops at the top of the loop
     }
 

@@ -2572,6 +2572,136 @@ TEST(TrimTrajectories, EveryTransportRecordsTreesAndEvents) {
   }
 }
 
+namespace {
+
+//! The rows of a CSV file without comment lines, by column name.
+std::vector<std::map<std::string, std::string>> csv_rows(const std::filesystem::path &p) {
+  std::istringstream in(read_file(p));
+  std::vector<std::string> header;
+  std::vector<std::map<std::string, std::string>> out;
+  for (std::string line; std::getline(in, line);) {
+    if (line.empty() || line[0] == '#') continue;
+    std::vector<std::string> cells;
+    std::istringstream ls(line);
+    for (std::string cell; std::getline(ls, cell, ',');) cells.push_back(cell);
+    if (header.empty()) {
+      header = cells;
+      continue;
+    }
+    std::map<std::string, std::string> row;
+    for (std::size_t i = 0; i < header.size() && i < cells.size(); ++i) row[header[i]] = cells[i];
+    out.push_back(std::move(row));
+  }
+  return out;
+}
+
+} // namespace
+
+// MD events with several E_c in a channeling crystal (a user's report,
+// 5 MeV Fe -> bcc Fe (1 1 1)): the electronic loss of the steps with no atom
+// within reach (in a channel) took the ion below some E_c without a crossing
+// event, so those levels kept it as the BCA's. Every level must get one
+// crossing per atom that falls below it, and the levels' events must nest:
+// each event of a finer E_c lies in the subtree of exactly one event of the
+// next coarser E_c, and no coarser event lies inside a finer event's subtree.
+TEST(TrimMdEvents, CrystalCrossesEveryLevelOnceAndLevelsNest) {
+  auto c = crystal_config(26, 100.0, crystal_layer("bcc", {26}, 2.859, 10000.0, 420.0, {1, 1, 1}, {1, -1, 0}), 20,
+                          DamageCalculation::full_cascade);
+  c.layers[0].elements[0].displacement_energy = 40.0 * electron_volt;
+  c.seed = 20261126;
+  c.threads = 1;
+  c.output_directory = temp_dir("md_crystal_levels").string();
+  c.outputs.formats.clear();
+  c.trajectory_ions = TrimConfig::all_ions;
+  c.trajectory_export.file = "births.csv";
+  c.trajectory_export.births_only = true;
+  c.md_events.file = "events.csv";
+  c.md_events.min_energy = 40.0 * electron_volt;
+  std::vector<double> levels = {500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0, 50000.0};
+  for (double e : levels) c.md_events.transition_energies.push_back(e * electron_volt);
+  TrimSimulation s(c);
+  s.set_trajectory_polling(false);
+  s.run();
+
+  // Lineage: (ion, track) -> (parent track, birth time in ps).
+  std::map<std::pair<long, long>, std::pair<long, double>> parent;
+  for (const auto &r : csv_rows(std::filesystem::path(c.output_directory) / "births.csv")) {
+    parent[{std::stol(r.at("ion")), std::stol(r.at("track"))}] = {std::stol(r.at("parent_track")),
+                                                                   std::stod(r.at("t_ps"))};
+  }
+  struct Event {
+    long ion, track;
+    double t_ps;
+    bool crossing;
+  };
+  std::map<double, std::vector<Event>> events;
+  for (const auto &r : csv_rows(std::filesystem::path(c.output_directory) / "events.csv")) {
+    events[std::stod(r.at("E_c_eV"))].push_back(
+        {std::stol(r.at("ion_id")), std::stol(r.at("track")), std::stod(r.at("t_ps")), r.at("kind") == "crossing"});
+  }
+  ASSERT_EQ(events.size(), levels.size());
+
+  // One crossing per track and level; the ion crosses every level once
+  // when it stops in the target (it does not leave this thick layer).
+  std::size_t ion_crossings = 0;
+  for (double L : levels) {
+    SCOPED_TRACE(L);
+    std::map<std::pair<long, long>, int> per_track;
+    for (const auto &e : events[L]) {
+      if (e.crossing) ++per_track[{e.ion, e.track}];
+    }
+    for (const auto &[key, n] : per_track) EXPECT_EQ(n, 1) << "ion " << key.first << " track " << key.second;
+    for (long ion = 1; ion <= 20; ++ion) {
+      EXPECT_EQ(per_track.count({ion, 0}), 1u) << "no crossing of ion " << ion;
+      ion_crossings += per_track.count({ion, 0});
+    }
+  }
+  EXPECT_EQ(ion_crossings, 20u * levels.size());
+
+  // Nesting. An event of level L holds a point (track, t) in its subtree if
+  // it is on that track at or before t, or on an ancestor track before the
+  // branch towards it was born. At equal times (a collision right after the
+  // event that took no flight time, or the event's own collision) the files
+  // do not give the order: the branch is held if its track has no level-L
+  // event of its own (it inherited the event's mark).
+  const auto has_event = [&](long ion, long track, double L) {
+    return std::any_of(events[L].begin(), events[L].end(), [&](const Event &e) { return e.ion == ion && e.track == track; });
+  };
+  const auto holders = [&](long ion, long track, double t, double L) {
+    int n = 0;
+    long tr = track;
+    double cut = t;
+    long child = -1;
+    for (;;) {
+      for (const auto &e : events[L]) {
+        if (e.ion != ion || e.track != tr) continue;
+        if (child < 0 ? e.t_ps <= cut : (e.t_ps < cut || (e.t_ps == cut && !has_event(ion, child, L)))) ++n;
+      }
+      const auto it = parent.find({ion, tr});
+      if (tr == 0 || it == parent.end() || it->second.first < 0) return n;
+      child = tr;
+      tr = it->second.first;
+      cut = it->second.second;
+    }
+  };
+  for (std::size_t i = 0; i + 1 < levels.size(); ++i) {
+    const double fine = levels[i];
+    const double coarse = levels[i + 1];
+    SCOPED_TRACE(std::to_string(fine) + " in " + std::to_string(coarse));
+    for (const auto &e : events[fine]) {
+      EXPECT_EQ(holders(e.ion, e.track, e.t_ps, coarse), 1)
+          << "ion " << e.ion << " track " << e.track << " t " << e.t_ps << " ps";
+    }
+    for (const auto &e : events[coarse]) {
+      // (One collision that crosses both levels gives both events at one point.)
+      int same = 0;
+      for (const auto &f : events[fine]) same += f.ion == e.ion && f.track == e.track && f.t_ps == e.t_ps;
+      EXPECT_EQ(holders(e.ion, e.track, e.t_ps, fine), same)
+          << "coarser event inside a finer one: ion " << e.ion << " track " << e.track << " t " << e.t_ps << " ps";
+    }
+  }
+}
+
 TEST(TrimCrystal, OrientationIsReported) {
   // Si (0 0 1) with [1 1 0] along TRIM's y: the beam at 7 degrees tilt,
   // twist 0, travels 7 degrees from [0 0 1].

@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **MD events in the crystal transport: missing crossings** (a user's
+  report). The steps with no atom within reach (`crystal_follow`'s free
+  steps, most of a channeled path) and the flight in which a mover stops
+  lowered its energy without the crossing check, so a level whose E_c was
+  passed there got no `crossing` event and kept treating the atom as the
+  BCA's: its later births were written as that level's `birth` events and
+  the event sets of the levels no longer nested. In 40 ions of 5 MeV Fe →
+  bcc Fe (1 1 1) with E_c = 0.5 … 50 keV, 1 to 8 ions per level from
+  1 keV up had no projectile crossing (21 in all) and 694 events broke the
+  nesting of adjacent levels; now none. The check now
+  follows every energy loss. Record mode: the events change, no tally or
+  random number does; handoff mode: such atoms are now handed to MD where
+  they cross. The `trim2013` and refined transports are unchanged. Test
+  `TrimMdEvents.CrystalCrossesEveryLevelOnceAndLevelsNest`.
+
 ## 1.0.0 — November 2026
 
 ### Release 1.0: packages, signing, platform integration

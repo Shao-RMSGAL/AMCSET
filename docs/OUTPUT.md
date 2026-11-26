@@ -358,9 +358,13 @@ order: `"1 keV"` or `["0.5 keV", "1 keV", "2 keV"]`):
    direction the one it starts with.
 2. A **crossing** event: a moving atom (the ion or a recoil) whose energy
    was at least E_c and falls below E_c at a collision (or when it loses
-   its lattice binding energy Eb as it is displaced). Its energy is the
-   energy it has after that collision, its direction the one it leaves
-   with.
+   its lattice binding energy Eb as it is displaced, or, in the crystal
+   transport, by electronic loss on a step with no atom within reach, as
+   in a channel). Its energy is the energy it has after that collision
+   (or step), its direction the one it leaves with. Each such atom has
+   exactly one crossing event per E_c it falls below, and the events of
+   the levels nest: every event of a finer E_c lies in the subtree of
+   exactly one event of each coarser E_c.
 3. An ion that enters the target below E_c is a birth event at its entry.
 4. Nothing that descends from an event's atom is an event again for the
    same E_c: the MD calculation is expected to follow that atom and all it

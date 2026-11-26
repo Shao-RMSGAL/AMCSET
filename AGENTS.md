@@ -35,7 +35,7 @@ State of this file: AMCSET 1.0.0, 2026-11-26.
    significant comparison with TRIM reference runs (`tools/trim_compare`,
    `docs/VALIDATION.md` §2). Fe → Fe is the priority case; never tune to a
    single case.
-5. **Every change builds and passes the tests** (247 CTest tests on Windows, 246 on Linux: the
+5. **Every change builds and passes the tests** (248 CTest tests on Windows, 247 on Linux: the
    GoogleTest suites and the CLI end-to-end runs). Add a focused test for
    every bug fix or feature.
 6. **One scenario model.** `config::RunConfig` (`run_config.h`) describes a
