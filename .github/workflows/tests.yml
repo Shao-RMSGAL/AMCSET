@@ -5,6 +5,9 @@ name: Build and test
 # the work (conan install only on the first run, then configure, build, run
 # amcset.exe, ctest). The workspace is kept between runs (clean: false) so
 # builds are incremental.
+#
+# Pull requests run only when their branch is in this repository: a pull
+# request from a fork would otherwise run its code on the workstation.
 on:
   push:
     branches: [main, develop]
@@ -20,6 +23,9 @@ concurrency:
 
 jobs:
   build-and-test:
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, windows, x64]
     timeout-minutes: 180
 

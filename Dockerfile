@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ARG GCC_VERSION=14
 ARG CMAKE_VERSION=3.29.6
 ARG NINJA_VERSION=1.12.1
-ARG CONAN_VERSION=2.7.0
+ARG CONAN_SPEC="conan>=2.10,<3"
 ARG PYTHON_VENV=/opt/venv
 
 # Keep Conan's cache outside /workspace so a bind mount over
@@ -143,7 +143,7 @@ RUN wget -q \
 # ---- Install pinned Conan ----
 RUN python3 -m venv "${PYTHON_VENV}" \
     && "${PYTHON_VENV}/bin/pip" install --no-cache-dir --upgrade pip \
-    && "${PYTHON_VENV}/bin/pip" install --no-cache-dir "conan==${CONAN_VERSION}" \
+    && "${PYTHON_VENV}/bin/pip" install --no-cache-dir "${CONAN_SPEC}" \
     && conan --version
 
 # ---- Configure Conan ----
