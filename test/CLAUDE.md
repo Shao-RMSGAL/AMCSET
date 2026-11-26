@@ -18,7 +18,7 @@ validation workflow: `docs/TESTING.md`.
 | `cli/cli_test.cpp` | `cli-test` | `RunConfigUnits`, `RunConfig`, `Cli` |
 | `CMakeLists.txt` | `amcset` | `cli.*` end-to-end runs (version, template, elements, stopping, cell, validate, run, convert, trim, bad option, crash reports via `diag-crash`) |
 
-248 CTest tests in total (247 on Linux); 3 are skipped by design (two need SRIM data
+258 CTest tests in total (257 on Linux); 3 are skipped by design (two need SRIM data
 through environment variables, one native test is a placeholder). CTest
 runs everything with the repository root as working directory.
 

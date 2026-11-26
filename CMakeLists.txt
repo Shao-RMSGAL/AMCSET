@@ -28,7 +28,7 @@ cmake_minimum_required(VERSION 3.23)
 #   AMCSET_BUILD_TESTS  build the GoogleTest suite
 
 # Keep in sync with conanfile.py's version.
-project(amcset VERSION 1.0.0
+project(amcset VERSION 1.0.1
         DESCRIPTION "Monte Carlo transport of ions and electrons and radiation damage in layered targets"
         HOMEPAGE_URL "https://github.com/Shao-RMSGAL/AMCSET"
         LANGUAGES C CXX)

@@ -14,7 +14,7 @@ conventions: `AGENTS.md`. Tests: `docs/TESTING.md`.
 
 Only Release is supported by the scripts (Conan installs Release
 dependencies; `CMakePresets.json`'s `release` preset inherits
-`conan-release`). Version: `project(amcset VERSION 1.0.0)` in
+`conan-release`). Version: `project(amcset VERSION 1.0.1)` in
 `CMakeLists.txt` → `common/include/config.h` (`AMCSET_VERSION`), the Windows
 version resources, the MSIX, the man pages and the AppStream data; also
 `version` in `conanfile.py` (docs/RELEASING.md §2).

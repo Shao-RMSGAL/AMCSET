@@ -22,7 +22,7 @@ status line (`SUCCESS`, `BUILD FAILED`, `TESTS FAILED`) is also written to
 
 ## Suites
 
-248 CTest tests on Windows (247 on Linux, where the segfault crash-report test is
+258 CTest tests on Windows (257 on Linux, where the segfault crash-report test is
 left out); 3 are skipped by design (see Notes).
 
 | Executable / file | Suites | Covers |

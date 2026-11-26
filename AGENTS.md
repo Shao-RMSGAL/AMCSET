@@ -6,7 +6,7 @@ it is short on purpose and links to the details. Directory-specific rules
 live in `CLAUDE.md` files next to the code (`common/`, `common/src/trim/`,
 `gui/`, `cli/`, `test/`, `tools/`); they are loaded when you work there.
 
-State of this file: AMCSET 1.0.0, 2026-11-26.
+State of this file: AMCSET 1.0.1 (preliminary, not released), 2026-11-26.
 
 ---
 
@@ -35,7 +35,7 @@ State of this file: AMCSET 1.0.0, 2026-11-26.
    significant comparison with TRIM reference runs (`tools/trim_compare`,
    `docs/VALIDATION.md` §2). Fe → Fe is the priority case; never tune to a
    single case.
-5. **Every change builds and passes the tests** (248 CTest tests on Windows, 247 on Linux: the
+5. **Every change builds and passes the tests** (258 CTest tests on Windows, 257 on Linux: the
    GoogleTest suites and the CLI end-to-end runs). Add a focused test for
    every bug fix or feature.
 6. **One scenario model.** `config::RunConfig` (`run_config.h`) describes a
@@ -403,6 +403,12 @@ in **`docs/HOWTO.md`**.
   `v1.0.0`, 2026-11-26). Not yet done: the MSIX in the workflow (needs
   signing), the App Certification Kit, AppStream screenshots, the Flatpak
   build.
+- **1.0.1 (preliminary, on `develop`, not tagged or released):** the MD
+  crossing fix of the crystal transport, random seeds, the automatic depth
+  that shrinks and rounds, a PKA inside the target (`source.repeat`,
+  `--recoil`, GUI; particle sources in the crystal transport), the GUI's
+  absolute output folder, and the crystal database (CHANGELOG.md). The
+  trim2013 transport is unchanged, so the TRIM validation still holds.
 - **Last full validation:** `build/trim_validation/trim3/analysis.txt` on the
   workstation (75 units, 161 TRIM runs, 704 AMCSET runs), summarised in
   `docs/VALIDATION.md` §2.2.

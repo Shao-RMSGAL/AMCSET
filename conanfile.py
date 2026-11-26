@@ -20,7 +20,7 @@ from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout, CMakeDeps
 
 class amcsetRecipe(ConanFile):
     name = "amcset"
-    version = "1.0.0"
+    version = "1.0.1"
 
     package_type = "application"
 

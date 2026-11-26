@@ -1,6 +1,6 @@
 # Known issues
 
-Status as of AMCSET 1.0.0 (2026-11-25). The native engine's first cleanup
+Status as of AMCSET 1.0.1 (2026-11-26). The native engine's first cleanup
 (November 2026, before 0.1.0) was behaviour-preserving and only documented
 the problems below; the physics fixes P1-P6 were made afterwards, in 0.1.0
 (`CHANGELOG.md`). Severity:
