@@ -386,10 +386,9 @@ in **`docs/HOWTO.md`**.
 ## 8. Current state (2026-11-25)
 
 - **Git:** branch `develop` (remote `git@github.com:Shao-RMSGAL/AMCSET.git`).
-  0.1.0 is committed; the work since (trajectory and event files in every
-  transport, crystal orientation output and corrections, the 1.0 release
-  files) is **uncommitted**. Commit only when asked; then group the commits
-  and check `git status` for build outputs first. The data file is under
+  Everything up to the 1.0 release files and the validation review is
+  committed and pushed (2026-11-26). Commit only when asked; then group the
+  commits and check `git status` for build outputs first. The data file is under
   GitHub's 50 MB warning size; use Git LFS if it ever grows past it.
 - **Release 1.0:** version 1.0.0, packages, release workflow, signing script
   and platform documents are in place (`docs/RELEASING.md`,
