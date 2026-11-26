@@ -36,7 +36,9 @@ and `output` in the working directory for a TRIM.IN.
   angle from the depth axis, azimuth from y) and how many times it runs
   (each run its own cascade; scenario `source.repeat`). Choosing it
   switches to full cascades (to follow them) and the paths views show the
-  cascades of the first recorded runs (Output, paths to record); in a
+  cascades of the first recorded runs (Output, paths to record), framed
+  on the cascades (with a recoil source the views and *Fit* frame the
+  paths, not the whole target depth); in a
   crystal layer the atom starts from the nearest lattice site of its
   element. docs/CLI.md "A recoil inside the target".
 - **Target**: layers from the surface (name, thickness, density, gas phase,

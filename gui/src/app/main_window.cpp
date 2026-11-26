@@ -456,6 +456,9 @@ void MainWindow::scenario_changed() {
   std::vector<double> b{0.0};
   for (const auto &l : c.trim.layers) b.push_back(b.back() + common::in_units(l.width, common::angstrom));
   paths_->set_target(b, c.mode == config::Mode::native && c.native.electron ? 0u : c.trim.ion.z);
+  // Recoil atoms start inside the target: the views show their cascades.
+  paths_->view()->set_fit_to_paths(c.mode == config::Mode::srim &&
+                                   c.trim.source == trim::TrimConfig::Source::particle_recoils);
   plots_->set_output_units(c.trim.outputs);
   tables_->set_output_spec(c.trim.outputs);
   stats_->set_output_units(c.trim.outputs);

@@ -282,6 +282,12 @@ void TrackView::reset_views() {
   update();
 }
 
+void TrackView::set_fit_to_paths(bool on) {
+  if (on == fit_to_paths_) return;
+  fit_to_paths_ = on;
+  reset_views();
+}
+
 void TrackView::resizeEvent(QResizeEvent *e) {
   // Called by Qt: no exception may leave (app/guard.h).
   try {
@@ -343,6 +349,36 @@ void TrackView::fit(Projection p, const QRectF &rect) {
   if (lat <= 0) lat = 1.0;
   const double w = std::max(rect.width(), 10.0);
   const double h = std::max(rect.height(), 10.0);
+  if (fit_to_paths_ && have) {
+    // The box of the paths (TRIM axes, Angstrom), a little larger, with no
+    // side shorter than 2 % of the longest (or 1 A).
+    double c3[3], d3[3];
+    for (int k = 0; k < 3; ++k) {
+      c3[k] = 0.5 * (static_cast<double>(lo[k]) + static_cast<double>(hi[k]));
+      d3[k] = static_cast<double>(hi[k]) - static_cast<double>(lo[k]);
+    }
+    const double longest = std::max({d3[0], d3[1], d3[2], 1.0});
+    for (double &d : d3) d = 1.1 * std::max(d, 0.02 * longest);
+    switch (p) {
+    case Projection::depth_y:
+    case Projection::depth_z: {
+      const int v = p == Projection::depth_y ? 1 : 2;
+      c.center = QPointF(c3[0], c3[v]);
+      c.scale = 0.9 * std::min(w / d3[0], h / d3[v]);
+      break;
+    }
+    case Projection::beam:
+      c.center = QPointF(c3[1], c3[2]);
+      c.scale = 0.9 * std::min(w / d3[1], h / d3[2]);
+      break;
+    case Projection::perspective:
+      c.target = scene(static_cast<float>(c3[0]), static_cast<float>(c3[1]), static_cast<float>(c3[2]));
+      c.distance = 1.3f * static_cast<float>(std::max({d3[0], d3[1], d3[2]})) / std::tan(qDegreesToRadians(20.0f));
+      c.scale = 1.0;
+      break;
+    }
+    return;
+  }
   switch (p) {
   case Projection::depth_y:
   case Projection::depth_z:

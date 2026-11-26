@@ -80,6 +80,12 @@ public:
   void data_changed();
   //! Fit every view to the target and the paths.
   void reset_views();
+  /*!
+   * Fit the views to the paths alone, not to the whole target depth (for
+   * recoil sources: a cascade of a few nanometres deep inside the target
+   * would be a dot in a view of the target). Off: the target and the paths.
+   */
+  void set_fit_to_paths(bool on);
 
   //! Colours of the paths (also for legends).
   static QColor incident_color();
@@ -156,6 +162,7 @@ private:
   float opacity_ = 0.8f;
   std::vector<double> boundaries_{0.0, 1000.0};
   unsigned incident_z_ = 0;
+  bool fit_to_paths_ = false;
   std::array<Camera, 4> cameras_;
   bool failed_ = false;
 

@@ -17,7 +17,8 @@
   with its own random numbers; `--recoil EL,E,DEPTH[,CX,CY,CZ]` sets up one
   recoil atom run `-n` times, and the GUI's Ion tab has *One recoil atom in
   the target (PKA)* (element, energy, depth, direction, number of runs),
-  whose cascades the path views show. The crystal transport now runs
+  whose cascades the path views show (with a recoil source the views and
+  *Fit* frame the paths, not the whole target depth). The crystal transport now runs
   particle sources (before: refused): TRIM.DAT ions start at their points,
   a recoil atom at the nearest lattice atom of its element, leaving its site
   empty (`LatticeSearch::nearest_atom`). docs/CLI.md "A recoil inside the
