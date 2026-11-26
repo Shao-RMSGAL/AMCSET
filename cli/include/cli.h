@@ -53,6 +53,7 @@ struct Options {
   std::optional<std::size_t> ions;
   std::optional<unsigned> threads;
   std::optional<std::uint32_t> seed;
+  bool random_seed = false;  //!< --seed random (TrimConfig::random_seed)
   std::optional<std::string> mode;
   std::optional<std::string> damage;
   std::optional<std::string> stopping;

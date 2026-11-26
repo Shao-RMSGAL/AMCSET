@@ -74,7 +74,9 @@ hidden from the View menu).
   while it is off.
 - **Calculation**: engine (SRIM mode or the native engine), TRIM's damage
   calculation (quick Kinchin-Pease, full cascades, monolayer steps), number
-  of ions, seed, threads; for SRIM mode the transport of amorphous targets
+  of ions, seed (or *New random seed for every run*: the drawn seed is
+  shown in the log and recorded in the outputs; continuing keeps it),
+  threads; for SRIM mode the transport of amorphous targets
   (TRIM-2013 or refined) and the switch *Crystal transport (follows the
   lattice)*, which turns the crystal transport on and off: on, layers that
   have a crystal are followed atom by atom (not TRIM, and the division of

@@ -209,6 +209,12 @@ bool RunController::extend(const config::RunConfig &config, std::size_t more_ion
     return false;
   }
   config::RunConfig c = config;
+  // A drawn seed stays the calculation's: the continued ions get the streams
+  // one long run would have given them.
+  if (c.trim.random_seed) {
+    c.trim.seed = config_.trim.seed;
+    c.trim.random_seed = false;
+  }
   c.trim.first_ion = previous_ions_;
   c.trim.ion_count = more_ions;
   std::unique_ptr<common::SimulationEngine> engine;
@@ -231,6 +237,9 @@ bool RunController::launch(std::unique_ptr<common::SimulationEngine> engine, QSt
   if (thread_.joinable()) thread_.join();
   engine_ = std::move(engine);
   trim_ = dynamic_cast<trim::TrimSimulation *>(engine_.get());
+  // A random seed is drawn by the engine: keep the one it uses (shown, and
+  // kept when the calculation is continued).
+  if (trim_ != nullptr) config_.trim.seed = trim_->config().seed;
   refresh_failures_ = 0;
   // (A continued run starts with the earlier part's transmitted ions.)
   escaped_reported_ = trim_ != nullptr ? trim_->transmitted_so_far() : 0;

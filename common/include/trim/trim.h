@@ -419,6 +419,12 @@ struct TrimConfig {
   //! one longer run, because every ion has its own random-number stream.
   std::size_t first_ion = 0;
   std::uint32_t seed = 716381; //!< TRIM's default seed
+  //! A new seed for every calculation (scenario "seed": "random", CLI
+  //! --seed random): TrimSimulation replaces #seed by draw_random_seed()
+  //! when it is built; its config() and every output (TDATA.txt,
+  //! summary.json, results) give the seed it used, which reruns the same
+  //! calculation. Continuing a calculation keeps its seed.
+  bool random_seed = false;
   unsigned threads = 0;        //!< 0 = hardware concurrency
 
   // --- physics -----------------------------------------------------------
@@ -738,6 +744,9 @@ struct TrimConfig {
 };
 
 std::string to_string(TrimConfig::Transport t);
+//! A seed from the system's entropy source (std::random_device), mixed with
+//! the clock and a call counter; 0 to 2^31 - 1.
+std::uint32_t draw_random_seed();
 //! "trim2013" ("trim"), "refined", "crystal". \throws std::invalid_argument
 TrimConfig::Transport parse_transport(std::string_view s);
 

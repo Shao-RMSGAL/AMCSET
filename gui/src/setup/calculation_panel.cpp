@@ -83,6 +83,11 @@ CalculationPanel::CalculationPanel(Scenario *scenario, QWidget *parent)
   seed->setGroupSeparatorShown(false);
   seed->setToolTip(tr("Random-number seed (TRIM's default is 716381). Every ion has its own stream, so the "
                       "results do not depend on the number of threads."));
+  auto *random_seed = new QCheckBox(tr("New random seed for every run"), calc);
+  random_seed->setToolTip(tr("Draw a new seed when each calculation starts, so that every run gives different "
+                             "results. The seed used is shown in the log and recorded in the outputs (TDATA.txt, "
+                             "summary.json, the run table); enter it as the seed to repeat a run. Continuing a "
+                             "calculation keeps its seed. (Scenario key seed: \"random\".)"));
   auto *threads = count_spin(calc, 1024);
   threads->setSpecialValueText(tr("all cores"));
   for (auto *c : {engine, damage}) {
@@ -93,6 +98,7 @@ CalculationPanel::CalculationPanel(Scenario *scenario, QWidget *parent)
   cf->addRow(tr("Damage"), damage);
   cf->addRow(tr("Ions"), ions);
   cf->addRow(tr("Random seed"), seed);
+  cf->addRow(QString(), random_seed);
   cf->addRow(tr("Threads"), threads);
   lay->addWidget(calc);
 
@@ -115,6 +121,9 @@ CalculationPanel::CalculationPanel(Scenario *scenario, QWidget *parent)
                 });
   binder_->spin(seed, tr("Seed"), [](const config::RunConfig &c) { return static_cast<int>(c.trim.seed & 0x7fffffff); },
                 [](config::RunConfig &c, int v) { c.trim.seed = static_cast<std::uint32_t>(v); });
+  binder_->check(random_seed, tr("Random seed"), [](const config::RunConfig &c) { return c.trim.random_seed; },
+                 [](config::RunConfig &c, bool on) { c.trim.random_seed = on; });
+  binder_->custom([seed](const config::RunConfig &c) { seed->setEnabled(!c.trim.random_seed); });
   binder_->spin(threads, tr("Threads"), [](const config::RunConfig &c) { return static_cast<int>(c.trim.threads); },
                 [](config::RunConfig &c, int v) { c.trim.threads = static_cast<unsigned>(v); });
 

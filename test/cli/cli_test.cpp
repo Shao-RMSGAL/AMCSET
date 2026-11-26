@@ -339,6 +339,23 @@ TEST(Cli, FastMathFirstIonAndLogOptions) {
   EXPECT_THROW(parse_config(R"({"physics": {"fast_math": "fast"}})"), std::exception);
 }
 
+TEST(Cli, RandomSeedKeyAndOption) {
+  auto c = parse_config(alloy_json);
+  EXPECT_FALSE(c.trim.random_seed);
+  apply_override(c, "seed=random");
+  EXPECT_TRUE(c.trim.random_seed);
+  EXPECT_NE(to_json(c).find("\"seed\": \"random\""), std::string::npos);
+  EXPECT_TRUE(parse_config(to_json(c)).trim.random_seed);
+  // A number sets a fixed seed again; --seed takes both.
+  cli::apply_options(c, cli::parse_arguments(std::vector<std::string>{"run", "x.json", "--seed", "42"}));
+  EXPECT_FALSE(c.trim.random_seed);
+  EXPECT_EQ(c.trim.seed, 42u);
+  cli::apply_options(c, cli::parse_arguments(std::vector<std::string>{"run", "x.json", "-s", "random"}));
+  EXPECT_TRUE(c.trim.random_seed);
+  EXPECT_THROW(cli::parse_arguments(std::vector<std::string>{"run", "x.json", "-s", "sometimes"}), cli::UsageError);
+  EXPECT_THROW(parse_config(R"({"seed": "often"})"), std::invalid_argument);
+}
+
 TEST(Cli, AutoDepthOptionAndKeys) {
   auto c = parse_config(alloy_json);
   EXPECT_FALSE(c.trim.auto_depth.enabled);

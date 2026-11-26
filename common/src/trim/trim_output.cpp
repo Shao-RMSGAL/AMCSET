@@ -730,6 +730,7 @@ std::string TrimSimulation::summary_json() const {
     << ",\n";
   if (config_.fast_math) j << "  \"fast_math\": true,\n";
   j << "  \"seed\": " << config_.seed << ",\n";
+  if (config_.random_seed) j << "  \"seed_random\": true,\n"; // (drawn for this run; "seed" reruns it)
   j << "  \"ions\": " << t.ions << ",\n";
   j << "  \"elapsed_seconds\": " << json_number(elapsed_seconds_.load()) << ",\n";
   j << "  \"range\": {\"mean_A\": " << json_number(t.range.mean())

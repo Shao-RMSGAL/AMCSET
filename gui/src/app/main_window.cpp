@@ -169,6 +169,10 @@ MainWindow::MainWindow() : run_(&tracks_) {
   connect(&run_, &RunController::started, this, guarded(this, tr("Main window (started)"), [this](bool continued) {
     for (const auto &w : run_.warnings()) log(w, true);
     if (!continued) log(tr("Started: %1").arg(QString::fromStdString(run_.config().trim.title)));
+    if (!continued && run_.config().mode == config::Mode::srim && run_.config().trim.random_seed) {
+      log(tr("Random seed drawn for this run: %1 (enter it as the seed to run the same calculation again)")
+              .arg(run_.config().trim.seed));
+    }
     update_actions();
   }));
   connect(&run_, &RunController::target_sized, this,

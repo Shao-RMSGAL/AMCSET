@@ -380,6 +380,7 @@ AutoDepthResult size_target(TrimConfig &c, const std::atomic<bool> *cancel) {
   // arithmetic the calculation itself will use.
   if (!crystal) t.fast_math = true;
   t.auto_depth.enabled = false;
+  t.random_seed = false; // the scenario's seed: the same size for every run of the scenario
   t.trajectory_export = {}; // the test runs write no files
   t.md_events = {};
   bool done = false;

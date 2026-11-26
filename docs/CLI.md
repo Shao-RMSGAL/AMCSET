@@ -50,7 +50,7 @@ amcset trim TRIM.IN -o out --fix-trim-bugs                  # correct TRIM's bug
 | `-o, --output DIR` | Output directory (default `output`) |
 | `-n, --ions N` | Number of incident ions |
 | `-j, --threads N` | Worker threads (0 or omitted: all cores). Results do not depend on it. |
-| `-s, --seed S` | Random-number seed (SRIM mode; TRIM's default 716381) |
+| `-s, --seed S` | Random-number seed (SRIM mode; TRIM's default 716381); `random`: a new seed for every run (`"seed": "random"`), printed and recorded in the outputs |
 | `--mode srim\|native` | Engine (scenario files only) |
 | `--damage kp\|full\|monolayer` | TRIM's damage calculation: quick Kinchin-Pease, full cascades, monolayer steps |
 | `--stopping MODEL` | `srim`, `builtin`, `bethe-bloch` or `lss` |
@@ -237,7 +237,11 @@ Keys:
   layer's composition and density, and `elements` may be left out. Followed
   by the crystal transport only; see "Crystals" below.
 - `ions`, `seed`, `threads`, `damage` (`kinchin-pease`, `full-cascade`,
-  `monolayer`). `first_ion` (default 0, written only when set): the number
+  `monolayer`). `seed` is a whole number or `"random"`: a new seed is then
+  drawn for every calculation (from the system's entropy source), printed
+  by the CLI and written to TDATA.txt, summary.json (with `"seed_random":
+  true`) and the run table; giving that number as the seed repeats the
+  run. `first_ion` (default 0, written only when set): the number
   of the first ion of this run; every ion has its own random-number stream,
   so `first_ion = B` with `ions = K` repeats ions B .. B+K-1 of a longer run
   exactly when B is the start of a block of 16 (crash reports print B).

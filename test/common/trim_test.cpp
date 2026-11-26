@@ -31,6 +31,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <random>
@@ -523,6 +524,35 @@ TEST(TrimEngine, SeedChangesTheResult) {
   TrimSimulation b(c);
   b.run();
   EXPECT_NE(a.tallies().range.s1, b.tallies().range.s1);
+}
+
+// "seed": "random": every engine draws its own seed, config() and the
+// outputs give it, and that seed reruns the same calculation.
+TEST(TrimEngine, RandomSeedIsDrawnRecordedAndRepeatable) {
+  auto c = fe_on_fe(20.0, DamageCalculation::kinchin_pease, 20);
+  c.random_seed = true;
+  c.output_directory = temp_dir("random_seed").string();
+  c.outputs.formats = {output::Format::trim};
+  TrimSimulation a(c);
+  TrimSimulation b(c);
+  EXPECT_NE(a.config().seed, b.config().seed); // (31 random bits: equal once in 2^31)
+  EXPECT_LT(a.config().seed, 1u << 31);
+  EXPECT_TRUE(a.config().random_seed);
+  a.run();
+  a.write_outputs(c.output_directory);
+  std::ifstream in(std::filesystem::path(c.output_directory) / "summary.json");
+  const std::string summary((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  EXPECT_NE(summary.find("\"seed\": " + std::to_string(a.config().seed) + ","), std::string::npos);
+  EXPECT_NE(summary.find("\"seed_random\": true"), std::string::npos);
+  auto again = c;
+  again.random_seed = false;
+  again.seed = a.config().seed;
+  again.output_directory.clear();
+  TrimSimulation r(again);
+  EXPECT_EQ(r.config().seed, a.config().seed);
+  r.run();
+  EXPECT_EQ(r.tallies().range.s1, a.tallies().range.s1);
+  EXPECT_EQ(r.tallies().total_vacancies, a.tallies().total_vacancies);
 }
 
 TEST(TrimEngine, DamageModesShareIonTrajectories) {

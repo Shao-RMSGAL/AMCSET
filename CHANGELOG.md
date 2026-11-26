@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- **Random seed for every run.** `"seed": "random"` (CLI `--seed random`,
+  GUI *New random seed for every run*): the engine draws a seed (system
+  entropy, clock and a counter; 31 bits) when it is built, so every run
+  differs. The seed used is printed (CLI), logged (GUI) and recorded in
+  TDATA.txt, summary.json (`"seed"`, plus `"seed_random": true`) and the
+  run table; entering it as the seed repeats the run. A continued GUI
+  calculation keeps its seed. Tests `TrimEngine.RandomSeedIsDrawnRecordedAndRepeatable`,
+  `Cli.RandomSeedKeyAndOption`.
+
 ### Fixed
 
 - **MD events in the crystal transport: missing crossings** (a user's

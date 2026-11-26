@@ -1077,7 +1077,12 @@ RunConfig parse_config(std::string_view json_text, const std::filesystem::path &
   // --- Calculation ----------------------------------------------------------
   t.ion_count = r.count("ions", t.ion_count);
   t.first_ion = r.count("first_ion", t.first_ion);
-  t.seed = static_cast<std::uint32_t>(r.count("seed", t.seed, 4294967295u));
+  // "seed": a whole number, or "random" (a new seed for every calculation).
+  if (const auto *s = r.get("seed"); s != nullptr && s->is_string() && trim(s->as_string()) == "random") {
+    t.random_seed = true;
+  } else {
+    t.seed = static_cast<std::uint32_t>(r.count("seed", t.seed, 4294967295u));
+  }
   t.threads = static_cast<unsigned>(r.count("threads", 0, trim::TrimConfig::max_threads));
   t.damage = trim::parse_damage_calculation(r.str("damage", trim::to_string(t.damage)));
   {
@@ -1476,7 +1481,8 @@ json::object to_object(const RunConfig &c) {
       root["auto_depth"] = std::move(a);
     }
   }
-  root["seed"] = t.seed;
+  if (t.random_seed) root["seed"] = "random";
+  else root["seed"] = t.seed;
   root["threads"] = t.threads;
   root["damage"] = trim::to_string(t.damage);
   if (t.source != trim::TrimConfig::Source::beam) {

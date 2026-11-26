@@ -92,7 +92,16 @@ Options parse_arguments(const std::vector<std::string> &args) {
     else if (a == "-o" || a == "--output") o.output = value(a);
     else if (a == "-n" || a == "--ions") o.ions = to_count(a, value(a));
     else if (a == "-j" || a == "--threads") o.threads = static_cast<unsigned>(to_count(a, value(a)));
-    else if (a == "-s" || a == "--seed") o.seed = static_cast<std::uint32_t>(to_count(a, value(a)));
+    else if (a == "-s" || a == "--seed") {
+      const std::string v = value(a);
+      if (v == "random") {
+        o.random_seed = true;
+        o.seed.reset();
+      } else {
+        o.seed = static_cast<std::uint32_t>(to_count(a, v));
+        o.random_seed = false;
+      }
+    }
     else if (a == "--mode") o.mode = value(a);
     else if (a == "--damage") o.damage = value(a);
     else if (a == "--stopping" || a == "--model") o.stopping = value(a);
@@ -186,7 +195,11 @@ void apply_options(config::RunConfig &c, const Options &o) {
   if (o.output) c.trim.output_directory = *o.output;
   if (o.ions) c.trim.ion_count = *o.ions;
   if (o.threads) c.trim.threads = *o.threads;
-  if (o.seed) c.trim.seed = *o.seed;
+  if (o.seed) {
+    c.trim.seed = *o.seed;
+    c.trim.random_seed = false;
+  }
+  if (o.random_seed) c.trim.random_seed = true;
   if (o.damage) c.trim.damage = trim::parse_damage_calculation(*o.damage);
   if (o.stopping_table) {
     c.trim.stopping_table = *o.stopping_table;

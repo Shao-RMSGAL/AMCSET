@@ -15,7 +15,11 @@ formats are `trim`, `csv` and `json`. The files are written concurrently
 fast approximations (`physics.fast_math`) says so in `TDATA.txt`
 ("Fast approximations = on") and in `summary.json` (`"fast_math": true`);
 without them neither appears, so the files are the same as before the
-option existed.
+option existed. The seed of the run is in `TDATA.txt` ("Random number
+seed"), `summary.json` (`"seed"`) and the run table; a seed drawn at
+random (`"seed": "random"`) is the one drawn, and `summary.json` adds
+`"seed_random": true` (the run table says "drawn at random"). That seed
+repeats the run.
 
 ## Tables
 

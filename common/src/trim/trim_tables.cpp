@@ -122,7 +122,7 @@ output::Dataset make_dataset(const TrimSimulation &sim, const TrimTallies &t) {
                              (c.particles_title.empty() ? std::string() : ": " + c.particles_title)},
         {"transport", to_string(c.transport)},
         {"stopping", physics::to_string(c.stopping_model)},
-        {"seed", std::to_string(c.seed)},
+        {"seed", std::to_string(c.seed) + (c.random_seed ? " (drawn at random)" : "")},
         {"ions", std::to_string(t.ions)},
         {"depth_bins", std::to_string(nb) + " bins of " + fmt_g(w) + " A from " +
                            fmt_g(sim.bin_start(0)) + " A"},

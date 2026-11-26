@@ -83,7 +83,8 @@ Options for run/trim/validate:
   -o, --output DIR          Output directory (TRIM-format files, summary.json)
   -n, --ions N              Number of incident ions
   -j, --threads N           Worker threads (default: all cores)
-  -s, --seed S              Random number seed
+  -s, --seed S|random       Random number seed; random: a new one for every run
+                            (the outputs record the seed used)
       --mode srim|native    Engine (scenario files only)
       --damage kp|full|monolayer
       --stopping MODEL      srim | builtin | bethe-bloch | lss
@@ -267,6 +268,9 @@ int run_engine(config::RunConfig &cfg, const cli::Options &opt) {
   if (opt.verbose) std::cerr << engine->describe() << "\n";
   if (auto *t = dynamic_cast<trim::TrimSimulation *>(engine.get())) {
     for (const auto &w : t->warnings()) std::cerr << "Warning: " << w << "\n";
+    if (t->config().random_seed && !opt.quiet) {
+      std::cerr << "Random seed: " << t->config().seed << " (--seed " << t->config().seed << " reruns it)\n";
+    }
     // Nothing polls trajectories here: recorded ones only go to the
     // trajectory file (output.trajectory_file), not into memory as well.
     t->set_trajectory_polling(false);

@@ -42,6 +42,7 @@
 #include <filesystem>
 #include <limits>
 #include <map>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <system_error>
@@ -65,6 +66,28 @@ std::string to_string(DamageCalculation d) {
   case DamageCalculation::monolayer: return "monolayer";
   }
   return "kinchin-pease";
+}
+
+std::uint32_t draw_random_seed() {
+  // random_device may be a fixed sequence (some MinGW builds), so the clock
+  // and a call counter are mixed in, then a splitmix64 finaliser spreads the
+  // bits. 31 bits: the seed fits the GUI's field and TRIM.IN.
+  static std::atomic<std::uint64_t> calls{0};
+  std::uint64_t x = 0;
+  try {
+    std::random_device rd;
+    x = (static_cast<std::uint64_t>(rd()) << 32) ^ static_cast<std::uint64_t>(rd());
+  } catch (...) {
+    // no entropy source: the clock alone
+  }
+  x ^= static_cast<std::uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+  x += 0x9E3779B97F4A7C15ull * (calls.fetch_add(1) + 1);
+  x ^= x >> 30;
+  x *= 0xBF58476D1CE4E5B9ull;
+  x ^= x >> 27;
+  x *= 0x94D049BB133111EBull;
+  x ^= x >> 31;
+  return static_cast<std::uint32_t>(x >> 33);
 }
 
 std::string to_string(TrimConfig::Transport t) {
@@ -960,6 +983,10 @@ TrimSimulation::TrimSimulation(TrimConfig config)
     : config_(std::move(config)), model_(std::make_unique<TargetModel>()) {
   const auto t_setup = std::chrono::steady_clock::now();
   config_.validate();
+  // A random seed is drawn once, here: the run is then deterministic, and
+  // config() and the outputs carry the seed it used (random_seed stays set
+  // so that the outputs say the seed was drawn).
+  if (config_.random_seed) config_.seed = draw_random_seed();
   // The crystal transport is not TRIM: it takes none of TRIM.exe's bugs,
   // whatever the switches say (TrimConfig::effective_bugs).
   config_.bugs = config_.effective_bugs();
