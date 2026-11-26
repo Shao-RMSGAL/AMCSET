@@ -7,6 +7,8 @@ Then read what your task needs:
 |---|---|
 | change anything | `AGENTS.md`, then the `CLAUDE.md` of the directory you work in |
 | understand how the pieces fit | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| install AMCSET from a package | [INSTALL.md](INSTALL.md) |
+| make a release, sign it | [RELEASING.md](RELEASING.md), [PLATFORM.md](PLATFORM.md) |
 | build, run, validate, benchmark | [DEVELOPMENT.md](DEVELOPMENT.md) |
 | add a setting, bug switch, table, plot, option, format | [HOWTO.md](HOWTO.md) |
 | touch SRIM-mode physics | [SRIM_MODE.md](SRIM_MODE.md) and [TRIM2013_ALGORITHM.md](TRIM2013_ALGORITHM.md) |
@@ -25,16 +27,20 @@ Then read what your task needs:
 | [DEVELOPMENT.md](DEVELOPMENT.md) | build matrix, Linux/Windows/Docker builds, Windows hurdles, running, debugging, validation against TRIM, benchmark, CI, git hygiene | developers |
 | [HOWTO.md](HOWTO.md) | recipes for the common changes | developers |
 | [TESTING.md](TESTING.md) | suites, what they cover, optional SRIM-data tests, TRIM comparison, GUI smoke test, determinism harness | developers |
-| [SRIM_MODE.md](SRIM_MODE.md) | SRIM-mode physics, parameters, stopping tables, tallies, validation against 161 TRIM runs, TRIM's bugs, performance | users, developers |
+| [SRIM_MODE.md](SRIM_MODE.md) | SRIM-mode physics, parameters, stopping tables, tallies, TRIM's bugs, performance | users, developers |
+| [VALIDATION.md](VALIDATION.md) | Every comparison with references: 161 TRIM runs and published SRIM calculations, the SRIM-2013 stopping tables against the IAEA database and NIST, measured ranges (Ni ions, 350 ranges in Si and light targets), sputtering yields, damage models against MD, the crystal transport against measurements, the ionization of slow recoils; the deviations and the corrections that can be switched on | users, developers |
+| [validation/](validation/README.md) | The validation as a review with 35 figures, in nine chapters: TRIM.exe, stopping, the Ni-ion problem, ranges, sputtering, damage, crystals, ionization, conclusions and recommendations | users, developers |
 | [TRIM2013_ALGORITHM.md](TRIM2013_ALGORITHM.md) | TRIM.exe's algorithm as recovered by disassembly, with routine addresses | developers |
+| [INSTALL.md](INSTALL.md) | the packages for Windows and Linux, checking a download, where the data are found | users |
 | [CLI.md](CLI.md) | the `amcset` program and the full scenario (JSON) schema | users |
 | [OUTPUT.md](OUTPUT.md) | output formats, tables, columns, OutputSpec | users |
 | [GUI.md](GUI.md) | the desktop application and its code layout | users, developers |
 | [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | open bugs and limitations (native engine, SRIM mode, GUI, build) | developers |
+| [RELEASING.md](RELEASING.md) | the packages and how they are built, the release workflow, code signing (options, setting up Azure Artifact Signing), catalogues | maintainers |
+| [PLATFORM.md](PLATFORM.md) | Windows' desktop-app requirements and Linux standards, and how AMCSET 1.0 meets each | maintainers |
 | [ROADMAP.md](ROADMAP.md) | prioritised improvement backlog | developers |
 | [CRYSTAL_DESIGN.md](CRYSTAL_DESIGN.md) | crystalline targets: the design, what is built (unit cells, orientation, cell files, the scenario's `crystal`, the crystal transport, common crystals, the GUI tab, a first comparison with measurements; user guide in CLI.md "Crystals" and GUI.md) and what is still a proposal (polycrystals, the dose-dependent lattice, a fitted stopping division) | developers |
 | [GLOSSARY.md](GLOSSARY.md) | terms and their names in the code | everyone |
-| [CLEANUP_2026-11.md](CLEANUP_2026-11.md) | historical log of the November 2026 cleanup of the native engine | reference |
 
 Elsewhere: `README.md` (overview), `CHANGELOG.md` (versions),
 `CONTRIBUTING.md`, `data/srim2013/README.md` (bundled tables and their

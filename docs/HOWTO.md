@@ -164,7 +164,7 @@ Only needed for a new SRIM version or a changed energy grid.
 2. `gunzip` the result to `data/srim2013/srim2013_stopping.amcset`; update
    the counts and energies in `data/srim2013/README.md`.
 3. Run the tests (`Stopping*`, `TrimRegression`), then the full TRIM
-   comparison; update `docs/SRIM_MODE.md` §4 and §6.
+   comparison; update `docs/SRIM_MODE.md` §4 and `docs/VALIDATION.md` §2.
 
 ## 9. Add a TRIM reference case
 
@@ -184,7 +184,7 @@ After a full comparison (`build\trim_validation\<set>\analysis.json`):
 python tools\trim_compare\doc_tables.py build\trim_validation\trim3\analysis.json --units
 ```
 
-Paste the summary and per-unit tables into `docs/SRIM_MODE.md` §6.2,
+Paste the summary and per-unit tables into `docs/VALIDATION.md` §2.2,
 update the headline numbers there, in `README.md`, `AGENTS.md` §1 and
 `CHANGELOG.md`, and explain any unit beyond |z| = 3.
 

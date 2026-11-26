@@ -1,6 +1,111 @@
 # Changelog
 
-## Unreleased (after 0.1.0)
+## 1.0.0 (unreleased)
+
+### Release 1.0: packages, signing, platform integration
+
+- **Version 1.0.0**; a logo (`resources/icons/`, drawn by
+  `scripts/make_icons.py`): the window icon, the executables' icon, the
+  packages' icons.
+- **Packages** from `cmake --install` and CPack (`packaging/`): Windows MSI
+  (WiX; Program Files, Start menu, `amcset` on the PATH), ZIP and MSIX
+  (`tools/windows/make_msix.ps1`); Linux AppImage, `.deb` (Debian 13), `.rpm`
+  (Fedora 42) and a CLI tarball for clusters. Install rules for both
+  systems (`bin/`, `share/amcset/`, `share/doc/amcset/`; on Linux a desktop
+  entry, AppStream metadata, hicolor icons and the man pages `amcset(1)`,
+  `amcset-gui(1)`). docs/INSTALL.md.
+- **Release workflow** `.github/workflows/release.yml`: builds and tests on
+  Windows, Ubuntu 22.04, Debian 13 and Fedora 42 on GitHub's runners,
+  signs the Windows files when Azure Artifact Signing is set up
+  (`tools/windows/sign.ps1`), writes SHA256SUMS.txt and build attestations,
+  and drafts the GitHub release. `conanfile.py` takes `-o with_qt=False`
+  (Qt from Qt's own binaries). 1.0 is not signed: the release notes say so
+  and docs/INSTALL.md "Running the unsigned Windows release" tells users
+  what SmartScreen and Smart App Control do and what they can do.
+  docs/RELEASING.md, including the signing
+  options and what the maintainer has to set up.
+- **Windows integration**: version information and icon in both
+  executables; an application manifest (Windows 10/11, Per-Monitor v2 DPI,
+  long paths, UTF-8 code page: file names outside the ANSI code page now
+  work in scenarios and on the command line). docs/PLATFORM.md lists
+  Microsoft's desktop-app requirements and how each is met.
+- **Signals and shutdown.** The CLI stops a run on SIGINT, SIGTERM and
+  SIGHUP (Windows: Ctrl+C, Ctrl+Break, closing the console, log-off,
+  shutdown), writes the partial results, then ends by the same signal
+  (status 128 + n; before: only Ctrl+C, exit 130); a second interrupt ends
+  it at once. The GUI quits quietly on SIGTERM, SIGHUP and SIGINT (Linux),
+  and when the desktop session ends it stops a calculation and keeps a
+  changed scenario in a recovery folder instead of asking (Windows'
+  rule: never block a log-off). The GUI parses numbers in the C locale
+  whatever `LC_NUMERIC` says (Linux).
+- **Validation study, docs/VALIDATION.md**: every comparison in one
+  document (moved there: the TRIM.exe comparison and the damage models
+  from docs/SRIM_MODE.md §6, the crystal measurements from docs/CLI.md),
+  and new comparisons with measurements (`tools/validation/`): a scan of
+  the SRIM-2013 stopping tables over every ion (Ni up to 39 % below its
+  neighbours Co and Cu, Au 26 % below Pt and Hg, in every target), Ni
+  ranges in Fe and Mo (Gurbich et al. 2025), 50 keV Sb in Si by SIMS (Titze
+  et al. 2021: AMCSET, like SRIM, 22 % deep), and the ionization yield of
+  keV Ge and Si recoils (25-32 % low in Ge, 28 % to 3 × high in Si; no
+  stopping model fixes it). Further: electronic stopping against the
+  38 268 measurements in elemental targets of the IAEA database (median
+  0.996, 81 % within 10 %; `stopping_reference.py`) and NIST PSTAR/ASTAR
+  (within 3 % above 0.1 MeV); measured Ni peak depths at 2-11.5 MeV in Ni,
+  Fe and steels (Chauhan et al. 2026, Pena et al. 2025, Song et al. 2026:
+  SRIM-2013 1.2-1.9 × deep, the correction brings six of ten within 9 %);
+  350 measured ranges in Si, SiO2, C, B and SiC (Behar et al. 1995,
+  Oosterhoff 1988, Zhang et al. 2009: agreement in Si, heavy ions 12-25 %
+  short in light targets, as in SRIM); sputtering yields of Ar, H, D and He
+  (Yamamura et al.: median 1.05, pair factors 0.68-1.9); published SRIM
+  damage calculations (Stoller et al. 2013, Weber and Zhang 2019); and the
+  crystal transport's channeling tails of 15 keV As in Si against tilt
+  (Tasch et al. 1994: tails 9-20 × too high at 100 nm, perfect crystal).
+  All of it, with the TRIM comparison and the damage models, is explained as
+  a review with 35 figures in `docs/validation/` (nine chapters);
+  `tools/validation/make_figures.py` (needs matplotlib) redraws them from
+  the scripts' output, and `literature_cases.py` now also writes
+  `results.json`.
+- **Ni stopping correction** `physics.stopping_corrections.nickel_ions`
+  (CLI `--correct-nickel`, also for `amcset stopping`; GUI Calculation tab;
+  off by default): Ni projectiles and recoils take the geometric mean of
+  Co's and Cu's SRIM-2013 electronic stopping at the same velocity. It
+  shortens 5 MeV Ni in Mo by 1.275 × (measured: SRIM-2013 1.3 × too long)
+  and 11.5 MeV Ni in Fe by 1.273 × (1.5 ×); measured peak depths at
+  3.5-9 MeV then agree within 9 %, 2 MeV stays 1.2-1.8 × deep
+  (docs/VALIDATION.md §4.1). With it off nothing changes.
+  New TRIM.exe reference runs of Ni ions (`tools/srim/gen_cases4.py`, 11
+  runs; `run_trim_cases3.ps1 -CaseSet/-OutSet`): AMCSET as TRIM agrees
+  (166 of 169 quantities within 3σ, docs/VALIDATION.md §2.3); with the
+  correction Ni ranges are 21 % shorter at 5-11.5 MeV, Co and Cu unchanged.
+  `StoppingTable.NickelCorrectionIsTheNeighboursGeometricMean`,
+  `Cli.NickelStoppingCorrection`.
+- **Automatic target depth with the crystal transport** (it was refused):
+  the first test run is made in a box 32 times as deep as the estimate,
+  which knows no lattice, and the box is then trimmed to the deepest
+  channeled ion (two test runs as a rule; docs/CLI.md "Checks and
+  warnings"). `TrimCrystal.AutomaticDepthHoldsTheChanneledIons`.
+- **GUI**: *Turn the crystal to this view* (Crystal tab) sets the crystal's
+  orientation from the view of the unit cell, as *Point the beam along this
+  view* sets the beam (`crystal::orientation_for_frame`: Miller indices
+  where a low-index plane fits, else Euler angles;
+  `CrystalOrientation.OrientationForAFrame`). The Output tab has switches
+  *Write a trajectory file* and *Write an MD event file*; before, a file was
+  switched on only by typing its name, and the group's tooltip still said
+  "TRIM-2013 transport only".
+- **Native engine, electrons**: the bundled electron tables are installed
+  (`share/amcset/electrons/`) and found from any working directory; before,
+  only `./common/assets` was tried, so electron runs failed outside the
+  source tree. `CommonTest.electron_bombardment_runs` is no longer skipped.
+- 247 CTest tests on Windows (246 on Linux):
+  `Cli.InterruptsSetTheFlagAndGiveTheSignalsStatus`,
+  `TrimCrystal.HeavySlowIonsKeepTheAmorphousRange`,
+  `TrimCrystal.AutomaticDepthHoldsTheChanneledIons`,
+  `CrystalOrientation.OrientationForAFrame`,
+  `StoppingTable.NickelCorrectionIsTheNeighboursGeometricMean`,
+  `Cli.NickelStoppingCorrection`,
+  `DataFiles.ElectronTablesAreFoundOutsideTheSourceTree`.
+
+### Since 0.1.0
 
 A stability and performance sweep. The default (exact) SRIM-mode results are
 bit-identical to 0.1.0 for every reference case (`tools/perf/bench.py
@@ -11,13 +116,11 @@ and a `dpa` table and `damage_models` block to `results.json` and
 identical (351 of 377 files identical, the other 26 are those two JSON files
 of the 13 cases, differing only by the additions).
 
-### Windows installer
+### Build
 
-`tools\windows\make_installer.ps1` builds a single-file, per-user installer
-(`build\installer\AMCSET-Setup.exe`) with shortcuts and an uninstaller
-(`docs/DEVELOPMENT.md` section 3.1). `tools/linux/make_appimage.sh` builds a
-Linux AppImage (section 3.2); `-DAMCSET_MARCH=...` replaces the
-`-march=native` of GCC/Clang Release builds (default unchanged).
+`-DAMCSET_MARCH=...` replaces the `-march=native` of GCC/Clang Release builds
+(default unchanged); portable builds (the AppImage, the CLI tarball) use
+`x86-64-v2`.
 
 ### Behaviour changes
 
@@ -139,6 +242,61 @@ Linux AppImage (section 3.2); `-DAMCSET_MARCH=...` replaces the
   direction; a recoil reflected at the surface is recorded where it is
   reflected. (Trajectories only; no tally changes.)
 
+### Crystal transport: two corrections; why ranges in crystals are longer
+
+Both corrections change crystal-transport results only (the other
+transports are untouched); both made ranges too short.
+
+- **Electronic straggling** of the crystal transport is now always a gamma
+  deviate. Its flights are the ~1 Å steps between atoms, whose straggling
+  exceeds the mean loss; the Gaussian cut at zero (the default
+  `straggling_distribution`) raised the mean loss: 100 keV He in a random
+  direction of Si came out 8 % short (0.92 of the amorphous range; now
+  1.02). `straggling_distribution` now applies to `refined` only.
+- **The path is charged once.** A flight was charged to the struck atoms'
+  closest approach, but the mover turns x₁ = s tan(θ/2) before it and the
+  next flight started there, charging that stretch again; in amorphous
+  layers the next partner was also placed one monolayer from the deflection
+  point instead of from the last closest approach. Heavy slow ions, whose x₁
+  is a few per cent of a monolayer, had ranges 2-5 % short in amorphous
+  layers: 30 keV W in amorphous W 50.3 Å against `trim2013`'s 52.9 Å
+  (20000 ions; now 52.7 Å), Cu 106.4 against 109.0 Å (now 108.8 Å)
+  (`TrimCrystal.HeavySlowIonsKeepTheAmorphousRange`).
+- `tools/crystal/range_study.py`: ranges of B, As, He in Si, Fe in Fe, Cu in
+  Cu, W and Xe in W along axes, planes, the 7°/22° "random" direction, 16
+  random orientations, a static lattice, tilt scans, and 0.5 keV B against
+  measured profiles in crystalline and preamorphized Si. The longer ranges
+  in crystals are channeling: the transport without a lattice gives
+  `trim2013`'s ranges (0.98-1.02), axes give 1.5 to 16 times the amorphous
+  range, slow heavy ions channel even at 7° (their critical angle, ψ₂, is
+  7.5-11°), and the measured profiles show the same. The study and its
+  numbers: docs/CLI.md "Why ranges in a crystal are longer". summary.json
+  and the `crystals` table now give the critical angle (ψ₂ below E′) besides
+  ψ₁.
+- The numbers of `channeling_checks.py`, `calibration.py` and
+  `polycrystal_checks.py` in docs/CLI.md are from runs after both
+  corrections.
+
+### Trajectory and MD event files in every transport; crystal orientation output
+
+- The trajectory file and the MD event file (with the cascade time) now
+  work with the `refined` and `crystal` transports too, not only
+  `trim2013`: tracks, parents, birth/collision/stop/exit points, times,
+  record and handoff modes. Recording changes no tally (tested for each
+  transport; the results with the files off are the same as before, number
+  for number). docs/OUTPUT.md "Other transports and crystals".
+- Crystal orientation in the outputs: summary.json `crystals` (rotation
+  matrices to TRIM's axes and to the files' axes, Bunge angles, the crystal
+  directions along the depth and the beam, the thermal amplitudes used, and
+  the low-index axes nearest the beam with the atom spacing and Lindhard's
+  ψ₁), a `crystals` result table, and in the trajectory and event files of
+  the crystal transport the lattice offset of each ion (`lattice_dx_A`,
+  `lattice_dy_A`) and the orientation in the Parquet metadata.
+  docs/OUTPUT.md "Crystals".
+- 240 CTest tests on Windows (239 on Linux):
+  `TrimTrajectories.EveryTransportRecordsTreesAndEvents`,
+  `TrimCrystal.OrientationIsReported`.
+
 ### Crystals, phase 3: polycrystals (scenario and transport; no GUI yet)
 
 - **`layers.N.crystal.polycrystal`**: a layer of grains of one unit cell.
@@ -203,8 +361,7 @@ Linux AppImage (section 3.2); `-DAMCSET_MARCH=...` replaces the
   the lattice)* in the Calculation tab, and the same box at the top of the
   Crystal tab, turn it on and off; the transport list holds TRIM-2013 and
   Refined and applies again when the switch is off. With it on, the
-  *TRIM.exe bugs* group shows every bug corrected and says why, and the
-  automatic target depth cannot be ticked.
+  *TRIM.exe bugs* group shows every bug corrected and says why.
 - 229 CTest tests on Windows (228 on Linux): `CrystalMaterials`,
   `TrimCrystal.TakesNoneOfTrimsBugs`,
   `RunConfig.CrystalRunsRecordEveryTrimBugAsFixed`. `trim2013` and
@@ -294,7 +451,7 @@ Linux AppImage (section 3.2); `-DAMCSET_MARCH=...` replaces the
   docs/OUTPUT.md "dpa".
 - Checked against published SRIM-2013 post-processing (Mitsi et al. 2023:
   arc/NRT of 30 ion-target pairs within 0.43 % rms) and compared with MD
-  and 6 K experiments (docs/SRIM_MODE.md §6.3): for surviving defects in
+  and 6 K experiments (docs/VALIDATION.md §5): for surviving defects in
   metals arc-dpa is the most accurate; TRIM's full-cascade vacancies are
   about 2× NRT and 4-19× arc-dpa; TRIM's replacements are 21-275× below
   the mixing of MD (rpa).
@@ -394,7 +551,7 @@ is kept as `physics.transport: refined`.
 - Validation against 161 TRIM-2013 runs of 75 inputs (with the bundled
   tables, new gas cascades and TRIM.DAT inputs): 1031 of 1032 comparisons
   within 3σ; replacements in Xe gas at 1 MeV (+4.6 %, z = 5.0) are open
-  (docs/SRIM_MODE.md §6.2).
+  (docs/VALIDATION.md §2.2).
 - Performance (docs/SRIM_MODE.md §8): the validation cases took 4.7 h of the
   PC with TRIM.exe and 5.3 min with AMCSET (53×; 30× per case, geometric
   mean). tools/windows/benchmark_vs_trim.bat measures TRIM alone against
@@ -528,7 +685,7 @@ is kept as `physics.transport: refined`.
   `docs/ROADMAP.md`, `docs/TESTING.md` and `tools/srim/README.md` brought up
   to date.
 - `tools/trim_compare/doc_tables.py` prints the validation tables of
-  `docs/SRIM_MODE.md` §6.2 from `analyze.py`'s `analysis.json`.
+  `docs/VALIDATION.md` §2.2 from `analyze.py`'s `analysis.json`.
 - `tools/srim/gen_cases3.py`, `run_trim_cases3.*` and `run_held_cases.*`:
   the third batch of TRIM reference cases.
 - License header added to `common/src/data_files.cpp` and

@@ -14,8 +14,10 @@ conventions: `AGENTS.md`. Tests: `docs/TESTING.md`.
 
 Only Release is supported by the scripts (Conan installs Release
 dependencies; `CMakePresets.json`'s `release` preset inherits
-`conan-release`). Version: `project(amcset VERSION 0.1.0)` in
-`CMakeLists.txt` → `common/include/config.h` (`AMCSET_VERSION`).
+`conan-release`). Version: `project(amcset VERSION 1.0.0)` in
+`CMakeLists.txt` → `common/include/config.h` (`AMCSET_VERSION`), the Windows
+version resources, the MSIX, the man pages and the AppStream data; also
+`version` in `conanfile.py` (docs/RELEASING.md §2).
 
 CMake options: `AMCSET_BUILD_GUI`, `AMCSET_BUILD_CLI`, `AMCSET_BUILD_TESTS`
 (all ON), `ENABLE_ASAN` (OFF), `AMCSET_COMPILE_SHADERS` (OFF; GUI shaders
@@ -84,30 +86,28 @@ Known Windows hurdles:
 | paths too long during `conan install` of Qt | Windows MAX_PATH | Qt Quick Controls styles are disabled in `conanfile.py`; keep the Conan home short |
 | a file briefly locked or replaced | Nextcloud sync of the working copy | retry; keep scratch output in `build\` |
 
-### 3.1 Single-file installer
+### 3.1 Packages
 
-`powershell -ExecutionPolicy Bypass -File tools\windows\make_installer.ps1`
-(after `build_and_test.bat`) writes `build\installer\AMCSET-Setup.exe`
-(about 33 MB, built with Windows' own IExpress, no extra tools). It packs
-`amcset.exe`, `amcset-gui.exe`, the three Qt libraries and plugins the GUI
-uses, the app-local Visual C++ runtime, `data\` and a few docs. It installs
-per user to `%LOCALAPPDATA%\Programs\AMCSET` (no administrator rights), adds
-Start Menu and Desktop shortcuts, an "Installed apps" entry and an
-uninstaller. The files are unsigned: SmartScreen warns, and Smart App
-Control may block them. The bundled SRIM tables keep their non-commercial
-terms (`data/srim2013/README.md`).
+`cmake --install build\Release --prefix <folder>` lays out an installation
+(`bin\` with the Qt and C++ runtime DLLs, `share\amcset\`, `share\doc\amcset\`);
+`cpack -G ZIP` in `build\Release` packs it, `tools\windows\make_msix.ps1`
+builds the MSIX. The MSI needs the WiX Toolset and is built by the release
+workflow. Everything about packages and signing: docs/RELEASING.md.
 
 ### 3.2 Linux AppImage
 
 `tools/linux/make_appimage.sh` (on Linux or in WSL; needs the Qt 6 dev
 packages listed in the script header and internet access for linuxdeploy)
 builds `AMCSET-<version>-x86_64.AppImage` (about 48 MB): GUI, CLI and the
-bundled SRIM tables in one file. It compiles in a work folder
+bundled SRIM tables in one file. It lays the files out with `cmake
+--install` (desktop entry, AppStream data, icons, man pages included). It compiles in a work folder
 (`~/amcset-appimage`, not on a synchronised mount) with
 `-DAMCSET_MARCH=x86-64-v2` so the binary does not depend on the build CPU
 (the default `native` is kept for ordinary builds). Run it to start the GUI;
 `AMCSET.AppImage amcset run scenario.json` runs the CLI. The image carries
 the build machine's glibc, so build on the oldest distribution to support.
+With `AMCSET_BUILD_DIR=<build folder>` it packages an existing build instead
+(the release workflow does that on Ubuntu 22.04 with Qt 6.8).
 Checked 2026-11-24 on Ubuntu 26.04 (WSL2): a TRIM case run through the
 AppImage gives the same tallies as the Windows build, and the GUI starts
 under WSLg.
@@ -189,7 +189,7 @@ python tools\trim_compare\doc_tables.py build\trim_validation\trim3\analysis.jso
 ```
 
 Move the previous `build\trim_validation\trim3` aside first (finished runs
-are skipped otherwise). Interpretation: `docs/SRIM_MODE.md` §6.2 and
+are skipped otherwise). Interpretation: `docs/VALIDATION.md` §2.2 and
 `docs/TESTING.md`. Publish new numbers as in `docs/HOWTO.md` §10.
 
 **Single case** (seconds):
@@ -275,17 +275,25 @@ reported only at run time, are fixed and tested.
 - `.github/workflows/check-headers.yml` (GitHub-hosted Ubuntu): runs
   `scripts/check_headers.py`.
 - `.github/workflows/tests.yml` (self-hosted Windows runner, labels
-  `windows`, `x64`): on pushes to `main`/`develop`, pull requests and manual
-  runs it checks the headers, runs `tools\windowsuild_and_test.bat` (Conan
+  `windows`, `x64`): on pushes to `main`/`develop`, pull requests from
+  branches of this repository (not from forks, whose code would run on the
+  workstation) and manual runs it checks the headers, runs `tools\windows\build_and_test.bat` (Conan
   install only the first time, configure, build, `amcset.exe version`,
-  `ctest`) and fails unless `builduild_and_test.status` ends in `SUCCESS`.
+  `ctest`) and fails unless `build\build_and_test.status` ends in `SUCCESS`.
   The workspace is kept (`clean: false`) so builds are incremental; the log
   is uploaded as an artifact. Register the runner on a machine with
   `tools\windows\setup_runner.ps1 -Token <token>` (token from Settings >
   Actions > Runners > New self-hosted runner). It runs as the current user so
   it uses that user's Conan cache.
 
-There is no Linux test job yet (`docs/ROADMAP.md`).
+- `.github/workflows/release.yml` (GitHub-hosted runners): for a `v*` tag
+  or by hand, builds and tests on Windows (Qt from Qt's binaries, Conan for
+  the rest), Ubuntu 22.04, Debian 13 and Fedora 42, packages everything,
+  signs the Windows files if Azure Artifact Signing is configured, and drafts
+  the release: docs/RELEASING.md. It has not run yet.
+
+Apart from the release workflow there is no Linux test job yet
+(`docs/ROADMAP.md`).
 
 ## 9. Git hygiene
 

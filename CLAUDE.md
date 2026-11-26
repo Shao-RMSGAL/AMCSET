@@ -67,7 +67,7 @@ or opens windows (TRIM, the GUI).
 - Quote numbers only from files you produced or read in this session
   (analysis.txt, test output, benchmark CSV). The docs' numbers must match
   the latest analysis; if you rerun the comparison, update
-  `docs/SRIM_MODE.md` §6.2 and the summary lines in `README.md` and
+  `docs/VALIDATION.md` §2.2 and the summary lines in `README.md` and
   `CHANGELOG.md` from `analysis.txt`.
 - When you cite a TRIM.exe address in code or docs, it must already appear
   in `docs/TRIM2013_ALGORITHM.md` or be verified by disassembling TRIM.exe

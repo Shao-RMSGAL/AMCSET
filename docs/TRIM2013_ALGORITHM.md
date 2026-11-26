@@ -106,7 +106,7 @@ or k_low E when that is smaller (k_low = sqrt(38.4 N (Z1 + Z2)^(8/3) /
   `Single`s, so recoil quantities are rounded to single precision (AMCSET
   keeps double precision; the difference is far below the statistics in
   solids; it is not yet excluded for the 10^6 A cascades of heavy gases,
-  see SRIM_MODE.md §6.2).
+  see VALIDATION.md §2.2).
 * The stack holds at most the "Maximum number of secondary recoils" of
   Data/TRIM.cfg (200 000 in the installation used, 20 000 by default)
   minus one: a push beyond it leaves the stack pointer at the last slot,
@@ -226,4 +226,4 @@ surface to TRIM's values (Fe 1 keV: 68.9 -> 71.9 % vs 72.0 %).
 
 Values for trim2013 are means of five runs with the number of ions of the
 TRIM run. The full validation table, with statistical significance, is in
-`docs/SRIM_MODE.md` §6.
+`docs/VALIDATION.md` §2.

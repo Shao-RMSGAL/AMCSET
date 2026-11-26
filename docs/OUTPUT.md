@@ -136,6 +136,38 @@ res = json.load(open("out/results.json"))                   # metadata, scalars,
 The GUI opens `results.json` (File > Open Results) to show the plots and
 tables of an earlier run.
 
+## Crystals: orientation (SRIM mode, layers with a crystal)
+
+Every run with a crystal layer (`layers.N.crystal`) reports how each crystal
+sits in the target and meets the beam, whichever transport runs (`followed`
+says whether the crystal transport follows the lattice). Not TRIM.
+
+**summary.json `crystals`**, one object per crystal layer: `layer`,
+`layer_name`, `cell`, `followed`, `top_A`; `lattice_vectors_A` (rows a, b,
+c in the crystal frame); `rotation_crystal_to_trim_axes` (TRIM's axes: x =
+depth, the beam tilting in x-y) and `rotation_crystal_to_output_axes` (the
+axes of the trajectory and event files: x = TRIM's y, y = TRIM's z, z =
+depth), both mapping a crystal-frame vector v to R v; `euler_bunge_deg`
+(phi1, Phi, phi2 of the crystal relative to the sample frame: x, y in the
+surface, z the outward normal, as `orientation.euler_deg`, so that they
+give the same rotation back); the low-index crystal directions nearest the
+depth, TRIM's y and TRIM's z (`{"uvw", "off_deg"}`) and the beam
+(`beam_direction`, and `beam_unit_vector_crystal`); `tilt_deg`, `twist_deg`,
+`temperature_K`; `vibrations` (per element the rms displacement along one
+axis the transport uses, 0 for a static atom, and whether it came from
+Gemmell's table); `axes_near_beam`, the six low-index axes (indices up to
+2) nearest the beam with the angle to it, the mean spacing of the atoms
+along the row (the row's period over its atoms: a/√2 along ⟨110⟩ of
+diamond, a√3/2 along ⟨111⟩) and Lindhard's critical angle ψ₁ =
+(2 Z₁ Z₂ e²/(E d))^½ for the ion at its energy (Z₂: the cell's mean atomic
+number). An ion within about ψ₁ of an axis channels along it.
+
+**Table `crystals`** (CSV, JSON, Parquet): one row per crystal layer with
+`layer`, `crystal`, `followed`, `phi1`, `Phi`, `phi2`, `depth_direction`,
+`beam_direction`, `beam_off`, `tilt`, `twist`, `temperature_K`, the nearest
+axis (`nearest_axis`, `axis_angle`, `axis_spacing`, `psi1`) and the
+rotation to the output axes `r11` … `r33`.
+
 ## dpa: displacements per atom by damage model (SRIM mode)
 
 TRIM gives vacancies per ion and depth; dpa is usually computed from them
@@ -202,7 +234,7 @@ which in full cascades also counts vacancies outside the depth window) and
 - TRIM's full-cascade vacancies are a count of every atom moved above Ed,
   not of surviving defects: about 2× NRT and 4-20× arc-dpa for PKAs of
   1-100 keV in metals. Which model to use, measured against MD and
-  experiments: docs/SRIM_MODE.md §6.3.
+  experiments: docs/VALIDATION.md §5.
 - The GUI plots `dpa` (all but rpa) and `rpa` and has the fluence on its
   Output page; it does not edit the constants.
 
@@ -210,8 +242,9 @@ which in full cascades also counts vacancies outside the depth window) and
 
 Two optional files for analysing collision cascades and for coupling them
 to molecular dynamics (the hybrid BCA-MD method). They are **not TRIM
-outputs**: TRIM.exe has no equivalent. They need the `trim2013` transport
-(the default) and are written while the run goes on, block by block, so they
+outputs**: TRIM.exe has no equivalent. Every transport writes them
+(`trim2013`, `refined` and `crystal`; "Other transports" below) and they are
+written while the run goes on, block by block, so they
 can be larger than the memory. Both are written in ion order for any number
 of threads, and are identical for a given seed whatever the thread count.
 
@@ -266,16 +299,53 @@ binary-collision picture ignores the time spent in a collision.
 | `E_before_eV`, `T_eV`, `dE_e_eV` | At collision points: the energy just before the collision, the energy given to the struck atom, and the electronic loss over the flight that led to the point (E_eV = E_before_eV − T_eV − dE_e_eV for recoils; for the ion the electronic loss comes first and E_before_eV is the energy after it). 0 at other points |
 | `t_ps` | Time (see above) |
 
-Which points exist follows the transport: the ion has a point at its
-entry and after every flight; a recoil has its birth point and a point
-after every step of one atomic layer (TRIM's recoils move in monolayer
-steps), with a collision at every step except the last. Atoms TRIM sets in
+Which points exist follows the transport. In `trim2013` the ion has a
+point at its entry and after every flight; a recoil has its birth point and
+a point after every step of one atomic layer (TRIM's recoils move in
+monolayer steps), with a collision at every step except the last. In
+`refined` and `crystal` every moving atom (ion or recoil) has its birth
+point, a point at every collision (the deflection point; a collision in
+which several atoms are struck together is one point, with the summed
+transfer in `T_eV`), and a last point where it stops or leaves; a recoil's
+birth point is the struck atom's site, within an impact parameter of its
+parent's collision point, and E_eV = E_before_eV − T_eV − dE_e_eV holds for
+every collision point, the ion's included. Atoms TRIM sets in
 motion but never moves (a struck atom below Ed deeper than a few atomic
 layers, or the primary of a sub-threshold ion collision that TRIM restarts
 with energy 0, see below) have no points. `output.trajectory_file.points:
 "births"` keeps only the birth points (one row per moving atom: where and
 with which energy and direction every atom starts); `min_energy` keeps
 only points with at least that energy.
+
+### Other transports and crystals
+
+The `refined` and `crystal` transports write both files with the same
+columns and rules (tracks, parents, times, events, record and handoff
+modes); recording changes no tally in any transport (tested), and the
+handoff mode conserves the energy as in `trim2013` (tested for each). In
+the handoff mode the struck atom MD takes over is not booked by the BCA at
+all (no displacement, vacancy or binding energy for it), as in `trim2013`.
+The crystal transport's ion starts a few Å in front of the surface (outside
+the target; its time starts there).
+
+With the crystal transport and a crystal layer the files have two more
+columns, and the Parquet files carry the crystals' orientation in their
+metadata:
+
+| Column | Meaning |
+|---|---|
+| `lattice_dx_A`, `lattice_dy_A` | The lateral offset of the crystal lattice for this ion: its entry point on the beam spot (`ion.spot`). Positions in the files (as in every result) are relative to the ion's entry point; a point (x, y, z) is at (x + `lattice_dx_A`, y + `lattice_dy_A`, z − top of the layer) in the frame of the layer's lattice, whose origin is a lattice point. Constant within an ion. |
+
+| Metadata key (Parquet) | Value |
+|---|---|
+| `crystal.layerN.name`, `.followed`, `.top_A` | The cell, whether the crystal transport follows it, the depth of the layer's top |
+| `crystal.layerN.lattice_vectors_A` | a, b, c in the crystal frame (9 numbers, row by row) |
+| `crystal.layerN.rotation_crystal_to_file_axes` | R (9 numbers, row-major): a vector of the crystal frame v is R v in the files' axes (x, y lateral, z depth) |
+| `crystal.layerN.euler_bunge_deg`, `.depth_direction`, `.beam_direction`, `.tilt_twist_deg`, `.temperature_K` | As in the "crystals" table |
+
+CSV files have no metadata: the same information is in summary.json
+(`crystals`) and in the `crystals` table (below), for every run that has a
+crystal.
 
 ### MD event file
 

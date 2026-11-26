@@ -237,8 +237,9 @@ tree (compiled in as `AMCSET_SOURCE_DATA_DIR`). `SrimStoppingDatabase::load`
 caches each file for the process (keyed by canonical path, size and mtime);
 reading and indexing the 42 MB bundled file takes about 0.05 s, and each
 table is parsed when first used (§3). The native engine's
-electron tables (`common/assets/*.csv`) are read relative to the working
-directory.
+electron tables (`common/assets/*.csv`, installed as `share/amcset/electrons/`)
+are found like the stopping tables (`data::find_electron_table`); a table
+path given in a scenario is relative to the working directory.
 
 ## 7. Performance notes
 

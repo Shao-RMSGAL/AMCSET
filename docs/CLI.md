@@ -80,8 +80,14 @@ amcset trim TRIM.IN -o out --fix-trim-bugs                  # correct TRIM's bug
 | `-q, --quiet` / `-v, --verbose` | No progress bar / engine log messages and the diagnostic log (with debug lines) on stderr |
 
 Ctrl+C stops a run after the ions in progress; the partial results are
-written. The exit status is 0 on success, 1 on errors, 2 on usage errors,
-130 after an interrupted run and 3 after a crash.
+written. SIGTERM (`kill`, a batch scheduler's time limit) and SIGHUP (the
+terminal closed) do the same, and so do, on Windows, Ctrl+Break and closing
+the console window (Windows then allows about 5 s). A second interrupt ends
+the program at once. The exit status is 0 on success, 1 on errors, 2 on
+usage errors and 3 after a crash. An interrupted run ends, once its results
+are written, by the signal that interrupted it (POSIX convention: the shell
+reports 128 + the signal number, 130 for Ctrl+C, 143 for SIGTERM, and a
+calling script stops too); on Windows its exit status is 130.
 
 ### Checks and warnings
 
@@ -124,7 +130,14 @@ test runs (Kinchin-Pease, fast approximations, `auto_depth.test_ions` ions,
 default 1000) resize the **last** layer until no test ion is transmitted and
 the deepest stops in the last `auto_depth.margin` (default 10 %) of the
 target: the layer grows (doubles) while ions are transmitted and shrinks to
-deepest/(1 - margin) when the deepest ion stops shallower. The first guess is
+deepest/(1 - margin) when the deepest ion stops shallower. With the crystal
+transport, channeled ions stop far beyond any estimate that knows no lattice
+(up to 16 times the amorphous range, "Why ranges in a crystal are longer"),
+and a test run costs the same in any box: the first one is made in a box 32
+times as deep as the estimate (8 times deeper again while ions still leave
+it), which is then trimmed to deepest/(1 - margin), two test runs as a rule;
+they use the calculation's own arithmetic, not the fast approximations.
+The first guess is
 R (1.2 + f_n), R the path length and f_n the nuclear share of the stopping
 along it (nuclear collisions straggle the range most); from 1 keV to 1 GeV
 and from H to U it took 2 test runs (about 0.3 s). The new thickness is
@@ -253,12 +266,16 @@ Keys:
   `docs/SRIM_MODE.md` §8.2 (tabulated scattering angle, stopping powers and
   power functions; cheaper sine, cosine and rotations) — about 2x faster, statistically the same results, but not
   number for number, so not a step-by-step reproduction of TRIM.exe.
+  `stopping_corrections` (always written): `{"nickel_ions": false}`; `true`
+  gives Ni projectiles (and recoils) the geometric mean of Co's and Cu's
+  SRIM-2013 stopping at the same velocity, correcting SRIM-2013's too-low
+  Ni stopping (not TRIM; `--correct-nickel`; docs/VALIDATION.md §9).
 - `output.trajectories`: also `"all"` (every ion). `output.trajectory_file`
   (written only when set): `{"file": "traj.parquet", "points": "all" |
   "births", "min_energy": "0 eV"}`. `output.md_events` (written only when
   set): `{"file": "events.csv", "E_c": "1 keV" | ["0.5 keV", "1 keV"],
-  "E_min": "Ed" | "40 eV", "mode": "record" | "handoff"}`. Both need the
-  trim2013 transport; md_events needs full cascades or monolayer steps, 1 to
+  "E_min": "Ed" | "40 eV", "mode": "record" | "handoff"}`. Both work with
+  every transport; md_events needs full cascades or monolayer steps, 1 to
   32 E_c in increasing order, E_min below the smallest E_c and one E_c in
   handoff mode. Every column and rule: `docs/OUTPUT.md`.
 - `auto_depth` (written only when not the defaults): `enabled` (default
@@ -310,11 +327,11 @@ none, and `amcset convert` to TRIM.IN drops them.
 **State (November 2026).** Single crystals, a static lattice with thermal
 vibrations, one configuration of the lattice per ion; the GUI's *Crystal*
 tab edits them (docs/GUI.md). Polycrystals (grains generated or read from
-files, "Polycrystals" below) run from a scenario; the GUI cannot edit them
-yet. Not there yet: damage that builds up from ion to ion, TRIM.DAT particle
+files, "Polycrystals" below) run from a scenario; the GUI cannot edit them,
+and their development is on hold. Not there yet: damage that builds up from ion to ion, TRIM.DAT particle
 sources. The transport reproduces a measured channeling dip and measured
-boron profiles in silicon within the spread of those data ("Against
-measurements" below), but **the division of the electronic stopping between
+boron profiles in silicon within the spread of those data (docs/VALIDATION.md
+§6), but **the division of the electronic stopping between
 the path and the collisions (`physics.crystal.local_stopping_fraction`) is
 not calibrated**: the measurements at hand allow 0.25 to 1, and the depth of
 a channeling tail depends on it (about 10 % over that range for 30 keV B in
@@ -419,8 +436,8 @@ it. AMCSET's CIFs are in P 1 and mark interstitial sites with
 ```
 
 This sends 30 keV boron down the ⟨001⟩ channels of silicon (mean range
-2838 Å against 1128 Å in amorphous silicon); with `"angle": "7 deg"` and
-`"twist": "22 deg"` it is the usual "random" implant (1150 Å). On the
+2863 Å against 1128 Å in amorphous silicon); with `"angle": "7 deg"` and
+`"twist": "22 deg"` it is the usual "random" implant (1136 Å). On the
 command line: `--set physics.transport=crystal`.
 
 What it does, after M. T. Robinson and I. M. Torrens, Phys. Rev. B 9, 5008
@@ -455,7 +472,7 @@ What it does, after M. T. Robinson and I. M. Torrens, Phys. Rev. B 9, 5008
 | `physics.transport` | `"crystal"`. The other transports ignore crystals. |
 | `physics.crystal.max_impact_parameter` | The largest impact parameter of a collision. `"auto"` (default): for each crystal, the radius of the largest sphere that fits between its atoms (a√3/4 = 2.35 Å in Si, a/2 in fcc, a√5/4 in bcc), the smallest value for which no part of the lattice is free of collisions. Larger values change little. |
 | `physics.crystal.simultaneous_distance` | Atoms whose closest approaches lie within this distance along the path are struck together (default `"0.5 A"`). 0 treats every collision in turn. |
-| `physics.crystal.local_stopping_fraction` | The fraction of the electronic stopping lost in the collisions (default 0.5; 0 = all along the path, 1 = all in the collisions). **This decides the depth of channeling tails and is not calibrated**: the measurements under "Against measurements" allow 0.25 to 1. |
+| `physics.crystal.local_stopping_fraction` | The fraction of the electronic stopping lost in the collisions (default 0.5; 0 = all along the path, 1 = all in the collisions). **This decides the depth of channeling tails and is not calibrated**: the measurements in docs/VALIDATION.md §6 allow 0.25 to 1. |
 | `physics.crystal.local_stopping_decay` | The loss in a collision falls off as exp(−decay · R/a), R the distance of closest approach, a the screening length (default 0.3). |
 | `physics.crystal.thermal_vibrations` | `false`: atoms stand exactly on their sites, whatever the crystals say (default `true`). |
 | `ion.spot` | Where the ions meet the surface: `{"shape": "rectangle", "width": "1 um", "height": "1 um"}` (the default), `"circle"` (`"diameter"`), `"gaussian"` (`"fwhm"`, or `width`/`height` as full widths at half maximum) or `"point"`. Each ion enters at a random point of the spot; with `"point"` every ion meets the lattice at the same place (with a static lattice and no straggling: the same trajectory, repeated). Positions in the results stay relative to each ion's entry point. Only the crystal transport uses it. |
@@ -485,8 +502,8 @@ followed down to 1 eV, the default) few collisions count as replacements
 and full cascades give TRIM-like vacancy numbers, well above NRT. With the
 cut-off at Ed (`physics.recoil_stop_energy` and `physics.ion_stop_energy`
 set to Ed) the displacement model is Kinchin and Pease's, as in the paper,
-and the count is close to NRT: 30 keV B into Si (Ed = 15 eV), 284.9
-vacancies per ion against NRT's 256.0, and 420.1 with the 1 eV cut-off
+and the count is close to NRT: 30 keV B into Si (Ed = 15 eV), 293.9
+vacancies per ion against NRT's 256.0, and 436.7 with the 1 eV cut-off
 (TRIM's own full cascades in amorphous Si: 379.8).
 
 **Checks** (`tools/crystal/channeling_checks.py`; SRIM-2013 stopping; the
@@ -495,74 +512,96 @@ test trends and internal consistency, not agreement with experiments.
 
 | Check | Result |
 |---|---|
-| 30 keV B into Si at 300 K: mean range | ⟨001⟩ 2838 Å, ⟨110⟩ 4407 Å, 7° tilt / 22° twist 1150 Å; amorphous 1128 Å (`trim2013`), 1120 Å (this transport without a crystal) |
-| ... vacancies per ion (quick damage) | ⟨001⟩ 43, ⟨110⟩ 14, tilted 156, amorphous 152 |
-| A 100 Å oxide on Si ⟨001⟩ | 1522 Å: the oxide scatters part of the beam out of the channels |
-| Temperature (⟨001⟩ range) | static lattice 3714 Å, 20 K 3220 Å, 300 K 2838 Å, 1200 K 1972 Å |
-| Division of the stopping (⟨001⟩ range) | all on the path 2598 Å, half 2838 Å, all in the collisions 3132 Å; in the tilted direction 1154, 1150 and 1139 Å (no dependence) |
-| Numerical parameters (⟨001⟩ range) | maximum impact parameter 3 Å instead of 2.35 Å: 2855 Å; sequential collisions: 2839 Å; simultaneity distance 1.5 Å: 2906 Å |
+| 30 keV B into Si at 300 K: mean range | ⟨001⟩ 2863 Å, ⟨110⟩ 4487 Å, 7° tilt / 22° twist 1136 Å; amorphous 1128 Å (`trim2013`), 1141 Å (this transport without a crystal) |
+| ... vacancies per ion (quick damage) | ⟨001⟩ 45, ⟨110⟩ 14, tilted 158, amorphous 151 |
+| A 100 Å oxide on Si ⟨001⟩ | 1553 Å: the oxide scatters part of the beam out of the channels |
+| Temperature (⟨001⟩ range) | static lattice 3809 Å, 20 K 3292 Å, 300 K 2863 Å, 1200 K 1970 Å |
+| Division of the stopping (⟨001⟩ range) | all on the path 2604 Å, half 2863 Å, all in the collisions 3217 Å; in the tilted direction 1145, 1136 and 1142 Å (no dependence) |
+| Numerical parameters (⟨001⟩ range) | maximum impact parameter 3 Å instead of 2.35 Å: 2904 Å; sequential collisions: 2878 Å; simultaneity distance 1.5 Å: 2955 Å |
 | 1 MeV H through 3000 Å of Si, random direction: energy to electrons | 1.2539 % (all on the path), 1.2555 % (all in the collisions), 1.2524 % (`trim2013`): the division is normalised |
-| 1 MeV He through 600 Å of W along ⟨001⟩: atoms displaced by the ion against the tilt | 2.0 % of the amorphous value on the axis, half of it at about 1.73° (0.82 of Lindhard's ψ₁ = 2.10°), 1.25× at 2.5-3° (the shoulder) |
-| Random crystal orientations (16), least-channeling orientation against amorphous range | 20 keV Fe in Fe 83 against 89 Å; 30 keV B in Si 1136 against 1129 Å; the averages are deeper (188 and 1237 Å) because some orientations channel |
+| 1 MeV He through 600 Å of W along ⟨001⟩: atoms displaced by the ion against the tilt | 2.3 % of the amorphous value on the axis, half of it at about 1.73° (0.82 of Lindhard's ψ₁ = 2.10°), 1.26× at 2.5-3° (the shoulder) |
+| Random crystal orientations (16), least-channeling orientation against amorphous range | 20 keV Fe in Fe 85 against 89 Å; 30 keV B in Si 1095 against 1129 Å; the averages are deeper (191 and 1241 Å) because some orientations channel ("Why ranges in a crystal are longer" below) |
 
-**Against measurements** (`tools/crystal/calibration.py`; SRIM-2013
-stopping; a perfect crystal for every ion; the numbers are in
-`build/crystal_calibration/results.txt` on the workstation).
+**Against measurements**: the channeling dip of He in Ge and boron profiles in Si, with
+the stopping division varied, are in docs/VALIDATION.md §6.
 
-- *Thermal amplitudes.* The Debye model reproduces the tabulated u₁(293 K)
-  of all 19 elements of Gemmell's Table IV from their Debye temperatures
-  (test `CrystalMaterials`).
-- *Channeling dip: 1 MeV He along ⟨110⟩ of Ge at 293 K* (atoms displaced by
-  the ion at depths of 200-1200 Å, relative to amorphous Ge). Minimum yield
-  0.022 and half-angle 0.99° = 0.80 ψ₁, against the measured 0.03 and 0.95°
-  (Picraux et al., as quoted by Gemmell) and Barrett's formulas, 0.025 and
-  0.93°. The shoulder reaches 1.57 at 1.7-2.0°.
-- *Boron in (100) Si, as-implanted SIMS profiles*, for five divisions of
-  the stopping:
+### Why ranges in a crystal are longer
 
-| Measurement | Measured | Crystal transport, fraction 0 / 0.25 / 0.5 / 0.75 / 1 | `trim2013` (amorphous) |
-|---|---|---|---|
-| 15 keV, 7° tilt, 3·10¹⁵ cm⁻² (Jung 2010, Table 2): Rp (nm) | 64.2 | 62.1 / 62.4 / 62.2 / 62.2 / 62.5 | 60.5 |
-| ... ΔRp (nm) | 31.8 | 32.1 / 32.7 / 33.1 / 33.5 / 34.1 | 25.7 |
-| ... skewness | 0.98 | 0.59 / 0.68 / 0.76 / 0.85 / 0.94 | 0.00 |
-| ... kurtosis | 5.56 | 3.49 / 3.78 / 4.07 / 4.40 / 4.80 | 2.52 |
-| 30 keV, 1.5·10¹⁴ cm⁻² (Shao 2003, Fig. 33): depth of 10¹⁸ cm⁻³ (nm) | about 210 | 221 / 220 / 220 / 221 / 221 | 201 |
-| ... depth of 10¹⁷ cm⁻³ (nm) | about 290 | 277 / 294 / 293 / 312 / 321 | 226 |
-| 0.5 keV, 10¹⁴ cm⁻² (Schroer 2000, Fig. 1): depth of 10¹⁹ cm⁻³ (nm) | 14.2 | 14.5 / 14.6 / 14.9 / 15.1 / 15.3 | 9.7 |
-| ... depth of 10¹⁸ cm⁻³ (nm) | 25.2 | 18.6 / 19.4 / 20.2 / 21.0 / 21.8 | 12.0 |
-| ... depth of 10¹⁷ cm⁻³ (nm) | 35 | 20.5 / 21.8 / 23.3 / 25.5 / 27.9 | 13.8 |
-| ... depth of 10¹⁶ cm⁻³ (nm) | 57 | 21.9 / 23.5 / 26.4 / 29.9 / 35.5 | 15.1 |
+Ions go deeper in a crystal than in the amorphous target of the same
+density: this is channeling, and it is physical. `tools/crystal/range_study.py`
+separates it from the transport's own effects (SRIM-2013 stopping, 300 K,
+Gemmell's Debye temperatures, 1000-3000 ions per run;
+`build/range_study/results.txt` on the workstation). Ratios are mean
+projected ranges over `trim2013`'s amorphous range.
 
-  The papers: Jung, Trans. Electr. Electron. Mater. 11, 120 (2010); Shao et
-  al., Mater. Sci. Eng. R 42, 65 (2003); Schroer et al., Mater. Sci. Eng. B
-  71, 219 (2000). The 15 keV moments are those of the profile to 450 nm, as
-  in the paper, which gives 59.7 nm, 30.1 nm, 0.72 and 4.62 for UT-Marlowe;
-  it does not state the twist (22° is assumed; 45° gives Rp 64.9 nm, and 0°,
-  a planar channel, 90.7 nm). The 30 keV and 0.5 keV values were read off
-  the published figures (a few per cent of the depth), which state neither
-  tilt nor twist: 7°/22° is assumed at 30 keV and 0° at 0.5 keV (7°/22°
-  gives 10.6 nm for the first 0.5 keV level; 10.1 nm was measured at
-  10¹⁵ cm⁻²).
+| Ion → crystal | Amorphous, this transport | ⟨001⟩ at 0° | Static lattice, ⟨001⟩ | 7° tilt, 22° twist | Critical angle of ⟨001⟩ | 16 random orientations: median / mean / least |
+|---|---|---|---|---|---|---|
+| 30 keV B → Si | 0.995 | 2.36 | 3.36 | 0.99 | 3.6° | 1.04 / 1.14 / 1.02 |
+| 100 keV As → Si | 1.023 | 5.15 | 11.8 | 0.98 | 3.7° | 1.06 / 1.34 / 1.00 |
+| 100 keV He → Si | 1.002 | 1.50 | 1.79 | 1.02 | 2.2° | 1.02 / 1.03 / 1.01 |
+| 20 keV Fe → Fe | 1.018 | 9.07 | 18.1 | 3.35 | 9.6° | 1.08 / 1.60 / 0.95 |
+| 30 keV Cu → Cu | 0.992 | 4.90 | 20.2 | 1.72 | 7.5° | 1.37 / 1.92 / 1.01 |
+| 30 keV W → W | 1.005 | 12.2 | 19.0 | 4.91 | 11.4° | 1.01 / 1.85 / 0.88 |
+| 40 keV Xe → W | 0.982 | 15.8 | 28.2 | 4.88 | 10.0° | 1.12 / 1.97 / 0.97 |
 
-What this shows. The peak and the width are reproduced whatever the
-division: Rp to 3 %, ΔRp to 1-7 %, the first decade of the 0.5 keV profile to
-2-8 %, where the amorphous calculation misses the width by 19 % and the
-0.5 keV depth by 32 %. The division itself is not fixed by these data: the
-30 keV tail prefers 0.25-0.5; the skewness and kurtosis at 15 keV and the
-deep 0.5 keV tail prefer 1. The unknowns of the measurements are as large as
-its effect: tilt and twist; the damage of the earlier ions at 10¹⁵ cm⁻² and
-above, which dechannels and which the perfect crystal of the simulation
-lacks; and the deep SIMS tail at 0.5 keV, measured to 57 nm where no
-division gives more than 36 nm. The default therefore stays 0.5. Fitting it
-needs low-dose implants with stated tilt and twist.
+- *Not the transport.* Without a lattice the transport gives `trim2013`'s
+  ranges (0.98-1.02, the statistics of these runs), and in a direction
+  away from every channel the light ions' ranges are the amorphous ones
+  (0.98-1.02 at 7°/22°).
+- *Channeling.* Along an axis the ions are steered between the atom rows
+  and lose energy slowly: 1.5 times the amorphous range for 100 keV He, 16
+  times for 40 keV Xe in W. Thermal vibrations limit it (a static lattice
+  channels up to twice as far again; 30 keV B along Si ⟨001⟩: 3292 Å at
+  20 K, 2863 Å at 300 K, 1970 Å at 1200 K).
+- *Slow heavy ions channel at 7°.* The critical angle grows as the energy
+  falls (Lindhard's ψ₂ below E′, Gemmell Eq. 2.28; summary.json reports it
+  for the axes near the beam). For 30 keV B in Si it is 3.6°, and the range
+  falls to the amorphous one between 5° and 7° of tilt (2687, 1760, 1279,
+  1193, 1125 Å at 0, 2, 4, 5, 7°). For 20 keV Fe in Fe it is 9.6°, so the
+  usual 7° tilt still channels (299 Å, 3.35×; 180 Å at 10°, 103 Å at 15°).
+  The 7° rule of implanters is a rule for keV-to-MeV light and medium ions
+  in Si.
+- *Random orientations.* The median of 16 random crystal orientations is
+  close to the amorphous range, the mean is not: a few orientations lie
+  within the critical angle of an axis (5 of 16 for Fe, 7 for W) and give a
+  long tail. A large channeling fraction in nominally random directions is
+  what Nordlund, Djurabekova and Hobler found with MD and BCA in many
+  crystals (Phys. Rev. B 94, 214109 (2016)). Some directions are shorter
+  than amorphous (W 0.88, Fe 0.95; Fe at 20° tilt 0.91): just outside the
+  critical angle the ions meet the rows more often than in an amorphous
+  solid, the shoulder of the channeling dip (1.26 times the random yield in
+  the He-in-W check above, 1.6 in the Ge measurement).
+- *Measured.* SIMS profiles of 0.5 keV B at 10¹⁵ cm⁻² (Duffy et al., as
+  quoted by Aboy et al., Mater. Sci. Eng. B 124-125, 205 (2005), Fig. 1)
+  reach 10¹⁹ cm⁻³ at 15.0 nm in crystalline Si and 11.3 nm in
+  preamorphized Si: the crystal's longer ranges are measured. The
+  amorphous calculation gives 11.6 nm (`trim2013`) and 12.1 nm (this
+  transport); the crystal 16.6 nm at 7°/22° and 20.4 nm at 0° (the tilt of
+  the implant is not stated, and at this dose the damage of the earlier
+  ions dechannels the later ones, which the simulation lacks). The boron
+  comparisons above (15, 30 and 0.5 keV) show the same.
+
+Two errors of the transport were found on the way and corrected (they
+made ranges too short, not too long): the electronic straggling of the ~1 Å
+steps was a Gaussian cut at zero, which raised the mean loss (100 keV He in
+a random direction of Si came out 8 % short; it is now gamma-distributed),
+and the stretch between a collision's deflection point and the struck atom
+was charged twice (amorphous layers 2-5 % short for heavy slow ions).
+
+What remains: damage that builds up from ion to ion (dechanneling at doses
+of about 10¹⁴ cm⁻² and above) is not modelled, so channeling tails at high
+doses come out too deep; and the division of the electronic stopping is not
+calibrated (above).
 
 Other limits: one frozen lattice per ion (the atoms an ion displaces stay
 displaced for that ion only); a site emptied in a history is not refilled by
 the atom that replaces it; at an interface the atoms of the next layer are
 met only after crossing into it; local electronic losses use the layer's
-mean stopping per atom (exact for one element); no COLLISON.txt, trajectory
-file, MD events or dpa table (those need `trim2013`); `auto_depth` and
-TRIM.DAT sources are refused. It is slower than `trim2013`: 2000 ions of
+mean stopping per atom (exact for one element); no COLLISON.txt or dpa
+table (those need `trim2013`); TRIM.DAT sources are refused. The trajectory and MD event files work as in the other transports,
+with the lattice offset of each ion and the crystals' orientation
+(docs/OUTPUT.md "Other transports and crystals"; every run with a crystal
+also reports the orientation in summary.json and the `crystals` table). It is slower than `trim2013`: 2000 ions of
 30 keV B into Si took 0.35 s against 0.011 s with quick damage and 1.7 s
 against 0.16 s with full cascades (all cores of the workstation, which was
 not idle; `elapsed_seconds` of the check runs).
@@ -614,13 +653,13 @@ on the workstation). Trends, not measurements.
 
 | Target | Mean range | Vacancies per ion |
 |---|---|---|
-| Single crystal ⟨001⟩; 7°/22°; amorphous | 2641 A; 1134 A; 1120 A | 52; 157; 152 |
-| Random grains of 50 / 100 / 200 / 500 / 1000 / 3000 A | 1136 / 1153 / 1176 / 1199 / 1218 / 1253 A | 152 / 150 / 149 / 149 / 148 / 146 |
-| Random columns of 200 A | 1300 A | 141 |
-| Fiber texture (⟨001⟩ along the normal), grains of 500 A: spread 0 / 2° / 5° | 1743 / 1454 / 1272 A | 103 / 126 / 141 |
-| Mosaic, grains of 500 A: spread 0 / 0.5° / 2° | 1740 / 1722 / 1514 A | 104 / 105 / 121 |
-| Fiber, grains of 100 A, boundary width 0 / 5 / 10 / 20 / 40 A | 1366 / 1235 / 1188 / 1160 / 1125 A | 131 / 142 / 147 / 149 / 152 |
-| 400 grains from a grain file; as many generated | 1181 A; 1176 A | 150; 149 |
+| Single crystal ⟨001⟩; 7°/22°; amorphous | 2669 A; 1141 A; 1120 A | 54; 158; 153 |
+| Random grains of 50 / 100 / 200 / 500 / 1000 / 3000 A | 1161 / 1183 / 1177 / 1197 / 1217 / 1285 A | 152 / 151 / 151 / 151 / 150 / 146 |
+| Random columns of 200 A | 1317 A | 143 |
+| Fiber texture (⟨001⟩ along the normal), grains of 500 A: spread 0 / 2° / 5° | 1758 / 1462 / 1281 A | 105 / 127 / 143 |
+| Mosaic, grains of 500 A: spread 0 / 0.5° / 2° | 1752 / 1730 / 1519 A | 106 / 107 / 123 |
+| Fiber, grains of 100 A, boundary width 0 / 5 / 10 / 20 / 40 A | 1373 / 1249 / 1201 / 1157 / 1136 A | 134 / 144 / 147 / 150 / 152 |
+| 400 grains from a grain file; as many generated | 1194 A; 1192 A | 152; 152 |
 
 Small random grains are the amorphous target, larger ones let some ions
 channel; a texture that keeps the channel along the beam keeps part of the
@@ -628,7 +667,7 @@ channeling; wide disordered boundaries remove it.
 
 **Limits.** The lattices of neighbouring grains are not in registry: even
 grains of one orientation (mosaic without spread) dechannel part of the beam
-at every boundary (1740 A against 2641 A for the single crystal above),
+at every boundary (1752 A against 2669 A for the single crystal above),
 where real subgrain boundaries keep the lattice nearly continuous. The
 readers of Neper and EBSD files were written from the formats and are
 tested on small hand-written files, not on files produced by Neper or by an
@@ -679,6 +718,7 @@ logarithmic energy grid (like SRIM's SR Module):
 | `--gas` | Gas-phase target |
 | `--from E --to E` | Energy range (default 10 keV .. 10 MeV) |
 | `--per-decade N` | Points per decade (default 10) |
+| `--correct-nickel` | Ni projectiles get the geometric mean of Co's and Cu's electronic stopping at the same velocity instead of SRIM-2013's, which is up to 40 % too low (`physics.stopping_corrections.nickel_ions`; docs/VALIDATION.md). Also an option of `run` and `trim` |
 | `--model MODEL` | `srim`, `builtin`, `bethe-bloch`, `lss` (default `srim` with the bundled or the given tables; `builtin` if no tables are found) |
 | `--units U` | `eV/A`, `keV/um`, `MeV/(mg/cm2)`, `eV/(1e15 atoms/cm2)` |
 | `--csv` | Comma-separated output |

@@ -50,7 +50,15 @@ hidden from the View menu).
   *Beam*, *Normal* and *Snap*. **Point the beam along this view** sets the
   beam's angle (Ion tab) and the crystal's twist so that the ions travel
   the way you look; typing a direction in *Beam along* does the same and
-  turns the view. The corner of the view shows the beam and the depth axis.
+  turns the view. **Turn the crystal to this view** sets the crystal's
+  orientation instead: the direction you look along becomes the surface
+  normal (you look into the target) and the top of the view the lateral Y
+  axis, towards which the beam tilts; the beam's angle stays. A view along
+  the normal of a low-index plane (indices up to 6, within 0.05°: type a
+  direction or use *Snap*) gives that plane as the surface in Miller
+  indices, with a low-index reference direction or else the twist; any
+  other view gives Bunge Euler angles, which are exact. The corner of the
+  view shows the beam and the depth axis.
   Below: the orientation (surface plane and a direction in the surface, or
   Bunge Euler angles; twist), the temperature and each element's thermal
   vibrations (Debye temperature or rms amplitude; *In use* shows what the
@@ -71,11 +79,13 @@ hidden from the View menu).
   lattice)*, which turns the crystal transport on and off: on, layers that
   have a crystal are followed atom by atom (not TRIM, and the division of
   its electronic stopping is not calibrated, docs/CLI.md "Crystals"), the
-  list above it waits, the automatic target depth is switched off, and the
+  list above it waits, and the
   *TRIM.exe bugs* below are shown all corrected, because that transport
   takes none of them; off, the transport chosen in the list is used again
   with the bug switches as they were. Then the electronic stopping (SRIM tables, built-in, Bethe-Bloch,
-  Lindhard-Scharff), straggling, final energy, the largest cascade and
+  Lindhard-Scharff), *Correct the stopping of Ni ions*
+  (`physics.stopping_corrections.nickel_ions`, off by default, not TRIM:
+  docs/VALIDATION.md §9), straggling, final energy, the largest cascade and
   *Fast approximations* (`physics.fast_math`, off by default: about 2x
   faster through a tabulated scattering angle; the tooltip warns that the
   results agree with the exact calculation statistically but not number
@@ -93,7 +103,9 @@ hidden from the View menu).
   stops in its last part; the sized thickness then appears on the Target
   tab as an undoable edit), the number of *Test ions* (1000) and the
   *Margin* (10 %), and *Warn when ions leave through the back* (on by
-  default). docs/CLI.md "Checks and warnings" describes the procedure.
+  default). docs/CLI.md "Checks and warnings" describes the procedure,
+  also for the crystal transport (a deep box first, then trimmed to the
+  deepest channeled ion).
 - **Output**: folder and formats (TRIM text, CSV, JSON, Parquet), the depth
   window and number of bins, the optional lists (ion end points, atoms
   leaving the target, collision details for the first N ions, the EXYZ
@@ -101,10 +113,14 @@ hidden from the View menu).
   path*) and *dpa at fluence* (ions/cm², `output.dpa_fluence`, the fluence
   of the dpa plot and table; the arc-dpa/rpa constants are edited in the
   scenario file only). The group *Trajectory and MD event files (not TRIM outputs)*
-  (SRIM mode, TRIM-2013 transport) sets the trajectory file (every
-  recorded point, or the births only, above a minimum energy) and the
-  hybrid BCA-MD event file (file, the list of transition energies E_c,
-  E_min, record or hand-off mode); each field's tooltip says what it does
+  (SRIM mode, every transport) has a switch for each file: *Write a
+  trajectory file* (then `trajectories.parquet` in the output folder unless
+  another name is typed; every recorded point, or the births only, above a
+  minimum energy; if no paths are recorded it records every ion's) and
+  *Write an MD event file* (`events.parquet`; the list of transition
+  energies E_c, E_min, record or hand-off mode; needs full cascades). The
+  settings of a file are greyed out while its switch is off; each field's
+  tooltip says what it does
   and docs/OUTPUT.md describes the files. The MD totals appear in the
   Tables tab (`md_events_summary`). *Tables, units,
   numbers...* opens the output settings (docs/OUTPUT.md) with a live
@@ -190,6 +206,21 @@ opens it. Please attach both to a bug report.
   energy balance), with the progress, rate and remaining time.
 
 File > Open Results reads a `results.json` written by an earlier run.
+
+## Quitting, signals and where the GUI keeps its files
+
+Closing the window asks to stop a running calculation and to save a changed
+scenario. When the desktop session ends (log-off, shutdown, an installer's
+restart), the GUI does not ask: it stops the calculation, keeps a changed
+scenario as `recovery/scenario-<date>-<time>.json` in its data folder, and
+the next start names it in the Messages tab. On Linux, SIGTERM, SIGHUP and
+SIGINT (Ctrl+C in the terminal that started it) close it the same way, with
+the exit status 128 + the signal number.
+
+| | Windows | Linux |
+|---|---|---|
+| Settings (window layout, recent files, folders) | registry, `HKEY_CURRENT_USER\Software\AMCSET\AMCSET` | `~/.config/AMCSET/AMCSET.conf` |
+| Log and crash reports (`logs/`), `recovery/` | `%LOCALAPPDATA%\AMCSET\AMCSET\` | `~/.local/share/AMCSET/AMCSET/` |
 
 ## Code layout
 

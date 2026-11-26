@@ -382,7 +382,12 @@ each layer has its own lattice, anchored at its top; the ion's entry point
 (the beam spot) shifts the lattice instead of the ion, so that results stay
 relative to the entry point; the ion starts in front of the surface so that
 every surface atom lies ahead of it; amorphous layers take one random
-partner per monolayer step.
+partner per monolayer of path (counted from the last partner's closest
+approach, not from the deflection point x₁ before it); the electronic loss
+along the path is charged once (the stretch from a deflection point to the
+closest approach is charged with the flight before it, not again with the
+next), and its straggling is a gamma deviate (exact mean; a Gaussian cut at
+zero raises the mean loss of the short steps).
 
 What the checks showed (numbers in docs/CLI.md):
 
@@ -396,9 +401,9 @@ What the checks showed (numbers in docs/CLI.md):
 - The channeling dip of 1 MeV He in W ⟨001⟩ has a minimum yield of 2 % and
   a half-width of 0.82 ψ₁. (A measured dip, 1 MeV He in Ge ⟨110⟩, is
   compared in §12.)
-- With the cut-off at Ed, full cascades give 11 % more vacancies than NRT
-  (284.9 against 256.0, 30 keV B in Si); with TRIM's 1 eV cut-off 420.1,
-  which is 11 % above TRIM's own full cascades in amorphous Si (379.8). The
+- With the cut-off at Ed, full cascades give 15 % more vacancies than NRT
+  (293.9 against 256.0, 30 keV B in Si); with TRIM's 1 eV cut-off 436.7,
+  which is 15 % above TRIM's own full cascades in amorphous Si (379.8). The
   second difference is not understood in detail (it does not come from the
   simultaneous collisions: sequential collisions give the same count); the
   quick-damage counts agree.
@@ -459,6 +464,10 @@ docs/GUI.md). Differences from §6:
 - No polycrystal settings and no grain preview yet (§13).
 
 ## 13. Phase 3 (polycrystals), as built so far (2026-11-24)
+
+**On hold** (the maintainer's decision, 2026-11-25): work concentrates on
+single crystals and amorphous targets. What is built stays, tested and
+documented; the list of what is left (below) waits.
 
 **Built** (library, scenario and transport; tested):
 

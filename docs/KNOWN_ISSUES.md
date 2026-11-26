@@ -1,8 +1,8 @@
 # Known issues
 
-Status as of AMCSET 0.1.0 (2026-11-23). The first cleanup sweep
-(`docs/CLEANUP_2026-11.md`) was behaviour-preserving and only documented the
-problems below; the physics fixes P1-P6 were made afterwards, in 0.1.0
+Status as of AMCSET 1.0.0 (2026-11-25). The native engine's first cleanup
+(November 2026, before 0.1.0) was behaviour-preserving and only documented
+the problems below; the physics fixes P1-P6 were made afterwards, in 0.1.0
 (`CHANGELOG.md`). Severity:
 
 - **High** — almost certainly wrong and materially changes results.
@@ -12,7 +12,7 @@ problems below; the physics fixes P1-P6 were made afterwards, in 0.1.0
 Sections 1 and 2 concern the **native** engine (`common/src/ion.cpp`,
 `electron.cpp`, `simulation.cpp`) and the GUI. The **SRIM mode** engine
 (`common/src/trim/`) is a separate implementation; its deviations from TRIM
-are listed in `docs/SRIM_MODE.md` §6.1 and summarised in §3 below.
+are listed in `docs/VALIDATION.md` §2.1 and summarised in §3 below.
 
 Verify every fix against an independent reference (SRIM/TRIM, NIST
 PSTAR/ESTAR, published data), add a test, and compare the determinism
@@ -160,8 +160,8 @@ electrons in iron is of order 1 µm.
 After the fix the collision stopping power of electrons in Al is within 2 %
 of ESTAR at 0.1-1 MeV (1.496 vs 1.465 MeV cm²/g at 1 MeV); there is no
 density-effect correction, so it is ~11 % high at 10 MeV. Electron transport as a whole (ranges,
-backscatter) is still unvalidated, and `CommonTest.electron_bombardment_runs`
-is still skipped (it needs `common/assets` in the working directory).
+backscatter) is still unvalidated; `CommonTest.electron_bombardment_runs`
+only checks that a run completes.
 
 ### 1.8 [Medium] Electronic stopping constants
 
@@ -189,8 +189,7 @@ been checked against a reference either.
 `Ion::closest_approach`: the Newton step uses the derivative at the previous
 iterate (`dF(old_result)`) with the function value at the current one, which
 is neither Newton nor secant; the relative tolerance is 1e-3. (The
-non-terminating bisection branch was fixed in the cleanup — see
-`docs/CLEANUP_2026-11.md`.)
+non-terminating bisection branch was fixed in the November 2026 cleanup.)
 
 ---
 
@@ -205,8 +204,9 @@ non-terminating bisection branch was fixed in the cleanup — see
   bombardments will exhaust memory. See `docs/ROADMAP.md`.
 - **Electron tables are process-global** and loaded once; a later
   simulation with different table paths silently reuses the first tables.
-  They are read relative to the working directory
-  (`common/assets/*.csv`).
+  The bundled ones are found from any working directory since 1.0
+  (`data::find_electron_table`; before, only under `./common/assets`, so
+  electron runs failed in an installed program).
 - **Seeding** — `EntropySeeder` falls back to clock XOR thread-id hash when
   `std::random_device::entropy()` is 0 (true on some standard libraries even
   when the device is usable). All bombardments are seeded on one thread in
@@ -243,29 +243,32 @@ non-terminating bisection branch was fixed in the cleanup — see
 - Stop during the automatic target depth takes effect between test runs:
   a test run of `auto_depth.test_ions` ions always finishes (typically well
   under a second; seconds for very energetic heavy ions).
+- Rendering without a window (`QT_QPA_PLATFORM=offscreen`, gui/CLAUDE.md)
+  no longer completes on the workstation: the path view's `QRhiWidget`, which
+  has no graphics device there, logs "No QRhi" in a busy loop and the
+  scenario never starts, even with `--timeout` (2026-11-25, with that day's
+  build and an earlier one; it worked on 2026-11-24). The GUI's 1.0 changes
+  (window icon, quitting on signals, the session's end) build and pass the
+  tests but were therefore not seen running.
+- The session-end path (log-off, shutdown) and the Unix signal handling of
+  the GUI were reviewed, not triggered.
 
 ### Build, CI and repository
 
-- Release flags include `-march=native` (non-portable binaries) and are
-  applied twice (CMAKE_CXX_FLAGS_RELEASE and the `compiler_flags` target).
+- GCC/Clang Release builds use `-march=native` unless `AMCSET_MARCH` says
+  otherwise (the packages use `x86-64-v2`); the flags are applied twice
+  (`CMAKE_CXX_FLAGS_RELEASE` and the `compiler_flags` target).
   `ABSL_MIN_LOG_LEVEL=2` strips INFO/WARNING logs in Release.
-- Test directories differ: `qbuild.sh` uses `build/Release/test`,
-  `qbuild.ps1` and CI use `build/test`, `build_and_test.bat` uses
-  `ctest --preset conan-release`. The batch file is the verified path on
-  Windows.
-- CI (`.github/workflows/tests.yml`) calls Visual Studio 2022's dev shell
-  on a self-hosted runner; the workstation has Visual Studio 18. There is
-  no Linux test job.
-- `compile_commands.json` and `.vscode/.conan_tools/` are tracked although
-  `.gitignore` lists them; `.vscode/.conan_tools/.devcontainer/devcontainer.json`
-  declares `"mounts"` twice (the second wins). `.conan/windows-gcc` pins
-  `compiler.version=16.2`.
+- CI on every push is Windows only (`.github/workflows/tests.yml`, the
+  self-hosted runner, `build_and_test.bat`); Linux is built and tested by
+  the release workflow, for tags. `build_and_test.bat` is the verified
+  path on Windows; `qbuild.ps1` and `qbuild.sh` run `ctest` in
+  `build/Release/test`.
 - `test/common/common_test.cpp` relies on `#define private public` to read
   private data members (undefined behaviour; MSVC also encodes access in
   mangled names, so it must never be used to call private member
   functions).
-- Tests: `CommonTest.electron_bombardment_runs` and `CommonTest.ion_test`
-  are skipped; `CommonTest.electronic_stopping_energy_test` checks almost
+- Tests: `CommonTest.ion_test` is skipped (a placeholder); `CommonTest.electronic_stopping_energy_test` checks almost
   nothing. `StoppingTable.RealSrimTablesIfAvailable` and
   `TrimRegression.AgainstTrimWithSrimTablesIfAvailable` still skip unless
   `AMCSET_SRIM_STOPPING_TABLE` is set, although the bundled tables are now
@@ -274,11 +277,17 @@ non-terminating bisection branch was fixed in the cleanup — see
 - Qt 6.11.1 is pinned exactly; `conanfile.py` keeps Qt 3D and Qt Graphs
   enabled only so that the existing Conan package is reused (the GUI no
   longer uses them).
-- File names are kept as `std::string` and opened as narrow paths: on
-  Windows a path with characters outside the ANSI code page (e.g. a user
-  folder in another script) cannot be opened. Fix: hold paths as
-  `std::filesystem::path` from the front ends down (Qt `QString` →
-  `toStdWString()`), or UTF-8 code page in the application manifest.
+- File names are kept as `std::string` and opened as narrow paths. Since
+  1.0 the application manifest sets the UTF-8 code page, so on Windows 10
+  1903 and later any file name works (checked with "ψ" in an output path);
+  older Windows versions fall back to the ANSI code page.
+- Release packaging (docs/RELEASING.md): `.github/workflows/release.yml` has
+  not run yet (expect fixes on its first run); the MSI is built only there
+  (WiX is not installed on the workstation); the Windows files of 1.0 are
+  unsigned (Windows warns, Smart App Control blocks them: docs/INSTALL.md
+  "Running the unsigned Windows release") until signing through the
+  SignPath Foundation is set up; the App Certification Kit has not been run;
+  the AppStream data have no screenshots; the Flatpak manifest is unbuilt.
 - The 42 MB `data/srim2013/srim2013_stopping.amcset` is a plain file in git
   (below GitHub's 50 MB warning size); Git LFS would keep clones small.
 - `common/src/data_files.cpp` and `data_files.h` lacked the license header
@@ -288,7 +297,7 @@ non-terminating bisection branch was fixed in the cleanup — see
 
 ## 3. SRIM mode
 
-Details, numbers and diagnostics: `docs/SRIM_MODE.md` §6–8 and
+Details, numbers and diagnostics: `docs/VALIDATION.md` and `docs/SRIM_MODE.md` §7–8 and
 `docs/TRIM2013_ALGORITHM.md`.
 
 - **[Medium, open] Replacements in Xe gas.** `gas_xe_xe_1000keV_fc_gas`
@@ -320,7 +329,7 @@ Details, numbers and diagnostics: `docs/SRIM_MODE.md` §6–8 and
   TRIM reference runs themselves (`compare_with_trim.bat` with `--fast`).
 - [Low] Trajectory and MD event files (`docs/OUTPUT.md`): times are an
   estimate (flight length / speed; TRIM has none); the files hold one
-  run()'s ions (GUI *Continue* replaces them); only the trim2013 transport;
+  run()'s ions (GUI *Continue* replaces them);
   `parent_event` is always -1 (no event descends from another by
   construction). The Parquet files were checked with an independent
   decoder of the format, not yet with pyarrow on the workstation.
@@ -333,9 +342,10 @@ Details, numbers and diagnostics: `docs/SRIM_MODE.md` §6–8 and
   depth of a channeling tail carries that uncertainty (about 10 % for
   30 keV B in Si, up to 50 % for 0.5 keV B). Other species and targets are
   not compared. With TRIM's 1 eV cut-off its full-cascade vacancy count is
-  11 % above TRIM's in the one case compared (not understood). Missing:
-  damage build-up, TRIM.DAT sources, COLLISON.txt/trajectory/MD/dpa
-  outputs. Polycrystals run from a scenario but have no GUI, and their
+  15 % above TRIM's in the one case compared (not understood). Missing:
+  damage build-up (so channeling tails of implants at about 10¹⁴ cm⁻² and
+  above, where earlier ions' damage dechannels later ones, come out too
+  deep), TRIM.DAT sources, COLLISON.txt and dpa outputs. Polycrystals run from a scenario but have no GUI, and their
   Neper and EBSD readers are tested on hand-written files only: check the
   orientation convention with a known grain (docs/CLI.md "Polycrystals",
   Limits; what is left: docs/CRYSTAL_DESIGN.md §13). The GUI's Crystal tab has no
@@ -353,7 +363,11 @@ Details, numbers and diagnostics: `docs/SRIM_MODE.md` §6–8 and
   been compared with tabulated values (`docs/CRYSTAL_DESIGN.md` §10).
 - [Low] Results of the same seed are identical on every thread count and
   run, but not between Windows (MSVC, Microsoft's C runtime) and Linux
-  (GCC, glibc): `exp`, `log` and `pow` differ in the last bits.
+  (GCC, glibc): `exp`, `log` and `pow` differ in the last bits. GCC with
+  `-march=native` also fuses multiply-adds (FMA) where the code allows it,
+  so moving code without changing its arithmetic can change the last bits of
+  a GCC build (seen 2026-11-25 in the refined transport; MSVC builds stayed
+  identical): bit-identity checks are made with MSVC.
 - [Low] The automatic target depth sizes the last layer from the deepest of
   `auto_depth.test_ions` test ions; a much longer calculation can still
   transmit a few ions of the far tail (reported during the run). It does not

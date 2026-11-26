@@ -3,7 +3,7 @@
 Ordered by value within each group. Items reference
 `docs/KNOWN_ISSUES.md` (KI). Each item says what "done" means; follow the
 rules in `AGENTS.md` (evidence for physics, results unchanged by refactors,
-tests, docs). Updated 2026-11-23.
+tests, docs). Updated 2026-11-25.
 
 ## Done in 0.1.0
 
@@ -20,7 +20,7 @@ tests, docs). Updated 2026-11-23.
 - Test suite (126 CTest tests), Windows build/compare/benchmark/smoke-test
   scripts, agent-oriented documentation.
 
-## Done after 0.1.0 (unreleased, `CHANGELOG.md`)
+## Done for 1.0.0 (`CHANGELOG.md`)
 
 - Exact-mode transport 1.35× faster and the fixed cost per run 0.9 s →
   ~0.2 s with
@@ -30,15 +30,37 @@ tests, docs). Updated 2026-11-23.
   rerun it), a diagnostic log, exceptions caught before Qt, validated
   inputs with physical limits, plausibility warnings, automatic target
   depth and the transmitted-ions warning; input fuzzer.
+- dpa by damage model (NRT, Kinchin-Pease, arc-dpa, rpa); trajectory and
+  hybrid BCA-MD event files in every transport.
+- Crystals (`docs/CRYSTAL_DESIGN.md`): unit cells and cell files, the
+  crystal transport, the GUI's Crystal tab, comparison with measurements,
+  the range study; polycrystals in the transport (on hold: no GUI).
+- Release: packages for Windows and Linux, the release workflow, signing
+  script, platform integration (manifest, signals, desktop files), logo
+  (`docs/RELEASING.md`, `docs/PLATFORM.md`).
 
-## P0 — SRIM-mode fidelity (finish the TRIM reproduction)
+## P0 — Finish the 1.0 release (`docs/RELEASING.md` §6)
+
+1. **Code signing** through the SignPath Foundation (the maintainer's
+   choice; 1.0 goes out unsigned with instructions, docs/INSTALL.md):
+   RELEASING.md §3.2; done when a tagged build's Windows files verify with
+   `signtool verify /pa`.
+2. **First run of `.github/workflows/release.yml`** on a test tag; fix what
+   fails; install the MSI, the AppImage and a `.deb`/`.rpm` by hand.
+3. The Windows App Certification Kit on the signed MSI (PLATFORM.md).
+4. AppStream screenshots; then the Flatpak build and the winget and
+   Flathub submissions.
+5. Offscreen GUI rendering (KI §2 GUI) so that GUI changes can be checked
+   without a window again.
+
+## P1 — SRIM-mode fidelity (finish the TRIM reproduction)
 
 0. **Fast approximations against TRIM.** Run the TRIM comparison
    (`compare_with_trim.bat`, about an hour; ask the user) with AMCSET's
    `--fast` and compare the z statistics with the exact mode's
    (`docs/SRIM_MODE.md` §8.2). Done when the result is in §8.2.
 
-1. **Replacements in Xe gas** (KI §3, `docs/SRIM_MODE.md` §6.2). Add an
+1. **Replacements in Xe gas** (KI §3, `docs/VALIDATION.md` §2.2). Add an
    option that rounds the recoil slots (energy, position, direction) to
    `float` as TRIM does; compare `gas_xe_xe_1000keV_fc_gas` with and without
    it (12+ seeds). Done when the cause is identified (or excluded) and the
@@ -62,7 +84,7 @@ tests, docs). Updated 2026-11-23.
    with gas layers, oblique incidence above 60°, very high energies with
    KP. One new batch generator in `tools/srim/`, then `compare_with_trim.bat`.
 
-## P1 — Physics beyond TRIM
+## P2 — Physics beyond TRIM
 
 1. **Native engine: validate or retire.** Compare its ranges and damage with
    SRIM mode / TRIM for Fe → Fe and H/He in metals; either fix it to agree
@@ -77,13 +99,13 @@ tests, docs). Updated 2026-11-23.
    within a few percent (KI §3).
 4. **Damage beyond Kinchin–Pease:** NRT, Kinchin-Pease, arc-dpa and rpa by
    depth and dpa at a fluence are done (docs/OUTPUT.md "dpa",
-   docs/SRIM_MODE.md §6.3). Open: the implanted-ion concentration at a
+   docs/VALIDATION.md §5). Open: the implanted-ion concentration at a
    fluence; spreading each primary's damage over its cascade instead of
    booking it at the start; the low-energy arc-dpa correction of Yang and
    Olsson used by recent W MD; arc-dpa constants for more elements and for
    alloys; the refined transport.
 
-## P2 — Code design (behaviour-preserving refactors)
+## P3 — Code design (behaviour-preserving refactors)
 
 1. **Split `trim_engine.cpp`** (2670 lines) into model construction,
    `Transporter` (trim2013 and refined in separate files) and the driver,
@@ -101,9 +123,10 @@ tests, docs). Updated 2026-11-23.
    RNG and tallies, merge once (memory O(threads)); keep trajectories only
    when needed; explicit-stack cascades instead of recursion (KI §2).
 
-## P3 — Features
+## P4 — Features
 
-0. Unicode file paths on Windows (KI §2): `std::filesystem::path` from the
+0. Unicode file paths on Windows before 10 1903 (KI §2; newer Windows uses
+   the UTF-8 code page of the manifest): `std::filesystem::path` from the
    front ends down.
 1. GUI tests with Qt Test: `Scenario` undo/redo, `FormBinder` round trips,
    the automatic-depth sizing and the escape question of `RunController`,
@@ -115,15 +138,15 @@ tests, docs). Updated 2026-11-23.
 5. Batch/parameter sweeps from the CLI (a list of overrides → one output
    folder per point).
 
-## P4 — Tooling and CI
+## P5 — Tooling and CI
 
-1. Linux CI job (GitHub-hosted): `amcset-common`, CLI and tests without Qt;
-   the header check; optionally the determinism harness.
-2. Update `.github/workflows/tests.yml` for the current Visual Studio and
-   the `build_and_test.bat` flow; unify the test directories (KI §2).
-3. `-march=native` as an option instead of the default; apply optimisation
-   flags in one place; configurable `ABSL_MIN_LOG_LEVEL` in Release.
-4. Untrack `compile_commands.json` and `.vscode/.conan_tools/`; fix the
-   duplicate `"mounts"` key; consider Git LFS for the stopping-table file.
-5. `clang-format` / `clang-tidy` configuration (after the clang fix).
-6. Doxygen API docs in CI from the existing `Doxyfile`.
+1. A Linux test job on every push (GitHub-hosted; the release workflow
+   tests Linux only for tags): core, CLI and tests without Qt; optionally
+   the determinism harness.
+2. Apply the optimisation flags in one place (they are set both in
+   `CMAKE_CXX_FLAGS_RELEASE` and on `compiler_flags`); configurable
+   `ABSL_MIN_LOG_LEVEL` in Release. (`AMCSET_MARCH` already replaces
+   `-march=native` for portable builds.)
+3. Git LFS for the stopping-table file if it grows past 50 MB.
+4. `clang-format` / `clang-tidy` configuration (after the clang fix).
+5. Doxygen API docs in CI from the existing `Doxyfile`.

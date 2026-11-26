@@ -5,7 +5,7 @@ these scripts, the stopping tables in `data/srim2013/` (used by default;
 see its README); TRIM's own outputs are not distributed. These scripts
 generate, from a local SRIM-2013 installation (Windows), the stopping tables
 and the TRIM reference results used to validate SRIM mode
-(`docs/SRIM_MODE.md` §6). You only need them to regenerate the tables or to
+(`docs/VALIDATION.md` §2). You only need them to regenerate the tables or to
 add reference cases.
 
 Copy this folder into the SRIM installation as a subfolder (for example
@@ -21,11 +21,12 @@ Copy this folder into the SRIM installation as a subfolder (for example
 | 5 | `python gen_cases3.py atomdata.json trim_cases3` | batch 3 of the reference cases (seed replicates, layers/alloys, Ni, gases, TRIM.DAT inputs, options) |
 | 6 | `run_trim_cases3.bat` (`.ps1`, same options) | `results\trim3\<case>\` |
 | 7 | `run_held_cases.bat` (`.ps1 -Cases ...`) | the TRIM.DAT recoil cases (codes 6/7) that step 6 skips: TRIM shows a message box for them even in batch mode, which the user must answer; results in `results\trim3\<case>\` |
+| 8 | `python gen_cases4.py atomdata.json trim_cases4`, then `run_trim_cases3.ps1 -CaseSet trim_cases4 -OutSet trim4` | batch 4: Ni ions in Fe, Ni, Mo and Si at 1-11.5 MeV with Co and Cu controls (the Ni stopping of SRIM-2013, `docs/VALIDATION.md` §3, §9); results in `results\trim4\<case>\` |
 
 On the workstation the installation is
 `C:\Users\natha\Applications\SRIM-2013-Pro\_amcset` and the reference
 results are in `results\trim` and `results\trim3` there (161 TRIM runs of
-75 inputs, the set behind `docs/SRIM_MODE.md` §6.2).
+75 inputs, the set behind `docs/VALIDATION.md` §2.2).
 
 Then compare with AMCSET, one case:
 

@@ -92,7 +92,9 @@ the other two transports (`bench.py compare`).
    (exact) path must give bit-identical output: same expressions in the
    same order (no reassociation, no reciprocal instead of a division, no
    other math function), checked with `tools/perf/bench.py run` on the old
-   and new executable and `bench.py compare` (all files identical). Anything
+   and new executable and `bench.py compare` (all files identical). Compare MSVC builds: GCC with
+   `-march=native` fuses multiply-adds (`-ffp-contract=fast`) depending on
+   where code sits, so moving code can change its last bits there. Anything
    that changes the last bits — tables, polynomial approximations,
    reciprocals — goes behind `cfg_.fast_math` (`docs/SRIM_MODE.md` §8.2)
    through the Transporter helpers `scatter`, `azimuth` and `turn`. The
@@ -106,7 +108,12 @@ the other two transports (`bench.py compare`).
 
 - `TrimConfig::straggling_distribution` applies to the refined transport;
   trim2013 uses TRIM's uniform deviate (R − ½)·Ω·√L (with √12 folded into
-  the constants).
+  the constants); the crystal transport always draws a gamma deviate (its
+  ~1 Å steps would bias a truncated Gaussian).
+- Crystal transport: a flight is charged to the struck atoms' closest
+  approach (ξ), but the mover turns x₁ before it; `charged_A` carries that
+  stretch into the next flight (and places an amorphous layer's next
+  partner one monolayer beyond it), so that the path is charged once.
 - TRIM's stop energy is always 1 eV (`final_energy`), not min(Ed, Es, Eb).
 - Recoil electronic stopping uses the recoil species' stopping; the
   straggling constants are the ion's (as TRIM).
