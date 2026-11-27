@@ -196,7 +196,26 @@ double row_spacing_A(const crystal::UnitCell &cell, const crystal::Vec3 &u) {
 
 } // namespace
 
-std::vector<CrystalReport> crystal_reports(const TrimConfig &config) {
+std::array<double, 3> euler_relative_to_sample_deg(const crystal::Mat3 &to_trim) {
+  // Bunge angles: R = M g^T with M the sample -> TRIM axes rotation, so
+  // g = R^T M (sample -> crystal); Phi = acos g33, phi1 = atan2(g31, -g32),
+  // phi2 = atan2(g13, g23) (phi1 + phi2 from g11, g12 when Phi = 0).
+  const crystal::Mat3 m = crystal::Mat3::from_rows({0, 0, -1}, {1, 0, 0}, {0, -1, 0});
+  const crystal::Mat3 g = to_trim.transposed() * m;
+  const double Phi = std::acos(std::clamp(g[2][2], -1.0, 1.0));
+  double phi1 = 0.0;
+  double phi2 = 0.0;
+  if (std::abs(std::sin(Phi)) > 1e-9) {
+    phi1 = std::atan2(g[2][0], -g[2][1]);
+    phi2 = std::atan2(g[0][2], g[1][2]);
+  } else {
+    phi1 = std::atan2(g[0][1], g[0][0]);
+  }
+  const auto wrap360 = [](double d) { return d < 0.0 ? d + 360.0 : d; };
+  return {wrap360(degrees(phi1)), degrees(Phi), wrap360(degrees(phi2))};
+}
+
+std::vector<CrystalReport> crystal_reports(const TrimConfig &config, bool with_grains, std::size_t grain_samples) {
   std::vector<CrystalReport> out;
   double top = 0.0;
   for (std::size_t li = 0; li < config.layers.size(); ++li) {
@@ -218,22 +237,7 @@ std::vector<CrystalReport> crystal_reports(const TrimConfig &config) {
     r.to_trim = c.rotation();
     // Output axes: (x, y, z) = (TRIM y, TRIM z, TRIM x).
     r.to_output = crystal::Mat3::from_rows(r.to_trim[1], r.to_trim[2], r.to_trim[0]);
-    // Bunge angles: R = M g^T with M the sample -> TRIM axes rotation, so
-    // g = R^T M (sample -> crystal); Phi = acos g33, phi1 = atan2(g31, -g32),
-    // phi2 = atan2(g13, g23) (phi1 + phi2 from g11, g12 when Phi = 0).
-    const crystal::Mat3 m = crystal::Mat3::from_rows({0, 0, -1}, {1, 0, 0}, {0, -1, 0});
-    const crystal::Mat3 g = r.to_trim.transposed() * m;
-    const double Phi = std::acos(std::clamp(g[2][2], -1.0, 1.0));
-    double phi1 = 0.0;
-    double phi2 = 0.0;
-    if (std::abs(std::sin(Phi)) > 1e-9) {
-      phi1 = std::atan2(g[2][0], -g[2][1]);
-      phi2 = std::atan2(g[0][2], g[1][2]);
-    } else {
-      phi1 = std::atan2(g[0][1], g[0][0]);
-    }
-    const auto wrap360 = [](double d) { return d < 0.0 ? d + 360.0 : d; };
-    r.euler_deg = {wrap360(degrees(phi1)), degrees(Phi), wrap360(degrees(phi2))};
+    r.euler_deg = euler_relative_to_sample_deg(r.to_trim);
     const auto nearest = [&](const crystal::Vec3 &v, std::array<int, 3> &uvw, double &off) {
       const auto n = crystal::nearest_direction(lattice, v, 12);
       uvw = n.uvw;
@@ -297,6 +301,15 @@ std::vector<CrystalReport> crystal_reports(const TrimConfig &config) {
     std::sort(axes.begin(), axes.end(), [](const auto &a, const auto &b) { return a.angle_deg < b.angle_deg; });
     if (axes.size() > 6) axes.resize(6);
     r.axes = std::move(axes);
+    if (with_grains && c.polycrystal) {
+      // The grains as the transport builds them (registry included).
+      crystal::RegistryResult registry;
+      const auto map = crystal::make_grain_map(c, width, &registry);
+      r.grains = crystal::summarize_grains(*map, lattice, r.to_trim, width, grain_samples);
+      r.grains->registry_below_deg = in_units(c.polycrystal->registry_below, degree);
+      r.grains->registry_groups = registry.groups;
+      r.grains->registry_grains = registry.grains;
+    }
     out.push_back(std::move(r));
     top += width;
   }

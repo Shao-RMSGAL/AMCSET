@@ -173,6 +173,14 @@ struct CollisionPoint {
   double energy_before_eV = 0.0;
   double energy_transferred_eV = 0.0;
   double electronic_loss_eV = 0.0;
+  /*!
+   * \brief SRIM mode, crystal transport: the ion's entry point on the beam
+   * spot (Angstrom, the lateral axes x, y of #coordinate). #coordinate is
+   * relative to it; the point is at coordinate + (entry_x_A, entry_y_A, 0)
+   * on the sample. 0 elsewhere.
+   */
+  double entry_x_A = 0.0;
+  double entry_y_A = 0.0;
 };
 
 /*!

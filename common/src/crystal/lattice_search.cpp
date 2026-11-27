@@ -75,12 +75,7 @@ LatticeSearch::LatticeSearch(const UnitCell &cell, const Mat3 &rotation, const s
   if (!(reach_A > 0.0) || !std::isfinite(reach_A)) {
     throw std::invalid_argument("lattice search: the reach must be positive");
   }
-  // Lattice and reciprocal vectors in the search frame (a rotation keeps
-  // their scalar products).
-  for (int i = 0; i < 3; ++i) {
-    vectors_[i] = rotation * cell.lattice.vectors_A()[i];
-    reciprocal_[i] = rotation * cell.lattice.reciprocal_per_A()[i];
-  }
+  auto sites = std::make_shared<std::vector<SiteData>>();
   double sigma_max = 0.0;
   for (const auto &s : cell.sites) {
     SiteData sd;
@@ -98,26 +93,50 @@ LatticeSearch::LatticeSearch(const UnitCell &cell, const Mat3 &rotation, const s
       sd.sigma.push_back(sigma);
       sigma_max = std::max(sigma_max, sigma);
     }
-    sites_.push_back(std::move(sd));
+    sites->push_back(std::move(sd));
   }
   margin_ = displacement_cut * std::sqrt(3.0) * sigma_max;
+  auto occupied = std::make_shared<std::vector<std::uint32_t>>();
+  for (std::size_t s = 0; s < sites->size(); ++s) {
+    if ((*sites)[s].z.empty()) continue; // an empty site never holds an atom
+    occupied->push_back(static_cast<std::uint32_t>(s));
+  }
+  sites_ = std::move(sites);
+  occupied_ = std::move(occupied);
+  orient(cell, rotation);
+}
+
+LatticeSearch::LatticeSearch(const LatticeSearch &shape, const UnitCell &cell, const Mat3 &rotation)
+    : sites_(shape.sites_), occupied_(shape.occupied_), max_impact_(shape.max_impact_), reach_(shape.reach_),
+      margin_(shape.margin_) {
+  if (cell.sites.size() != sites_->size()) {
+    throw std::invalid_argument("lattice search: the cell is not the one the shared lattice was built from");
+  }
+  orient(cell, rotation);
+}
+
+void LatticeSearch::orient(const UnitCell &cell, const Mat3 &rotation) {
+  // Lattice and reciprocal vectors in the search frame (a rotation keeps
+  // their scalar products).
+  for (int i = 0; i < 3; ++i) {
+    vectors_[i] = rotation * cell.lattice.vectors_A()[i];
+    reciprocal_[i] = rotation * cell.lattice.reciprocal_per_A()[i];
+  }
   // A site within D of a point has fractional coordinates within D |a*_i|
   // of the point's along each axis (|a*_i| is the reciprocal of the spacing
   // of the lattice planes normal to a*_i): the cells a search must visit.
   const double d = std::hypot(reach_ + margin_, max_impact_ + margin_);
   for (int i = 0; i < 3; ++i) cell_reach_[i] = d * norm(reciprocal_[i]);
   const Mat3 to_cartesian = vectors_.transposed();
-  for (std::size_t s = 0; s < sites_.size(); ++s) {
-    if (sites_[s].z.empty()) continue; // an empty site never holds an atom
-    occupied_.push_back(static_cast<std::uint32_t>(s));
-    offset_.push_back(to_cartesian * sites_[s].fractional);
-  }
+  offset_.clear();
+  offset_.reserve(occupied_->size());
+  for (const std::uint32_t s : *occupied_) offset_.push_back(to_cartesian * (*sites_)[s].fractional);
 }
 
 std::size_t LatticeSearch::sites_per_search() const noexcept {
   std::size_t cells = 1;
   for (int i = 0; i < 3; ++i) cells *= static_cast<std::size_t>(std::floor(2.0 * cell_reach_[i])) + 2;
-  return cells * occupied_.size();
+  return cells * occupied_->size();
 }
 
 bool LatticeSearch::occupant(const SiteData &sd, std::uint64_t &state, unsigned &z, double &sigma) const noexcept {
@@ -135,14 +154,14 @@ bool LatticeSearch::occupant(const SiteData &sd, std::uint64_t &state, unsigned 
 }
 
 Vec3 LatticeSearch::site_position(const SiteId &id) const noexcept {
-  const Vec3 f = sites_[id.site].fractional + Vec3{double(id.i), double(id.j), double(id.k)};
+  const Vec3 f = (*sites_)[id.site].fractional + Vec3{double(id.i), double(id.j), double(id.k)};
   return vectors_.transposed() * f;
 }
 
 bool LatticeSearch::atom_at(const SiteId &id, std::uint64_t seed, unsigned &z, Vec3 &position) const noexcept {
   std::uint64_t state = site_hash(id, seed);
   double sigma = 0.0;
-  if (!occupant(sites_[id.site], state, z, sigma)) return false;
+  if (!occupant((*sites_)[id.site], state, z, sigma)) return false;
   position = site_position(id);
   if (sigma > 0.0) position += next_gaussians(state, displacement_cut) * sigma;
   return true;
@@ -157,21 +176,23 @@ bool LatticeSearch::nearest_atom(const Vec3 &r, std::uint64_t seed, unsigned z_w
   const auto ck = static_cast<std::int32_t>(fk);
   const Vec3 local = r - vectors_.transposed() * Vec3{fi, fj, fk};
   const double eps = 1e-7; // (as candidates())
+  const auto &sites = *sites_;
+  const auto &occupied = *occupied_;
   double best = std::numeric_limits<double>::infinity();
   bool found = false;
   for (int di = -2; di <= 2; ++di) {
     for (int dj = -2; dj <= 2; ++dj) {
       for (int dk = -2; dk <= 2; ++dk) {
         const Vec3 cell = vectors_[0] * double(di) + vectors_[1] * double(dj) + vectors_[2] * double(dk) - local;
-        for (std::size_t s = 0; s < occupied_.size(); ++s) {
+        for (std::size_t s = 0; s < occupied.size(); ++s) {
           const Vec3 d = cell + offset_[s];
           const double site_x = r.x + d.x;
           if (site_x < x_lo - eps || site_x >= x_hi - eps) continue;
-          const SiteId sid{ci + di, cj + dj, ck + dk, occupied_[s]};
+          const SiteId sid{ci + di, cj + dj, ck + dk, occupied[s]};
           std::uint64_t state = site_hash(sid, seed);
           unsigned z = 0;
           double sigma = 0.0;
-          if (!occupant(sites_[occupied_[s]], state, z, sigma)) continue;
+          if (!occupant(sites[occupied[s]], state, z, sigma)) continue;
           if (z_wanted != 0 && z != z_wanted) continue;
           Vec3 dd = d;
           if (sigma > 0.0) dd += next_gaussians(state, displacement_cut) * sigma;
@@ -210,7 +231,9 @@ void LatticeSearch::candidates(const Vec3 &r, const Vec3 &dir, std::uint64_t see
     lo[i] = static_cast<int>(std::floor(frac[i] - cell_reach_[i]));
     hi[i] = static_cast<int>(std::floor(frac[i] + cell_reach_[i]));
   }
-  const std::size_t n_sites = occupied_.size();
+  const auto &sites = *sites_;
+  const auto &occupied = *occupied_;
+  const std::size_t n_sites = occupied.size();
   for (int di = lo[0]; di <= hi[0]; ++di) {
     for (int dj = lo[1]; dj <= hi[1]; ++dj) {
       for (int dk = lo[2]; dk <= hi[2]; ++dk) {
@@ -223,11 +246,11 @@ void LatticeSearch::candidates(const Vec3 &r, const Vec3 &dir, std::uint64_t see
           if (dot(d, d) - xi0 * xi0 > coarse2) continue;
           const double site_x = r.x + d.x;
           if (site_x < x_lo - eps || site_x >= x_hi - eps) continue;
-          const SiteId id{ci + di, cj + dj, ck + dk, occupied_[s]};
+          const SiteId id{ci + di, cj + dj, ck + dk, occupied[s]};
           std::uint64_t state = site_hash(id, seed);
           unsigned z = 0;
           double sigma = 0.0;
-          if (!occupant(sites_[occupied_[s]], state, z, sigma)) continue;
+          if (!occupant(sites[occupied[s]], state, z, sigma)) continue;
           Vec3 dd = d;
           if (sigma > 0.0) dd += next_gaussians(state, displacement_cut) * sigma;
           const double xi = dot(dd, dir);

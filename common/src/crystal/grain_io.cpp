@@ -299,22 +299,29 @@ GrainMap parse_neper_tess(std::string_view text, const Polycrystal &p, const Uni
   }
   if (ori_at + 1 >= tokens.size()) throw std::invalid_argument(source + ": the file ends in *ori");
 
-  // The orientation descriptor: name[:active|:passive].
+  // The orientation descriptor: name[:passive|:active]. Neper's convention
+  // (its documentation, "Rotations and Orientations"): passive unless
+  // marked, i.e. the rotation of the sample's axes into the crystal's (for
+  // Euler angles Bunge's g, v_c = g v_s; a rotmat lists g); the active
+  // values are those of the opposite rotation. Checked on Neper's own test
+  // tessellation of a <111> fibre along x (rodrigues:passive).
   std::string descriptor = lower(tokens[ori_at + 1].text);
-  bool passive = false;
+  bool active_convention = false;
   if (const auto colon = descriptor.find(':'); colon != std::string::npos) {
     const std::string convention = descriptor.substr(colon + 1);
-    if (convention == "passive") passive = true;
-    else if (convention != "active") {
+    if (convention == "active") active_convention = true;
+    else if (convention != "passive") {
       throw std::invalid_argument(at_line(source, tokens[ori_at + 1].line) + ": unknown convention '" + convention + "'");
     }
     descriptor.resize(colon);
   }
-  enum class Kind { bunge, rodrigues, quaternion, axis_angle, matrix };
+  enum class Kind { bunge, kocks, rodrigues, quaternion, axis_angle, matrix };
   Kind kind = Kind::bunge;
   std::size_t width = 3;
   if (descriptor == "euler-bunge" || descriptor == "e") {
     kind = Kind::bunge;
+  } else if (descriptor == "euler-kocks" || descriptor == "euler-roe") {
+    kind = Kind::kocks; // (the same numbers in both: Neper's table)
   } else if (descriptor == "rodrigues" || descriptor == "r") {
     kind = Kind::rodrigues;
   } else if (descriptor == "quaternion" || descriptor == "q") {
@@ -328,7 +335,8 @@ GrainMap parse_neper_tess(std::string_view text, const Polycrystal &p, const Uni
     width = 9;
   } else {
     throw std::invalid_argument(at_line(source, tokens[ori_at + 1].line) + ": orientations as '" + descriptor +
-                                "' are not read (euler-bunge, rodrigues, quaternion, axis-angle, rotmat)");
+                                "' are not read (euler-bunge, euler-kocks, euler-roe, rodrigues, quaternion, "
+                                "axis-angle, rotmat)");
   }
 
   // The box: that of the vertices (of the seeds, if there are none).
@@ -366,9 +374,17 @@ GrainMap parse_neper_tess(std::string_view text, const Polycrystal &p, const Uni
     const std::size_t at = ori_at + 2 + width * i;
     double v[9] = {0};
     for (std::size_t k = 0; k < width; ++k) v[k] = value(at + k, "an orientation");
-    Mat3 active; // crystal -> sample
+    // crystal -> sample (g^T) for the passive values; the rotation formulas
+    // below give the active rotation R(n, w), which is g^T.
+    Mat3 active;
     switch (kind) {
     case Kind::bunge: active = sample_to_laboratory().transposed() * bunge_rotation(v[0] * deg, v[1] * deg, v[2] * deg); break;
+    case Kind::kocks:
+      // Kocks (Psi, Theta, phi) -> Bunge: phi1 = Psi + 90, Phi = Theta,
+      // phi2 = 90 - phi (Neper's table: Kocks (270, 30, 90) = Bunge (0, 30, 0)).
+      active = sample_to_laboratory().transposed() *
+               bunge_rotation((v[0] + 90.0) * deg, v[1] * deg, (90.0 - v[2]) * deg);
+      break;
     case Kind::rodrigues: {
       const Vec3 r{v[0], v[1], v[2]};
       active = norm(r) > 0.0 ? rotation_about(r, 2.0 * std::atan(norm(r))) : Mat3::identity();
@@ -386,9 +402,9 @@ GrainMap parse_neper_tess(std::string_view text, const Polycrystal &p, const Uni
       active = norm(axis) > 0.0 ? rotation_about(axis, v[3] * deg) : Mat3::identity();
       break;
     }
-    case Kind::matrix: active = Mat3::from_rows({v[0], v[1], v[2]}, {v[3], v[4], v[5]}, {v[6], v[7], v[8]}); break;
+    case Kind::matrix: active = Mat3::from_rows({v[0], v[1], v[2]}, {v[3], v[4], v[5]}, {v[6], v[7], v[8]}).transposed(); break;
     }
-    if (passive) active = active.transposed();
+    if (active_convention) active = active.transposed(); // the opposite rotation
     if (rotation_error(active) > 1e-3) {
       throw std::invalid_argument(at_line(source, tokens[std::min(at, tokens.size() - 1)].line) +
                                   ": the orientation of cell " + std::to_string(i + 1) + " is not a rotation");
@@ -401,8 +417,14 @@ GrainMap parse_neper_tess(std::string_view text, const Polycrystal &p, const Uni
     s.grain = static_cast<int>(i);
     grains[i].origin_A = s.position_A;
   }
+  // A 2D tessellation (**general 2 ...) is a map of the surface: its cells
+  // are columns into the depth.
+  bool two_d = false;
+  if (const std::size_t general_at = find("**general", 0); general_at + 1 < tokens.size()) {
+    two_d = tokens[general_at + 1].text == "2";
+  }
   return GrainMap::from_seeds(std::move(grains), std::move(seeds), period_or(p.period_y, (hi.x - lo.x) * scale),
-                              period_or(p.period_z, (hi.y - lo.y) * scale), false);
+                              period_or(p.period_z, (hi.y - lo.y) * scale), two_d);
 }
 
 // ---------------------------------------------------------------------------
@@ -491,7 +513,23 @@ GrainMap parse_ebsd(std::string_view text, bool ctf, const Polycrystal &p, const
     y_lo = std::min(y_lo, q.y);
     y_hi = std::max(y_hi, q.y);
   }
-  // The step: from the header, else from the density of the points.
+  // The step: from the header, else the smallest gap between the points'
+  // x positions (a grid's step), else from the density of the points.
+  if (!(step > 0.0)) {
+    std::vector<double> xs;
+    xs.reserve(points.size());
+    for (const auto &q : points) xs.push_back(q.x);
+    std::sort(xs.begin(), xs.end());
+    const double tolerance = 1e-9 * std::max(1.0, x_hi - x_lo);
+    double gap = 0.0;
+    for (std::size_t i = 1; i < xs.size(); ++i) {
+      const double d = xs[i] - xs[i - 1];
+      if (d > tolerance && (gap == 0.0 || d < gap)) gap = d;
+    }
+    // (A hexagonal grid's x positions are half a step apart.)
+    const bool hexagonal = text.find("HexGrid") != std::string_view::npos;
+    step = hexagonal ? 2.0 * gap : gap;
+  }
   if (!(step > 0.0)) {
     const double area = std::max(x_hi - x_lo, 1e-12) * std::max(y_hi - y_lo, 1e-12);
     step = points.size() > 1 ? std::sqrt(area / static_cast<double>(points.size())) : 1.0;

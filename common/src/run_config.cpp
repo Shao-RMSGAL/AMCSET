@@ -684,8 +684,8 @@ CrystalDescription parse_crystal_object(const Reader &cr, const std::filesystem:
     const Reader pr(cr.object("polycrystal"), cr.where("polycrystal"));
     const std::string &pw = pr.path();
     pr.reject_unknown({"source", "grain_size", "grain_size_A", "columnar", "texture", "spread", "spread_deg", "seed",
-                       "period", "boundary_width", "boundary_width_A", "file", "scale", "scale_A", "misorientation",
-                       "misorientation_deg", "phase"});
+                       "period", "boundary_width", "boundary_width_A", "registry_below", "registry_below_deg", "file",
+                       "scale", "scale_A", "misorientation", "misorientation_deg", "phase"});
     crystal::Polycrystal p;
     p.file = pr.str("file");
     try {
@@ -726,6 +726,7 @@ CrystalDescription parse_crystal_object(const Reader &cr, const std::filesystem:
       }
     }
     p.boundary_width = pr.quantity("boundary_width", "boundary_width_A", angstrom, p.boundary_width, pl);
+    p.registry_below = pr.quantity("registry_below", "registry_below_deg", degree, p.registry_below, pa);
     p.scale = pr.quantity("scale", "scale_A", angstrom, p.scale, pl);
     p.misorientation = pr.quantity("misorientation", "misorientation_deg", degree, p.misorientation, pa);
     const double phase = pr.num("phase", 0.0);
@@ -899,6 +900,7 @@ json::object crystal_object(const crystal::Crystal &c) {
       po["period"] = std::move(period);
     }
     if (p.boundary_width > 0.0 * angstrom) po["boundary_width"] = format_length(p.boundary_width);
+    if (p.registry_below > 0.0 * degree) po["registry_below"] = format_angle(p.registry_below);
     co["polycrystal"] = std::move(po);
   }
   return co;

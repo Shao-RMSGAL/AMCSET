@@ -16,10 +16,11 @@ validation workflow: `docs/TESTING.md`.
 | `common/tallies_test.cpp`, `tallies_more_test.cpp` | `common-test` | `TalliesUnit`, `TalliesIntegration` |
 | `common/common_test.cpp` | `common-test` | `CommonTest` (native engine) |
 | `cli/cli_test.cpp` | `cli-test` | `RunConfigUnits`, `RunConfig`, `Cli` |
-| `CMakeLists.txt` | `amcset` | `cli.*` end-to-end runs (version, template, elements, stopping, cell, validate, run, convert, trim, bad option, crash reports via `diag-crash`) |
+| `CMakeLists.txt` | `amcset` | `cli.*` end-to-end runs (version, template, elements, stopping, cell, grains, validate, run, convert, trim, bad option, crash reports via `diag-crash`) |
 
-258 CTest tests in total (257 on Linux); 3 are skipped by design (two need SRIM data
-through environment variables, one native test is a placeholder). CTest
+266 CTest tests in total (265 on Linux); 4 are skipped by design (two need SRIM data
+and one the public grain files through environment variables, one native test is
+a placeholder). CTest
 runs everything with the repository root as working directory.
 
 ## Rules

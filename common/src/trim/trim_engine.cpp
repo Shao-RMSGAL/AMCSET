@@ -672,6 +672,7 @@ TrimTallies TrimTallies::without_lists() const {
   t.total_rpa = total_rpa;
   t.pka_without_efficiency = pka_without_efficiency;
   t.md = md;
+  t.grains = grains;
   t.total_displacements = total_displacements;
   t.total_vacancies = total_vacancies;
   t.total_replacements = total_replacements;
@@ -702,6 +703,14 @@ void TrimTallies::add(const TrimTallies &o, std::size_t max_exit_records) {
   for (std::size_t i = 0; i < o.md.size(); ++i) {
     md[i].transition_energy_eV = o.md[i].transition_energy_eV;
     md[i].add(o.md[i]);
+  }
+  for (const auto &[key, g] : o.grains) {
+    auto &mine = grains[key];
+    mine.entered += g.entered;
+    mine.entered_stopped += g.entered_stopped;
+    mine.depth_sum_A += g.depth_sum_A;
+    mine.depth2_sum_A2 += g.depth2_sum_A2;
+    mine.stopped_here += g.stopped_here;
   }
   // The per-element arrays are indexed by this tally's sizes below: they
   // must match (an empty tally takes the other's layout).
@@ -1164,12 +1173,13 @@ TrimSimulation::TrimSimulation(TrimConfig config)
       lm.lattice = std::make_shared<crystal::LatticeSearch>(l.crystal->cell, l.crystal->rotation(), rms_A, pmax_A,
                                                             pmax_A);
       if (l.crystal->polycrystal) {
-        // A polycrystal: the grains of the layer, each with its own lattice.
+        // A polycrystal: the grains of the layer, each with its own lattice
+        // orientation (the site data is the layer's, shared).
         lm.grains = crystal::make_grain_map(*l.crystal, in_units(l.width, angstrom));
         lm.boundary_half_A = 0.5 * in_units(l.crystal->polycrystal->boundary_width, angstrom);
         lm.grain_lattices.reserve(lm.grains->grain_count());
         for (const auto &g : lm.grains->grains()) {
-          lm.grain_lattices.emplace_back(l.crystal->cell, g.rotation, rms_A, pmax_A, pmax_A);
+          lm.grain_lattices.emplace_back(*lm.lattice, l.crystal->cell, g.rotation);
         }
       }
     }
@@ -1449,6 +1459,10 @@ std::optional<DamageEfficiency> published_damage_efficiency(unsigned z) {
 TrimSimulation::~TrimSimulation() = default;
 
 length_quantity TrimSimulation::depth_extent() const { return model_->thickness; }
+
+std::shared_ptr<const crystal::GrainMap> TrimSimulation::grain_map(std::size_t layer) const {
+  return layer < model_->layers.size() ? model_->layers[layer].grains : nullptr;
+}
 
 energy_quantity TrimSimulation::lowest_displacement_energy() const { return model_->lowest_ed; }
 
@@ -2028,6 +2042,17 @@ private:
   std::uint64_t history_seed_ = 0;  // the frozen lattice configuration of the current ion
   double spot_y_ = 0.0;             // the ion's entry point on the surface (Angstrom)
   double spot_z_ = 0.0;
+  // Per-grain results (TrimTallies::grains): the ion's first grain, the
+  // grain it was in at its last step (-1: none), and whether and how deep it
+  // stopped (set by stop_mover). Bookkeeping only: no random number, no
+  // other tally.
+  int ion_entry_grain_ = -1;
+  std::uint32_t ion_entry_layer_ = 0;
+  int ion_last_grain_ = -1;
+  std::uint32_t ion_last_layer_ = 0;
+  bool ion_stopped_ = false;
+  double ion_stop_depth_A_ = 0.0;
+  void book_grains();
   std::unordered_set<SiteKey, SiteKeyHash> vacated_; // sites emptied in this history
   std::vector<double> path_share_;  // per species x layer: electronic loss along the path (cache)
 
@@ -2096,6 +2121,10 @@ void Transporter::record_point(std::vector<CollisionPoint> *trajectory, const Mo
   p.parent_track = mv.parent_track;
   p.parent_point = mv.parent_point;
   p.time = mv.time.value(); // SI: seconds (0 unless timing_)
+  // The entry point on the beam spot (crystal transport; 0 otherwise), in
+  // the same axes as the coordinate: x = TRIM's y, y = TRIM's z.
+  p.entry_x_A = spot_y_;
+  p.entry_y_A = spot_z_;
   trajectory->push_back(p);
 }
 
@@ -2123,6 +2152,8 @@ void Transporter::stop_mover(const Mover &mv, bool interstitial, std::size_t ion
     add(t_.phonons_by_ion, x, e);
     t_.total_phonons_ion += e;
     if (cfg_.record_ion_positions) t_.positions.push_back({ion_index + 1, x, y, z});
+    ion_stopped_ = true;
+    ion_stop_depth_A_ = x;
   } else {
     if (interstitial && !mv.surface_only) {
       add(t_.recoil_stopped[mv.tally_element], x, 1.0);
@@ -2934,6 +2965,7 @@ void Transporter::crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_i
     const double top = in_units(layer.top, angstrom);
     const double bottom = in_units(layer.bottom, angstrom);
     const double dir[3] = {mv.cx, mv.cy, mv.cz};
+    if (mv.is_ion && !layer.grains) ion_last_grain_ = -1;
 
     // --- The next collision: its atoms, or a free step --------------------
     set.clear();
@@ -2955,6 +2987,15 @@ void Transporter::crystal_follow(Mover mv, LecuyerRandom &rng, std::size_t ion_i
       const auto here = layer.grains->at({x - top, y + spot_y_, z + spot_z_}, look);
       grain = here.grain;
       to_boundary = here.boundary_A;
+      if (mv.is_ion) {
+        // (Per-grain results: where the ion entered and where it is.)
+        ion_last_grain_ = grain;
+        ion_last_layer_ = static_cast<std::uint32_t>(li);
+        if (ion_entry_grain_ < 0 && grain >= 0) {
+          ion_entry_grain_ = grain;
+          ion_entry_layer_ = static_cast<std::uint32_t>(li);
+        }
+      }
       if (grain < 0 || to_boundary < layer.boundary_half_A) {
         lattice = nullptr;
       } else {
@@ -3338,6 +3379,9 @@ void Transporter::run_ion_crystal(std::size_t ion_index, std::vector<CollisionPo
   mv.generation = 0;
   mv.track = 0;
   next_track_ = 0;
+  ion_entry_grain_ = -1;
+  ion_last_grain_ = -1;
+  ion_stopped_ = false;
   // MD events: an ion entering below an E_c is an event at its start (the
   // handoff mode then leaves the whole ion to MD).
   if (md_on_ && md_ion_entry(mv)) {
@@ -3346,7 +3390,25 @@ void Transporter::run_ion_crystal(std::size_t ion_index, std::vector<CollisionPo
     crystal_follow(mv, ion_rng, ion_index, trajectory);
   }
   recoil_rng_ = nullptr;
+  book_grains();
   t_.ions += 1;
+}
+
+void Transporter::book_grains() {
+  // An ion's grains (TrimTallies::grains): its first grain, its final depth
+  // if it stopped, and the grain it stopped in.
+  if (ion_entry_grain_ >= 0) {
+    auto &g = t_.grains[{ion_entry_layer_, static_cast<std::uint32_t>(ion_entry_grain_)}];
+    g.entered += 1.0;
+    if (ion_stopped_) {
+      g.entered_stopped += 1.0;
+      g.depth_sum_A += ion_stop_depth_A_;
+      g.depth2_sum_A2 += ion_stop_depth_A_ * ion_stop_depth_A_;
+    }
+  }
+  if (ion_stopped_ && ion_last_grain_ >= 0) {
+    t_.grains[{ion_last_layer_, static_cast<std::uint32_t>(ion_last_grain_)}].stopped_here += 1.0;
+  }
 }
 
 void Transporter::run_source_crystal(std::size_t ion_index, LecuyerRandom &ion_rng,

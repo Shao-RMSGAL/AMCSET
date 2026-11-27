@@ -70,6 +70,7 @@
 #include <cstdint>
 #include <deque>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -275,12 +276,21 @@ struct CrystalReport {
     double critical_deg = 0.0; //!< psi_1 if psi_1 <= a/d, else psi_2
   };
   std::vector<Axis> axes;
+  //! A polycrystal's grains (crystal/grain_summary.h), when asked for.
+  std::optional<crystal::GrainSummary> grains;
 };
 
-//! The report of every layer that has a crystal (empty: none).
-std::vector<CrystalReport> crystal_reports(const TrimConfig &config);
+/*!
+ * \brief The report of every layer that has a crystal (empty: none);
+ * \p with_grains: also the summary of each polycrystal's grains (which
+ * builds the grains), from at most about \p grain_samples sample points.
+ */
+std::vector<CrystalReport> crystal_reports(const TrimConfig &config, bool with_grains = false,
+                                           std::size_t grain_samples = 2'000'000);
 //! "[1 1 0]".
 std::string uvw_text(const std::array<int, 3> &uvw);
+//! Bunge angles (phi1, Phi, phi2; degrees) relative to the sample of a crystal -> TRIM axes rotation.
+std::array<double, 3> euler_relative_to_sample_deg(const crystal::Mat3 &to_trim);
 
 /*!
  * \brief Where the ions of the beam meet the surface (not TRIM: TRIM's beam
@@ -1086,6 +1096,22 @@ struct TrimTallies {
   //! MD event totals, one per TrimConfig::md_events E_c (empty if off).
   std::vector<MdTransitionStats> md;
 
+  /*!
+   * \brief Per grain of a polycrystal (crystal transport; not TRIM): the
+   * ions whose first grain it was (the grain they entered the polycrystal
+   * through), how many of them stopped in the target and the sum and sum of
+   * squares of their final depths, and the ions that stopped in it.
+   */
+  struct GrainTally {
+    double entered = 0.0;
+    double entered_stopped = 0.0;
+    double depth_sum_A = 0.0;
+    double depth2_sum_A2 = 0.0;
+    double stopped_here = 0.0;
+  };
+  //! Keyed by (layer, grain), both 0-based; only grains an ion met.
+  std::map<std::pair<std::uint32_t, std::uint32_t>, GrainTally> grains;
+
   void resize(std::size_t bins, std::size_t elements);
   void add(const TrimTallies &o, std::size_t max_exit_records);
   //! Copy without the per-particle lists (exits, positions, cascades, exyz).
@@ -1161,6 +1187,9 @@ public:
   const std::vector<TargetLayer> &effective_layers() const noexcept { return layers_; }
   //! Names of the target elements, in the index order of the tallies.
   const std::vector<std::string> &element_names() const noexcept { return element_names_; }
+  //! The grains the crystal transport follows in layer \p layer (null: not a
+  //! polycrystal, or another transport).
+  std::shared_ptr<const crystal::GrainMap> grain_map(std::size_t layer) const;
   //! Atomic numbers of the target elements (tally index order).
   const std::vector<unsigned> &element_z() const noexcept { return element_z_; }
   //! Depth of the lower edge of tally bin \p i (Angstrom).

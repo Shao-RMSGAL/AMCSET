@@ -8,7 +8,7 @@ User documentation and the full scenario schema: `docs/CLI.md`.
 |---|---|
 | `include/cli.h`, `src/cli.cpp` (library `amcset-cli-lib`) | `Options` (parsed command line), `parse_arguments` (throws `UsageError`, exit status 2), `apply_options` (options → `config::RunConfig`, options win over the file), `looks_like_trim_in`, `parse_composition`, `print_stopping_table` (the `stopping` command), `print_cell` (the `cell` command: unit cells from files or built-in structures, conversion, the scenario's `crystal` object, beam directions) |
 | `include/interrupts.h`, `src/interrupts.cpp` (in `amcset-cli-lib`) | Signal and console-event handling during a run (`InterruptGuard`, `exit_after_interrupt`) |
-| `src/main.cpp` (executable `amcset`) | Commands `run`, `trim`, `convert`, `stopping`, `elements`, `cell`, `template`, `validate`, `version`, `help`, the hidden `diag-crash` (crashes on purpose to check crash reports); the help text; progress bar; summary printing (`--json`); `diag::initialize` (`--log`, `-v`) |
+| `src/main.cpp` (executable `amcset`) | Commands `run`, `trim`, `convert`, `stopping`, `elements`, `cell`, `crystals`, `grains`, `template`, `validate`, `version`, `help`, the hidden `diag-crash` (crashes on purpose to check crash reports); the help text; progress bar; summary printing (`--json`); `diag::initialize` (`--log`, `-v`) |
 
 The library is separate so that `test/cli/cli_test.cpp` can test parsing and
 option mapping without spawning processes; the end-to-end tests

@@ -66,6 +66,15 @@ if(AMCSET_BUILD_CLI)
   set_tests_properties(cli.cell PROPERTIES PASS_REGULAR_EXPRESSION "ion.angle = 54.73561 deg")
   add_test(NAME cli.cell_list COMMAND amcset cell --list)
   set_tests_properties(cli.cell_list PROPERTIES PASS_REGULAR_EXPRESSION "zincblende")
+  # The grains of a polycrystal (written at configure time): mosaic grains in
+  # registry form one group.
+  file(WRITE ${_cli_out}/polycrystal.json [=[{"ion": {"element": "B", "energy": "30 keV"},
+ "layers": [{"thickness": "600 A", "crystal": {"structure": "diamond", "a": "5.431 A", "sublattices": ["Si"],
+   "polycrystal": {"grain_size": "150 A", "texture": "mosaic", "registry_below": "2 deg"}}}],
+ "physics": {"transport": "crystal"}}
+]=])
+  add_test(NAME cli.grains COMMAND amcset grains ${_cli_out}/polycrystal.json)
+  set_tests_properties(cli.grains PROPERTIES PASS_REGULAR_EXPRESSION "Registry +below 2 deg: 1 groups")
   add_test(NAME cli.bad_option COMMAND amcset run --no-such-option)
   set_tests_properties(cli.bad_option PROPERTIES WILL_FAIL TRUE)
   # Crash reports (diagnostics.h): a deliberate crash must produce a report

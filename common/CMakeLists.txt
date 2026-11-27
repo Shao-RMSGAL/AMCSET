@@ -53,6 +53,7 @@ add_library(amcset-common STATIC
     ${PROJECT_SOURCE_DIR}/common/src/crystal/crystal_database.cpp
     ${PROJECT_SOURCE_DIR}/common/src/crystal/grain_map.cpp
     ${PROJECT_SOURCE_DIR}/common/src/crystal/grain_io.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/crystal/grain_summary.cpp
     # Output tables and file formats
     ${PROJECT_SOURCE_DIR}/common/src/output/units.cpp
     ${PROJECT_SOURCE_DIR}/common/src/output/table.cpp

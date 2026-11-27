@@ -42,6 +42,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <vector>
 
 namespace amcset {
@@ -89,6 +90,14 @@ public:
    */
   LatticeSearch(const UnitCell &cell, const Mat3 &rotation, const std::map<unsigned, double> &rms_A,
                 double max_impact_A, double reach_A);
+  /*!
+   * \brief The lattice of \p cell (the cell \p shape was built from) turned
+   * by \p rotation instead, with \p shape's sites, occupants, thermal
+   * amplitudes and distances. The site data is shared, not copied: the
+   * grains of a polycrystal cost only their rotated vectors. The same as the
+   * full constructor with \p rotation, to the last bit.
+   */
+  LatticeSearch(const LatticeSearch &shape, const UnitCell &cell, const Mat3 &rotation);
 
   /*!
    * \brief The atoms with 0 < xi <= reach and impact <= max_impact seen from
@@ -135,11 +144,13 @@ private:
     std::vector<double> sigma;       // rms displacement per occupant
   };
   bool occupant(const SiteData &sd, std::uint64_t &state, unsigned &z, double &sigma) const noexcept;
+  //! The vectors, the search radius and the offsets for \p rotation (both constructors).
+  void orient(const UnitCell &cell, const Mat3 &rotation);
 
   Mat3 vectors_;     // rows: lattice vectors in the search frame
   Mat3 reciprocal_;  // rows: reciprocal vectors in the search frame
-  std::vector<SiteData> sites_;
-  std::vector<std::uint32_t> occupied_; // indices of the sites that can hold an atom
+  std::shared_ptr<const std::vector<SiteData>> sites_;         // the same in every orientation
+  std::shared_ptr<const std::vector<std::uint32_t>> occupied_; // indices of the sites that can hold an atom
   std::vector<Vec3> offset_;            // their positions relative to the cell's origin (same order)
   double cell_reach_[3] = {0, 0, 0};    // the search radius in fractional coordinates, per axis
   double max_impact_ = 0.0;

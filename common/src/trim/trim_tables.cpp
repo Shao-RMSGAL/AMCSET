@@ -784,6 +784,65 @@ output::Dataset make_dataset(const TrimSimulation &sim, const TrimTallies &t) {
     }
     d.tables.push_back(std::move(tb));
   }
+  if (!t.grains.empty()) {
+    // Per grain of a polycrystal (crystal transport; not TRIM): one row for
+    // every grain an ion entered or stopped in.
+    Table tb;
+    tb.key = "grains";
+    tb.title = "Grains";
+    tb.description = "Each grain of a polycrystal that an ion entered (its first grain) or stopped in: its "
+                     "orientation, the low-index axis nearest the beam in it, how many ions entered the "
+                     "polycrystal through it and how deep they went, and how many ions stopped in it. Grains "
+                     "near an axis channel: their ions go deeper. Not TRIM.";
+    std::vector<double> layer, grain, phi1, Phi, phi2, axis_angle, entered, share, mean, spread, left, stopped;
+    std::vector<std::string> axis;
+    const double beam_tilt = in_units(c.ion.angle, radian);
+    const crystal::Vec3 beam{std::cos(beam_tilt), std::sin(beam_tilt), 0.0}; // TRIM axes
+    for (const auto &[key, g] : t.grains) {
+      const auto map = sim.grain_map(key.first);
+      const auto &l = c.layers.at(key.first);
+      if (!map || !l.crystal || key.second >= map->grain_count()) continue;
+      const crystal::Mat3 &r = map->grain(static_cast<int>(key.second)).rotation;
+      const auto euler = euler_relative_to_sample_deg(r);
+      const auto near = crystal::nearest_direction(l.crystal->cell.lattice, r.transposed() * beam, 2);
+      layer.push_back(static_cast<double>(key.first + 1));
+      grain.push_back(static_cast<double>(key.second + 1));
+      phi1.push_back(euler[0]);
+      Phi.push_back(euler[1]);
+      phi2.push_back(euler[2]);
+      axis.push_back(uvw_text(near.uvw));
+      axis_angle.push_back(in_units(near.off, degree));
+      entered.push_back(g.entered);
+      share.push_back(g.entered / ions);
+      const double m = g.entered_stopped > 0.0 ? g.depth_sum_A / g.entered_stopped : 0.0;
+      mean.push_back(m);
+      spread.push_back(g.entered_stopped > 1.0
+                           ? std::sqrt(std::max(0.0, g.depth2_sum_A2 / g.entered_stopped - m * m))
+                           : 0.0);
+      left.push_back(g.entered - g.entered_stopped);
+      stopped.push_back(g.stopped_here);
+    }
+    tb.columns.push_back(Column::integer("layer", "Layer", layer));
+    tb.columns.push_back(Column::integer("grain", "Grain", grain, "Number of the grain in the layer's map, from 1"));
+    tb.columns.push_back(Column::real("phi1", "phi1", Dimension::angle, "deg", phi1, "Bunge Euler angle (sample frame)"));
+    tb.columns.push_back(Column::real("Phi", "Phi", Dimension::angle, "deg", Phi, "Bunge Euler angle (sample frame)"));
+    tb.columns.push_back(Column::real("phi2", "phi2", Dimension::angle, "deg", phi2, "Bunge Euler angle (sample frame)"));
+    tb.columns.push_back(Column::strings("beam_axis", "Axis nearest the beam", axis,
+                                         "The low-index direction (indices up to 2) nearest the incident beam's"));
+    tb.columns.push_back(Column::real("beam_axis_angle", "Beam off it", Dimension::angle, "deg", axis_angle));
+    tb.columns.push_back(Column::real("entered", "Ions entered", Dimension::dimensionless, "1", entered,
+                                      "Ions whose first grain this was"));
+    tb.columns.push_back(Column::real("entered_share", "Share of the ions", Dimension::dimensionless, "1", share,
+                                      "Ions entered / all ions"));
+    tb.columns.push_back(Column::real("mean_depth", "Mean final depth", Dimension::length, "A", mean,
+                                      "Of the ions that entered here and stopped in the target"));
+    tb.columns.push_back(Column::real("depth_straggle", "Final-depth straggle", Dimension::length, "A", spread,
+                                      "Standard deviation of those depths"));
+    tb.columns.push_back(Column::real("left_target", "Left the target", Dimension::dimensionless, "1", left,
+                                      "Ions that entered here and were backscattered, transmitted or handed to MD"));
+    tb.columns.push_back(Column::real("stopped_here", "Ions stopped in it", Dimension::dimensionless, "1", stopped));
+    d.tables.push_back(std::move(tb));
+  }
   return d;
 }
 

@@ -100,12 +100,23 @@ public:
   //! at() by looking at every seed and its lateral images (for tests).
   At at_brute_force(const Vec3 &r) const;
 
+  /*!
+   * \brief The same map with other grains (orientations and origins), as
+   * many as before.
+   * \throws std::invalid_argument for another number of grains.
+   */
+  GrainMap with_grains(std::vector<Grain> grains) const;
+
   const std::vector<Grain> &grains() const noexcept { return grains_; }
   const Grain &grain(int index) const { return grains_.at(static_cast<std::size_t>(index)); }
   std::size_t grain_count() const noexcept { return grains_.size(); }
   const std::vector<Seed> &seeds() const noexcept { return seeds_; }
   bool is_voxels() const noexcept { return !ids_.empty(); }
   bool is_columnar() const noexcept { return columnar_; }
+  //! Voxels: the grid (depth, y, z), its depth and the grain of a voxel (-1: none).
+  std::array<int, 3> voxel_grid() const noexcept { return n_; }
+  double voxel_depth_A() const noexcept { return depth_A_; }
+  int voxel(int i, int j, int k) const noexcept;
   double period_y_A() const noexcept { return period_[0]; }
   double period_z_A() const noexcept { return period_[1]; }
   //! Fraction of the map's points that belong to no grain (voxels and EBSD points).
@@ -166,6 +177,12 @@ struct Polycrystal {
   // --- every source ---
   //! Width of the disordered slab at grain boundaries, treated as amorphous (0: none).
   common::length_quantity boundary_width = 0.0 * common::angstrom;
+  /*!
+   * Neighbouring grains misoriented by less than this are put in registry
+   * (put_in_registry): their lattices continue across the boundary, as at a
+   * subgrain (low-angle) boundary. 0: every grain's lattice is its own.
+   */
+  common::angle_quantity registry_below = 0.0 * common::degree;
   // --- files ---
   std::string file;                                              //!< as written in the scenario
   common::length_quantity scale = 1.0 * common::micrometer;     //!< Neper: the length of one unit of the tessellation
@@ -177,7 +194,7 @@ struct Polycrystal {
   bool operator==(const Polycrystal &o) const {
     return source == o.source && grain_size == o.grain_size && columnar == o.columnar && texture == o.texture &&
            spread == o.spread && seed == o.seed && period_y == o.period_y && period_z == o.period_z &&
-           boundary_width == o.boundary_width && file == o.file && scale == o.scale &&
+           boundary_width == o.boundary_width && registry_below == o.registry_below && file == o.file && scale == o.scale &&
            misorientation == o.misorientation && phase == o.phase;
   }
 };
@@ -192,6 +209,7 @@ Polycrystal::Texture parse_texture(std::string_view s);
 //! Limits of a polycrystal (check_polycrystal).
 inline constexpr std::size_t max_grains = 2'000'000;
 inline constexpr double max_boundary_width_A = 100.0;
+inline constexpr double max_registry_deg = 30.0;
 
 /*!
  * \brief Check a polycrystal's description: sizes, periods, spread and

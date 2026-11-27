@@ -24,16 +24,23 @@ namespace crystal {
 
 using namespace common;
 
-std::shared_ptr<const GrainMap> make_grain_map(const Crystal &crystal, double depth_A) {
+std::shared_ptr<const GrainMap> make_grain_map(const Crystal &crystal, double depth_A, RegistryResult *registry) {
+  if (registry) *registry = {};
   if (!crystal.polycrystal) throw std::invalid_argument("crystal: not a polycrystal");
   const auto &p = *crystal.polycrystal;
+  std::shared_ptr<const GrainMap> map;
   if (p.source == Polycrystal::Source::voronoi) {
-    return std::make_shared<const GrainMap>(generate_voronoi(p, crystal.rotation(), depth_A));
-  }
-  if (!p.map) {
+    map = std::make_shared<const GrainMap>(generate_voronoi(p, crystal.rotation(), depth_A));
+  } else if (!p.map) {
     throw std::invalid_argument("polycrystal: the grains of '" + p.file + "' have not been read");
+  } else {
+    map = p.map;
   }
-  return p.map;
+  const double below = in_units(p.registry_below, radian);
+  if (below > 0.0) {
+    map = std::make_shared<const GrainMap>(put_in_registry(*map, crystal.cell.lattice, below, depth_A, registry));
+  }
+  return map;
 }
 
 double debye_phi(double x) {

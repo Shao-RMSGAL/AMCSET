@@ -22,11 +22,17 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <random>
+#include <set>
+#include <sstream>
 #include <string>
 
 #include "crystal/cell_io.h"
@@ -1453,6 +1459,246 @@ TEST(CrystalGrains, VoxelsAndTheirFaces) {
                std::invalid_argument);
 }
 
+TEST(CrystalGrains, BoundariesBetweenSeedsAndVoxels) {
+  // Two columns side by side in a periodic strip: they touch at y = 200 and,
+  // through the repeat, at y = 0; one boundary, with a point on one of
+  // those lines (within half a grid step).
+  std::vector<Grain> two(2);
+  const auto pair = GrainMap::from_seeds(two, {{{0, 100, 500}, 0.0, 0}, {{0, 300, 500}, 0.0, 1}}, 400.0, 1000.0, true);
+  const auto b = grain_boundaries(pair, 800.0, 40'000);
+  ASSERT_EQ(b.size(), 1u);
+  EXPECT_EQ(b[0].a, 0);
+  EXPECT_EQ(b[0].b, 1);
+  EXPECT_GT(b[0].contacts, 100u);
+  const double y = std::fmod(b[0].point_A.y + 400.0, 400.0);
+  EXPECT_TRUE(std::abs(y - 200.0) < 2.0 || y < 2.0 || y > 398.0) << b[0].point_A.y;
+
+  // Random Voronoi cells: the boundary points are about as far from the
+  // two seeds as from each other, and nearly all pairs of touching cells
+  // are found (compared with points sampled on both sides of a boundary).
+  std::mt19937_64 rng(11);
+  std::uniform_real_distribution<double> u(0.0, 1.0);
+  const std::size_t n = 300;
+  const double py = 900.0, pz = 700.0, depth = 600.0;
+  std::vector<Grain> grains(n);
+  std::vector<GrainMap::Seed> seeds(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    seeds[i].position_A = {depth * u(rng), py * u(rng), pz * u(rng)};
+    seeds[i].grain = static_cast<int>(i);
+  }
+  const auto map = GrainMap::from_seeds(grains, seeds, py, pz, false);
+  const auto found = grain_boundaries(map, depth);
+  std::set<std::pair<int, int>> pairs;
+  const double step = std::cbrt(depth * py * pz / 1.5e5); // the grid's (500 points per grain)
+  std::size_t on_one_of_them = 0;
+  const auto distance = [&](const Vec3 &p, int grain) {
+    const Vec3 s = map.seeds()[static_cast<std::size_t>(grain)].position_A;
+    const Vec3 d{p.x - s.x, p.y - s.y - py * std::nearbyint((p.y - s.y) / py), p.z - s.z - pz * std::nearbyint((p.z - s.z) / pz)};
+    return norm(d);
+  };
+  for (const auto &g : found) {
+    ASSERT_LT(g.a, g.b);
+    pairs.insert({g.a, g.b});
+    EXPECT_GE(g.point_A.x, 0.0);
+    EXPECT_LE(g.point_A.x, depth);
+    EXPECT_NEAR(distance(g.point_A, g.a), distance(g.point_A, g.b), 2.0 * step);
+    const int here = map.at(g.point_A).grain;
+    on_one_of_them += here == g.a || here == g.b ? 1 : 0;
+  }
+  EXPECT_GT(on_one_of_them, found.size() * 95 / 100);
+  std::set<std::pair<int, int>> touching;
+  for (int k = 0; k < 20000; ++k) {
+    const Vec3 r{depth * u(rng), py * u(rng), pz * u(rng)};
+    const auto at = map.at(r, 3.0);
+    if (at.boundary_A >= 3.0) continue;
+    for (const Vec3 &s : {Vec3{3, 0, 0}, Vec3{-3, 0, 0}, Vec3{0, 3, 0}, Vec3{0, -3, 0}, Vec3{0, 0, 3}, Vec3{0, 0, -3}}) {
+      const Vec3 q = r + s;
+      if (q.x < 0.0 || q.x > depth) continue;
+      const int other = map.at(q).grain;
+      if (other != at.grain) touching.insert({std::min(at.grain, other), std::max(at.grain, other)});
+    }
+  }
+  std::size_t missed = 0;
+  for (const auto &t : touching) missed += pairs.count(t) == 0 ? 1 : 0;
+  EXPECT_GT(touching.size(), 500u);
+  EXPECT_LT(static_cast<double>(missed), 0.02 * static_cast<double>(touching.size())) << missed;
+
+  // Voxels: grain 0 above 1 and 2 (1 | 2 side by side, periodic in y).
+  std::vector<Grain> three(3);
+  const auto vox = GrainMap::from_voxels(three, {0, 0, 0, 0, 1, 1, 2, 2}, {2, 2, 2}, 100.0, 200.0, 200.0);
+  const auto vb = grain_boundaries(vox, 100.0);
+  ASSERT_EQ(vb.size(), 3u); // 0-1, 0-2, 1-2
+  EXPECT_EQ(vb[0].a, 0);
+  EXPECT_EQ(vb[0].b, 1);
+  EXPECT_EQ(vb[0].contacts, 2u);
+  EXPECT_DOUBLE_EQ(vb[0].point_A.x, 50.0);
+  EXPECT_EQ(vb[2].a, 1);
+  EXPECT_EQ(vb[2].b, 2);
+  EXPECT_EQ(vb[2].contacts, 4u); // at y = 100 and, through the repeat, at y = 200
+}
+
+TEST(CrystalGrains, SummaryOfGeneratedGrains) {
+  Crystal c;
+  c.cell = simple("fcc", {29}, 3.615);
+  c.orientation.surface = {0, 0, 1};
+  Polycrystal p;
+  p.grain_size = 100.0 * angstrom;
+  p.period_y = p.period_z = 800.0 * angstrom;
+  c.polycrystal = p;
+  const double depth = 800.0;
+  const auto random = summarize_grains(*make_grain_map(c, depth), c.cell.lattice, c.rotation(), depth, 200'000);
+  // Spheres of 100 A in 800^3 A^3 (and the grains just above and below).
+  EXPECT_EQ(random.grains, static_cast<std::size_t>(std::llround(1000.0 * 800.0 * 800.0 / (pi_v / 6.0 * 1e6))));
+  EXPECT_GT(random.grains_in_layer, random.grains * 7 / 10);
+  EXPECT_LT(random.grains_in_layer, random.grains);
+  EXPECT_EQ(random.ungrained_fraction, 0.0);
+  EXPECT_FALSE(random.coarse);
+  EXPECT_GT(random.diameter_mean_A, 70.0); // (grains cut by the layer's faces are smaller)
+  EXPECT_LT(random.diameter_mean_A, 105.0);
+  EXPECT_LE(random.diameter_p10_A, random.diameter_median_A);
+  EXPECT_LE(random.diameter_median_A, random.diameter_p90_A);
+  EXPECT_NEAR(random.misorientation_mean_deg, 40.7, 3.0); // Mackenzie's mean for cubic crystals
+  EXPECT_TRUE(random.boundaries_counted);
+  EXPECT_GT(random.boundaries, random.grains_in_layer * 4); // (about 7 per grain inside, fewer at the faces)
+  EXPECT_LT(random.low_angle_fraction, 0.1);
+  // A mosaic without spread: the crystal's orientation everywhere.
+  c.polycrystal->texture = Polycrystal::Texture::mosaic;
+  const auto same = summarize_grains(*make_grain_map(c, depth), c.cell.lattice, c.rotation(), depth, 100'000);
+  EXPECT_NEAR(same.misorientation_mean_deg, 0.0, 1e-5);
+  EXPECT_NEAR(same.normal_tilt_mean_deg, 0.0, 1e-5);
+  EXPECT_DOUBLE_EQ(same.low_angle_fraction, 1.0);
+  // A fiber texture: the normal direction stays, the rest turns.
+  c.polycrystal->texture = Polycrystal::Texture::fiber;
+  const auto fiber = summarize_grains(*make_grain_map(c, depth), c.cell.lattice, c.rotation(), depth, 100'000);
+  EXPECT_NEAR(fiber.normal_tilt_mean_deg, 0.0, 1e-5);
+  EXPECT_GT(fiber.misorientation_mean_deg, 10.0);
+  // The JSON form names the fields.
+  const auto j = to_json(fiber);
+  EXPECT_NE(j.find("\"grains_in_layer\": "), std::string::npos);
+  EXPECT_NE(j.find("\"low_angle_fraction\": "), std::string::npos);
+  // Columns are measured over the surface.
+  c.polycrystal->columnar = true;
+  c.polycrystal->grain_size = 200.0 * angstrom;
+  c.polycrystal->period_y = c.polycrystal->period_z = 1600.0 * angstrom;
+  const auto columns = summarize_grains(*make_grain_map(c, 5000.0), c.cell.lattice, c.rotation(), 5000.0, 100'000);
+  EXPECT_TRUE(columns.columnar);
+  EXPECT_EQ(columns.grains_in_layer, columns.grains);
+  EXPECT_NEAR(columns.diameter_mean_A, 200.0, 25.0);
+}
+
+TEST(CrystalGrains, LowAngleBoundariesInRegistry) {
+  // Grains of one orientation (a mosaic without spread), put in registry:
+  // every grain's lattice is one lattice, so the polycrystal is the single
+  // crystal. Points in the layer, also beyond one period.
+  Crystal c;
+  c.cell = simple("diamond", {14}, 5.431);
+  c.orientation.surface = {0, 0, 1};
+  Polycrystal p;
+  p.grain_size = 150.0 * angstrom;
+  p.texture = Polycrystal::Texture::mosaic;
+  p.registry_below = 2.0 * degree;
+  c.polycrystal = p;
+  const double depth = 600.0;
+  RegistryResult rr;
+  const auto map = make_grain_map(c, depth, &rr);
+  EXPECT_EQ(rr.groups, 1u);
+  const Mat3 r = c.rotation();
+  const auto fractional = [&](const Vec3 &v) { return c.cell.lattice.to_fractional(r.transposed() * v); };
+  std::mt19937_64 rng(5);
+  std::uniform_real_distribution<double> u(0.0, 1.0);
+  const double py = map->period_y_A(), pz = map->period_z_A();
+  const auto origin = [&](const Vec3 &at) { return map->grain(map->at(at).grain).origin_A; };
+  const Vec3 reference = origin({depth / 2, py / 2, pz / 2});
+  std::set<int> met;
+  for (int k = 0; k < 2000; ++k) {
+    const Vec3 q{depth * u(rng), py * (3.0 * u(rng) - 1.0), pz * (3.0 * u(rng) - 1.0)};
+    met.insert(map->at(q).grain);
+    const Vec3 f = fractional(origin(q) - reference);
+    for (int i = 0; i < 3; ++i) ASSERT_NEAR(f[i], std::round(f[i]), 1e-6) << k;
+  }
+  EXPECT_GT(met.size(), 50u);
+  EXPECT_GE(rr.grains, met.size());
+  // Without the registry the grains' lattices go through their seeds.
+  c.polycrystal->registry_below = 0.0 * degree;
+  const auto free = make_grain_map(c, depth, &rr);
+  EXPECT_EQ(rr.groups, 0u);
+  EXPECT_EQ(free->grains()[3].origin_A, free->seeds()[3].position_A);
+
+  // Random orientations: misoriented grains are not joined; a large
+  // threshold joins some.
+  c.polycrystal->texture = Polycrystal::Texture::random;
+  c.polycrystal->registry_below = 1.0 * degree;
+  make_grain_map(c, depth, &rr);
+  EXPECT_EQ(rr.groups, 0u);
+  c.polycrystal->registry_below = 25.0 * degree;
+  make_grain_map(c, depth, &rr);
+  EXPECT_GT(rr.groups, 0u);
+
+  // A small spread: at the point of each boundary in a group the child's
+  // lattice point found is the parent's: lattice points of both grains lie
+  // within the drift of the misorientation over a cell there.
+  c.polycrystal->texture = Polycrystal::Texture::mosaic;
+  c.polycrystal->spread = 0.5 * degree;
+  c.polycrystal->registry_below = 2.0 * degree;
+  const auto spread = make_grain_map(c, depth, &rr);
+  EXPECT_EQ(rr.groups, 1u);
+  std::size_t boundaries = 0;
+  std::size_t checked = 0;
+  for (const auto &b : grain_boundaries(*spread, depth)) {
+    const auto &ga = spread->grain(b.a);
+    const auto &gb = spread->grain(b.b);
+    ++boundaries;
+    // The equivalent orientations chosen are those nearest each other.
+    EXPECT_LT(misorientation_rad(ga.rotation, gb.rotation, {}), 4.0 * pi_v / 180.0);
+    // b's lattice point nearest the boundary point, seen in a's lattice.
+    const Vec3 fb = c.cell.lattice.to_fractional(gb.rotation.transposed() * (b.point_A - gb.origin_A));
+    const Vec3 nb{std::round(fb.x), std::round(fb.y), std::round(fb.z)};
+    const Vec3 point = gb.origin_A + gb.rotation * c.cell.lattice.to_cartesian_A(nb);
+    const Vec3 fa = c.cell.lattice.to_fractional(ga.rotation.transposed() * (point - ga.origin_A));
+    const Vec3 off = c.cell.lattice.to_cartesian_A(fa - Vec3{std::round(fa.x), std::round(fa.y), std::round(fa.z)});
+    if (norm(off) < 0.5) ++checked; // in registry there
+  }
+  EXPECT_GT(boundaries, 50u);
+  // The boundaries through which the group was built (grains - groups of
+  // them) are exactly in registry; the others are where the lattice drifts.
+  EXPECT_GE(checked, rr.grains - rr.groups);
+  std::printf("[ registry ] %zu of %zu boundaries in registry (tree edges %zu)\n", checked, boundaries,
+              rr.grains - rr.groups);
+}
+
+TEST(CrystalSearch, SharedSitesGiveTheSameLattice) {
+  // A lattice built from another (shared sites) finds the same atoms as one
+  // built in full with the same rotation, number for number.
+  const UnitCell cell = simple("diamond", {14}, 5.431);
+  const Mat3 first = rotation_about({1, 0, 0}, 0.3);
+  const Mat3 second = rotation_about({1, 2, 3}, 1.1);
+  const std::map<unsigned, double> rms{{14u, 0.08}};
+  const LatticeSearch shape(cell, first, rms, 1.5, 1.5);
+  const LatticeSearch shared(shape, cell, second);
+  const LatticeSearch full(cell, second, rms, 1.5, 1.5);
+  EXPECT_EQ(shared.sites_per_search(), full.sites_per_search());
+  EXPECT_EQ(shared.max_displacement_A(), full.max_displacement_A());
+  std::vector<Candidate> a, b;
+  std::mt19937_64 rng(2);
+  std::uniform_real_distribution<double> u(-20.0, 20.0);
+  std::size_t seen = 0;
+  for (int k = 0; k < 300; ++k) {
+    const Vec3 r{u(rng), u(rng), u(rng)};
+    const Vec3 d = normalized({u(rng), u(rng), u(rng)});
+    shared.candidates(r, d, 77, -1e9, 1e9, a);
+    full.candidates(r, d, 77, -1e9, 1e9, b);
+    ASSERT_EQ(a.size(), b.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+      EXPECT_EQ(a[i].id, b[i].id);
+      EXPECT_EQ(a[i].position, b[i].position);
+      EXPECT_EQ(a[i].xi, b[i].xi);
+    }
+    seen += a.size();
+  }
+  EXPECT_GT(seen, 100u);
+  EXPECT_THROW(LatticeSearch(shape, simple("fcc", {29}, 3.6), second), std::invalid_argument);
+}
+
 TEST(CrystalGrains, LatticeRotationsAndMisorientation) {
   const auto ninety = 90.0 * degree;
   const auto lattice = [&](double a, double b, double c) {
@@ -1682,7 +1928,7 @@ TEST(CrystalGrains, NeperTessellation) {
   Polycrystal p;
   p.source = Polycrystal::Source::neper;
   p.scale = 1000.0 * angstrom;
-  const auto map = parse_neper_tess(tess("   euler-bunge:active\n   0 0 0\n   30 0 0\n"), p, cell);
+  const auto map = parse_neper_tess(tess("   euler-bunge\n   0 0 0\n   30 0 0\n"), p, cell);
   EXPECT_EQ(map.grain_count(), 2u);
   EXPECT_DOUBLE_EQ(map.period_y_A(), 1000.0);
   EXPECT_DOUBLE_EQ(map.period_z_A(), 1000.0);
@@ -1697,14 +1943,23 @@ TEST(CrystalGrains, NeperTessellation) {
   o.euler_deg = {30.0, 0.0, 0.0};
   const Mat3 turned = rotation(cell.lattice, o);
   for (int i = 0; i < 3; ++i) EXPECT_LT(norm(map.grains()[1].rotation[i] - turned[i]), 1e-12);
-  // The same orientations by the other descriptors: 30 degrees about the
-  // sample's z axis (Rodrigues tan 15 deg; quaternion cos 15, sin 15).
+  // The same orientations by the other descriptors, as Neper's documentation
+  // gives them for its example (30 degrees about a sample axis, passive
+  // unless marked; here about z): Rodrigues tan 15 deg, quaternion (cos 15,
+  // sin 15), the matrix g = Bunge's, Kocks (Psi, Theta, phi) = (phi1 - 90,
+  // Phi, 90 - phi2); the active values of the opposite rotation.
   const std::vector<std::string> same{
-      "   rodrigues:active\n   0 0 0\n   0 0 0.267949192431\n",
-      "   quaternion:active\n   1 0 0 0\n   0.965925826289 0 0 0.258819045103\n",
-      "   axis-angle:active\n   0 0 1 0\n   0 0 1 30\n",
-      "   rotmat:active\n   1 0 0 0 1 0 0 0 1\n   0.866025403784 -0.5 0 0.5 0.866025403784 0 0 0 1\n",
-      "   rodrigues:passive\n   0 0 0\n   0 0 -0.267949192431\n"};
+      "   euler-bunge:passive\n   0 0 0\n   30 0 0\n",
+      "   euler-bunge:active\n   0 0 0\n   -30 0 0\n",
+      "   euler-kocks\n   270 0 90\n   300 0 90\n",
+      "   euler-roe\n   270 0 90\n   300 0 90\n",
+      "   rodrigues\n   0 0 0\n   0 0 0.267949192431\n",
+      "   rodrigues:passive\n   0 0 0\n   0 0 0.267949192431\n",
+      "   rodrigues:active\n   0 0 0\n   0 0 -0.267949192431\n",
+      "   quaternion:passive\n   1 0 0 0\n   0.965925826289 0 0 0.258819045103\n",
+      "   axis-angle\n   0 0 1 0\n   0 0 1 30\n",
+      "   rotmat\n   1 0 0 0 1 0 0 0 1\n   0.866025403784 0.5 0 -0.5 0.866025403784 0 0 0 1\n",
+      "   rotmat:active\n   1 0 0 0 1 0 0 0 1\n   0.866025403784 -0.5 0 0.5 0.866025403784 0 0 0 1\n"};
   for (const auto &text : same) {
     const auto other = parse_neper_tess(tess(text), p, cell);
     for (int i = 0; i < 3; ++i) {
@@ -1721,12 +1976,132 @@ TEST(CrystalGrains, NeperTessellation) {
   EXPECT_EQ(laguerre.at({500.0, 580.0, 500.0}).grain, 0);
   // Mistakes.
   EXPECT_THROW(parse_neper_tess("***tesr\n", p, cell), std::invalid_argument);
-  EXPECT_THROW(parse_neper_tess(tess("   euler-kocks\n   0 0 0\n   0 0 0\n"), p, cell), std::invalid_argument);
+  EXPECT_THROW(parse_neper_tess(tess("   label\n   Cube\n   Goss\n"), p, cell), std::invalid_argument);
+  EXPECT_THROW(parse_neper_tess(tess("   rodrigues:sideways\n   0 0 0\n   0 0 0\n"), p, cell), std::invalid_argument);
   EXPECT_THROW(parse_neper_tess(tess("   rotmat\n   1 0 0 0 1 0 0 0 1\n   2 0 0 0 1 0 0 0 1\n"), p, cell),
                std::invalid_argument);
   std::string no_ori = tess("");
   no_ori.erase(no_ori.find("  *ori\n"), 7);
   EXPECT_THROW(parse_neper_tess(no_ori, p, cell), std::invalid_argument);
+}
+
+namespace {
+
+std::string read_text(const std::filesystem::path &path) {
+  std::ifstream in(path, std::ios::binary);
+  return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+} // namespace
+
+TEST(CrystalGrains, PublicSampleFiles) {
+  // Files written by Neper, by MTEX's EBSD test-data generator and from a
+  // measured map (orix), in the folder AMCSET_PUBLIC_GRAIN_DATA names
+  // (docs/TESTING.md lists the files and where they come from).
+  const char *root_env = std::getenv("AMCSET_PUBLIC_GRAIN_DATA");
+  if (!root_env) GTEST_SKIP() << "AMCSET_PUBLIC_GRAIN_DATA not set";
+  const std::filesystem::path root(root_env);
+  const UnitCell cubic = simple("fcc", {29}, 3.615);
+  const double d = pi_v / 180.0;
+
+  // Neper, "-ori fibre(x,1,1,1)": a <111> axis of every cell along sample x
+  // (the layer's y; rows of crystal -> laboratory are the laboratory axes in
+  // the crystal frame).
+  Polycrystal neper;
+  neper.source = Polycrystal::Source::neper;
+  const auto fibre = parse_neper_tess(read_text(root / "neper/ori/ref.tess"), neper, cubic);
+  ASSERT_EQ(fibre.grain_count(), 2u);
+  for (const auto &g : fibre.grains()) {
+    const Vec3 along = normalized(g.rotation[1]);
+    for (int k = 0; k < 3; ++k) EXPECT_NEAR(std::abs(along[k]), 1.0 / std::sqrt(3.0), 1e-6);
+  }
+  // "-ori file(ori)": the cells keep the Rodrigues vectors of the file
+  // (passive: R(r) takes the crystal's axes to the sample's).
+  const auto given = parse_neper_tess(read_text(root / "neper/ori_file/ref.tess"), neper, cubic);
+  ASSERT_EQ(given.grain_count(), 3u);
+  const Vec3 r[3] = {{0.1, 0.2, 0.3}, {0.4, 0.5, 0.6}, {0.7, 0.8, 0.9}};
+  for (int i = 0; i < 3; ++i) {
+    const Mat3 expected = sample_to_laboratory() * rotation_about(r[i], 2.0 * std::atan(norm(r[i])));
+    for (int k = 0; k < 3; ++k) EXPECT_LT(norm(given.grain(i).rotation[k] - expected[k]), 1e-9) << i;
+  }
+  // Quaternions and the 2D format (columns).
+  EXPECT_EQ(parse_neper_tess(read_text(root / "neper/oridescriptor/ref.tess"), neper, cubic).grain_count(), 2u);
+  const auto flat = parse_neper_tess(read_text(root / "neper/format_2d/ref.tess"), neper, cubic);
+  EXPECT_TRUE(flat.is_columnar());
+  EXPECT_EQ(flat.grain_count(), 2u);
+
+  // MTEX's generated maps: 2 x 2 grains of 15 x 15 points, square and
+  // hexagonal grids; each point's grain column and row are in its MAD and
+  // BC columns, its Euler angles within 1 degree of its grain's.
+  UnitCell monoclinic = cubic; // (glaucophane's lattice: no rotations of its own)
+  monoclinic.lattice = Lattice::from_parameters(9.541 * angstrom, 17.74 * angstrom, 5.295 * angstrom, 90.0 * degree,
+                                                103.67 * degree, 90.0 * degree);
+  Polycrystal ebsd;
+  ebsd.source = Polycrystal::Source::ebsd;
+  for (const char *name : {"mtex/testdata_sqr.ctf", "mtex/testdata_hex.ctf"}) {
+    const std::string text = read_text(root / name);
+    const auto map = parse_ebsd(text, true, ebsd, monoclinic, name);
+    ASSERT_EQ(map.grain_count(), 4u) << name;
+    ASSERT_EQ(map.seeds().size(), 900u) << name;
+    // The points in file order with their true grain (column + 2 row).
+    std::vector<int> truth;
+    std::vector<std::array<double, 3>> euler;
+    std::istringstream in(text);
+    std::string line;
+    bool data = false;
+    while (std::getline(in, line)) {
+      if (!data) {
+        data = line.rfind("Phase\tX", 0) == 0;
+        continue;
+      }
+      std::istringstream f(line);
+      double v[10];
+      int count = 0;
+      while (count < 10 && f >> v[count]) ++count;
+      if (count < 10) continue;
+      truth.push_back(static_cast<int>(v[8]) + 2 * static_cast<int>(v[9]));
+      euler.push_back({v[5], v[6], v[7]});
+    }
+    ASSERT_EQ(truth.size(), 900u) << name;
+    std::map<int, int> to_truth;
+    for (std::size_t i = 0; i < truth.size(); ++i) {
+      const int g = map.seeds()[i].grain;
+      const auto it = to_truth.try_emplace(g, truth[i]).first;
+      ASSERT_EQ(it->second, truth[i]) << name << ": point " << i << " is in the wrong grain";
+    }
+    EXPECT_EQ(to_truth.size(), 4u) << name;
+    // A grain's orientation is one of its points': within 3.5 degrees of every other.
+    for (std::size_t i = 0; i < truth.size(); i += 37) {
+      Orientation o;
+      o.kind = OrientationKind::euler;
+      o.euler_deg = euler[i];
+      const Mat3 point = rotation(monoclinic.lattice, o);
+      EXPECT_LT(misorientation_rad(point, map.grain(map.seeds()[i].grain).rotation, {}), 3.5 * d) << name << " " << i;
+    }
+  }
+
+  // A measured map (orix's super-duplex steel, dictionary indexed): two
+  // phases on a square grid of 117 x 100 points 1.5 um apart.
+  const std::string sdss = read_text(root / "orix/sdss_ferrite_austenite.ang");
+  const auto both = parse_ebsd(sdss, false, ebsd, cubic, "sdss");
+  EXPECT_EQ(both.seeds().size(), 11700u);
+  EXPECT_NEAR(both.period_y_A(), 117 * 1.5e4, 1e-6);
+  EXPECT_NEAR(both.period_z_A(), 100 * 1.5e4, 1e-6);
+  Polycrystal austenite = ebsd;
+  austenite.phase = 1;
+  Polycrystal ferrite = ebsd;
+  ferrite.phase = 2;
+  const auto a = parse_ebsd(sdss, false, austenite, cubic, "sdss");
+  const auto f = parse_ebsd(sdss, false, ferrite, cubic, "sdss");
+  EXPECT_GT(both.grain_count(), 10u);
+  EXPECT_LT(a.grain_count(), both.grain_count());
+  EXPECT_LT(f.grain_count(), both.grain_count());
+  std::printf("[ sdss ] grains: both phases %zu, austenite %zu, ferrite %zu\n", both.grain_count(), a.grain_count(),
+              f.grain_count());
+  // A map without a step in its header (MTEX's ACOM.ang): the step is the grid's.
+  const auto acom = parse_ebsd(read_text(root / "mtex/ACOM.ang"), false, ebsd, cubic, "ACOM");
+  EXPECT_EQ(acom.seeds().size(), 225u);
+  EXPECT_NEAR(acom.period_y_A(), 15 * 2.0e4, 1e-6);
 }
 
 TEST(CrystalGrains, EbsdMaps) {

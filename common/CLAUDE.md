@@ -15,7 +15,7 @@ Qt and must not.
 | Electronic stopping (SRIM tables, built-in, Bethe-Bloch, LSS), straggling | `include/physics/stopping.h`, `src/physics/stopping.cpp` |
 | Screening, magic formula, scattering integral, kinematics | `include/physics/scattering.h`, `src/physics/scattering.cpp` |
 | SRIM mode | `include/trim/`, `src/trim/` (own `CLAUDE.md`) |
-| Crystals: unit cells, built-in structures, orientation, Debye amplitudes, cell files, the lattice's collision-partner search, polycrystals (`grain_map.h`: grains and their generation; `grain_io.h`: grain files, Neper, EBSD) (not TRIM; followed by the crystal transport only) | `include/crystal/`, `src/crystal/`; a layer's crystal: `trim::apply_crystal`, `check_layer_crystal` (`src/trim/layer_crystal.cpp`); design: `docs/CRYSTAL_DESIGN.md` |
+| Crystals: unit cells, built-in structures, orientation, Debye amplitudes, cell files, the lattice's collision-partner search, polycrystals (`grain_map.h`: grains and their generation; `grain_io.h`: grain files, Neper, EBSD; `grain_summary.h`: boundaries, the summary, low-angle boundaries in registry) (not TRIM; followed by the crystal transport only) | `include/crystal/`, `src/crystal/`; a layer's crystal: `trim::apply_crystal`, `check_layer_crystal` (`src/trim/layer_crystal.cpp`); design: `docs/CRYSTAL_DESIGN.md` |
 | Result tables, units of output columns, CSV/JSON/Parquet | `include/output/`, `src/output/` |
 | Locating `data/` at run time | `include/data_files.h`, `src/data_files.cpp` |
 | Elements (masses, densities, Es, I-values) | `include/element_data.h`, `assets/element_data.csv` → `generated/element_database.h` |

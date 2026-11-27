@@ -44,10 +44,15 @@
  *
  * **Neper** `.tess`: the seeds with their weights (a Laguerre tessellation
  * by |r - p|^2 - w^2) and the cells' orientations (`*ori`: euler-bunge,
- * rodrigues, quaternion, axis-angle or rotmat, active unless marked
- * `:passive`); the box is that of the vertices and one unit of the file is
- * Polycrystal::scale long. The tessellation is repeated laterally, so cells
- * at the sides of a non-periodic tessellation differ from Neper's.
+ * euler-kocks, euler-roe, rodrigues, quaternion, axis-angle or rotmat) in
+ * Neper's convention: passive unless marked `:active`, i.e. the rotation of
+ * the sample's axes into the crystal's (Euler angles give Bunge's g, a
+ * rotmat lists g); `:active` values are those of the opposite rotation.
+ * Checked on Neper's own test tessellations (docs/TESTING.md). The box is
+ * that of the vertices and one unit of the file is Polycrystal::scale long;
+ * the tessellation's z is the outward normal (its top is the surface); a 2D
+ * tessellation's cells are columns. The tessellation is repeated laterally,
+ * so cells at the sides of a non-periodic tessellation differ from Neper's.
  *
  * **EBSD** maps, TSL/EDAX `.ang` (Euler angles in radians, x and y in
  * micrometres; square or hexagonal grids) and Oxford/HKL `.ctf` (degrees):
@@ -55,7 +60,13 @@
  * Polycrystal::misorientation, up to the lattice's rotations, are one
  * grain; every grain is a column into the depth with the orientation of
  * its first point; points that are not indexed (or of another phase than
- * Polycrystal::phase) take the grain of the nearest indexed point.
+ * Polycrystal::phase) take the grain of the nearest indexed point. Without
+ * a step in the header the step is the smallest gap between the points'
+ * x positions (twice it on a hexagonal grid). The Euler angles are taken as
+ * Bunge angles relative to the map's x and y and the outward normal, as
+ * written; neither format records how the vendor's Euler frame lies on the
+ * map (EDAX's "settings" 1 to 4; MTEX corrects .ang files for setting 2 on
+ * import), so a map may need that correction before it is used here.
  */
 
 #pragma once

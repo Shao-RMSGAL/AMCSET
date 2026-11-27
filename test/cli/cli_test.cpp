@@ -1064,7 +1064,7 @@ TEST(RunConfig, CrystalRunsRecordEveryTrimBugAsFixed) {
 TEST(RunConfig, PolycrystalKeys) {
   const auto c = parse_config(one_layer(R"("crystal": {"structure": "diamond", "a": "5.431 A", "sublattices": ["Si"],
       "polycrystal": {"grain_size": "20 nm", "texture": "fiber", "spread": "2 deg", "columnar": true, "seed": 7,
-                      "period": ["100 nm", "80 nm"], "boundary_width": "5 A"}})"));
+                      "period": ["100 nm", "80 nm"], "boundary_width": "5 A", "registry_below": "2 deg"}})"));
   ASSERT_TRUE(c.trim.layers[0].crystal.has_value());
   ASSERT_TRUE(c.trim.layers[0].crystal->polycrystal.has_value());
   const auto &p = *c.trim.layers[0].crystal->polycrystal;
@@ -1077,7 +1077,23 @@ TEST(RunConfig, PolycrystalKeys) {
   EXPECT_DOUBLE_EQ(in_units(p.period_y, angstrom), 1000.0);
   EXPECT_DOUBLE_EQ(in_units(p.period_z, angstrom), 800.0);
   EXPECT_DOUBLE_EQ(in_units(p.boundary_width, angstrom), 5.0);
+  EXPECT_DOUBLE_EQ(in_units(p.registry_below, amcset::common::degree), 2.0);
   EXPECT_NO_THROW(c.trim.validate());
+  // A crystal-transport run of it with a beam spot smaller than the grains'
+  // period is warned about (the spot's default is 1 um, the period 100 x 80 nm).
+  auto run = c;
+  run.trim.transport = trim::TrimConfig::Transport::crystal;
+  const auto has_spot_warning = [](const trim::TrimConfig &t) {
+    for (const auto &w : t.plausibility_warnings()) {
+      if (w.find("beam spot") != std::string::npos) return true;
+    }
+    return false;
+  };
+  EXPECT_FALSE(has_spot_warning(run.trim));
+  run.trim.ion.spot.height = 500.0 * angstrom;
+  EXPECT_TRUE(has_spot_warning(run.trim));
+  run.trim.ion.spot.shape = trim::BeamSpot::Shape::point;
+  EXPECT_TRUE(has_spot_warning(run.trim));
   // The scenario written out reads back to itself.
   const std::string text = to_json(c);
   EXPECT_NE(text.find("\"polycrystal\""), std::string::npos);
@@ -1114,6 +1130,7 @@ TEST(RunConfig, PolycrystalKeys) {
   EXPECT_NE(message(R"({"grain_size": "1 A"})").find("polycrystal.grain_size"), std::string::npos);
   EXPECT_NE(message(R"({"source": "ebsd"})").find("polycrystal.file"), std::string::npos);
   EXPECT_NE(message(R"({"period": ["1 um"]})").find("polycrystal.period"), std::string::npos);
+  EXPECT_NE(message(R"({"registry_below": "45 deg"})").find("polycrystal.registry_below"), std::string::npos);
   EXPECT_NE(message(R"({"grains": 5})").find("grains"), std::string::npos);
   EXPECT_NE(message(R"({"file": "no_such_grain_file.txt"})").find("no_such_grain_file.txt"), std::string::npos);
 }

@@ -778,8 +778,9 @@ std::string TrimSimulation::summary_json() const {
       << ", \"transmitted_recoils_per_ion\": " << json_number(t.transmitted_recoils[i] / n) << "}";
   }
   j << "],\n";
-  if (const auto crystals = crystal_reports(config_); !crystals.empty()) {
-    // The crystals' orientation (not TRIM; docs/OUTPUT.md "Crystals").
+  if (const auto crystals = crystal_reports(config_, true); !crystals.empty()) {
+    // The crystals' orientation and a polycrystal's grains (not TRIM;
+    // docs/OUTPUT.md "Crystals").
     const auto vec = [&](const crystal::Vec3 &v) {
       return "[" + json_number(v.x) + ", " + json_number(v.y) + ", " + json_number(v.z) + "]";
     };
@@ -817,7 +818,9 @@ std::string TrimSimulation::summary_json() const {
           << ", \"psi2_deg\": " << json_number(a.psi2_deg) << ", \"critical_deg\": " << json_number(a.critical_deg)
           << "}";
       }
-      j << "]}";
+      j << "]";
+      if (r.grains) j << ",\n     \"grains\": " << crystal::to_json(*r.grains);
+      j << "}";
     }
     j << "],\n";
   }

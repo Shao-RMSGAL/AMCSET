@@ -80,6 +80,8 @@ Usage:
   amcset crystals [WORDS ...]               Search the crystal database (elements and compounds
                                             with lattice constants, Debye temperatures, sources):
                                             amcset crystals nitride, amcset crystals Ga As
+  amcset grains <scenario.json> [--json]    The grains of each polycrystal layer: number,
+                                            sizes, texture, boundaries, registry
   amcset template [srim|native] [-o FILE]   Print (or save) an example scenario
   amcset validate <scenario.json|TRIM.IN>   Check a scenario without running it
   amcset version | help
@@ -462,6 +464,72 @@ int cmd_elements(const cli::Options &opt) {
   return 0;
 }
 
+int cmd_grains(const cli::Options &opt) {
+  // The grains of every polycrystal layer of a scenario, as the crystal
+  // transport builds them (crystal/grain_summary.h).
+  if (opt.positional.size() != 1) throw cli::UsageError("expected one scenario file");
+  auto cfg = load_any(opt.positional[0]);
+  cli::apply_options(cfg, opt);
+  if (cfg.mode != config::Mode::srim) throw std::invalid_argument("grains: the scenario runs the native engine");
+  cfg.trim.validate();
+  std::vector<trim::CrystalReport> reports;
+  for (auto &r : trim::crystal_reports(cfg.trim, true, 20'000'000)) {
+    if (r.grains) reports.push_back(std::move(r));
+  }
+  if (opt.json) {
+    std::cout << "[";
+    for (std::size_t i = 0; i < reports.size(); ++i) {
+      std::cout << (i ? ",\n " : "") << "{\"layer\": " << reports[i].layer + 1 << ", \"grains\": "
+                << crystal::to_json(*reports[i].grains) << "}";
+    }
+    std::cout << "]\n";
+    return 0;
+  }
+  if (reports.empty()) {
+    std::cout << "No layer of this scenario is a polycrystal.\n";
+    return 0;
+  }
+  for (const auto &r : reports) {
+    const auto &g = *r.grains;
+    char buf[1600];
+    std::snprintf(buf, sizeof buf,
+                  "Layer %zu ('%s'): %s\n"
+                  "  Grains            %zu in the map, %zu in the layer%s; period %.6g x %.6g A\n"
+                  "  Sampled           %zu points %.3g A apart%s%s; in no grain: %.3g %%\n"
+                  "  Diameter (A)      mean %.4g, median %.4g, 10-90 %% %.4g to %.4g (%s)\n"
+                  "  Texture           misorientation from the crystal's orientation: mean %.3g deg, rms %.3g deg;\n"
+                  "                    normal direction tilted from the crystal's by %.3g deg on average\n",
+                  r.layer + 1, r.layer_name.c_str(), r.cell_name.c_str(), g.grains, g.grains_in_layer,
+                  g.columnar ? " (columns)" : "", g.period_y_A, g.period_z_A, g.samples, g.sample_spacing_A,
+                  g.columnar ? " over the surface" : "",
+                  g.coarse ? " (coarse: fewer than 32 per grain, small grains are missed)" : "",
+                  100.0 * g.ungrained_fraction, g.diameter_mean_A,
+                  g.diameter_median_A, g.diameter_p10_A, g.diameter_p90_A,
+                  g.columnar ? "circles of the sections" : "spheres of the volumes", g.misorientation_mean_deg,
+                  g.misorientation_rms_deg, g.normal_tilt_mean_deg);
+    std::cout << buf;
+    if (g.boundaries_counted) {
+      std::snprintf(buf, sizeof buf, "  Boundaries        %zu, misorientation %.3g deg on average, %.3g %% below 15 deg\n",
+                    g.boundaries, g.boundary_misorientation_mean_deg, 100.0 * g.low_angle_fraction);
+    } else {
+      std::snprintf(buf, sizeof buf, "  Boundaries        not counted (more than %zu grains)\n",
+                    crystal::max_grains_for_boundaries);
+    }
+    std::cout << buf;
+    if (g.registry_below_deg > 0.0) {
+      std::snprintf(buf, sizeof buf, "  Registry          below %.3g deg: %zu groups of %zu grains in all\n",
+                    g.registry_below_deg, g.registry_groups, g.registry_grains);
+    } else {
+      std::snprintf(buf, sizeof buf, "  Registry          off (polycrystal.registry_below)\n");
+    }
+    std::cout << buf;
+  }
+  for (const auto &w : cfg.trim.plausibility_warnings()) {
+    if (w.find("beam spot") != std::string::npos) std::cout << "Warning: " << w << "\n";
+  }
+  return 0;
+}
+
 int cmd_crystals(const cli::Options &opt) {
   // The crystal database: every row that matches all words of the query.
   std::string query;
@@ -590,6 +658,7 @@ int main(int argc, char **argv) {
     if (opt.command == "stopping") return cmd_stopping(opt);
     if (opt.command == "cell") return cmd_cell(opt);
     if (opt.command == "crystals") return cmd_crystals(opt);
+    if (opt.command == "grains") return cmd_grains(opt);
     if (opt.command == "diag-crash") return cmd_diag_crash(opt);
     throw cli::UsageError("unknown command '" + opt.command + "'");
   } catch (const cli::UsageError &e) {

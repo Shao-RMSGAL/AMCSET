@@ -25,6 +25,7 @@
 
 #include "amcset_units.h"
 #include "crystal/grain_map.h"
+#include "crystal/grain_summary.h"
 #include "crystal/orientation.h"
 #include "crystal/unit_cell.h"
 
@@ -79,11 +80,14 @@ struct Crystal {
 /*!
  * \brief The grains of a polycrystalline \p crystal in a layer \p depth_A
  * thick: generated (Polycrystal::Source::voronoi) or the map read from its
- * file.
+ * file, with the low-angle boundaries in registry when
+ * Polycrystal::registry_below is set (put_in_registry; what it did goes to
+ * \p registry).
  * \throws std::invalid_argument if the crystal is not a polycrystal or its
  * file has not been read (Polycrystal::map).
  */
-std::shared_ptr<const GrainMap> make_grain_map(const Crystal &crystal, double depth_A);
+std::shared_ptr<const GrainMap> make_grain_map(const Crystal &crystal, double depth_A,
+                                               RegistryResult *registry = nullptr);
 
 /*!
  * \brief The Debye function Phi(x) = (1/x) Int_0^x t / (e^t - 1) dt

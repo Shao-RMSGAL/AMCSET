@@ -153,6 +153,11 @@ void check_polycrystal(const Polycrystal &p, const std::string &where) {
     throw std::invalid_argument(where + ".boundary_width: 0 to " + num(max_boundary_width_A) + " A, got " + num(width) +
                                 " A");
   }
+  const double registry = in_units(p.registry_below, degree);
+  if (!(registry >= 0.0) || !(registry <= max_registry_deg)) {
+    throw std::invalid_argument(where + ".registry_below: 0 (off) to " + num(max_registry_deg) + " degrees, got " +
+                                num(registry));
+  }
   const double scale = in_units(p.scale, angstrom);
   if (!(scale > 0.0) || !std::isfinite(scale)) throw std::invalid_argument(where + ".scale: must be positive");
   const double mis = in_units(p.misorientation, degree);
@@ -321,6 +326,25 @@ GrainMap GrainMap::from_voxels(std::vector<Grain> grains, std::vector<int> ids, 
   m.period_[0] = period_y_A;
   m.period_[1] = period_z_A;
   return m;
+}
+
+GrainMap GrainMap::with_grains(std::vector<Grain> grains) const {
+  if (grains.size() != grains_.size()) {
+    throw std::invalid_argument("grain map: " + std::to_string(grains.size()) + " grains instead of " +
+                                std::to_string(grains_.size()));
+  }
+  GrainMap m = *this;
+  m.grains_ = std::move(grains);
+  return m;
+}
+
+int GrainMap::voxel(int i, int j, int k) const noexcept {
+  if (ids_.empty() || i < 0 || i >= n_[0]) return -1;
+  j = (j % n_[1] + n_[1]) % n_[1];
+  k = (k % n_[2] + n_[2]) % n_[2];
+  return ids_[(static_cast<std::size_t>(i) * static_cast<std::size_t>(n_[1]) + static_cast<std::size_t>(j)) *
+                  static_cast<std::size_t>(n_[2]) +
+              static_cast<std::size_t>(k)];
 }
 
 GrainMap::At GrainMap::at(const Vec3 &r, double cap_A) const {

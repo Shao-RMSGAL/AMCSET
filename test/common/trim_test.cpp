@@ -2650,6 +2650,107 @@ TEST(TrimCrystal, PolycrystalGrains) {
   EXPECT_THROW(bad.validate(), std::invalid_argument); // grains of 1 A
 }
 
+TEST(TrimCrystal, RegistryMakesAMosaicTheSingleCrystal) {
+  // 30 keV B along the normal of (0 0 1) Si into grains of 300 A, all of
+  // the crystal's orientation (a mosaic without spread). Each grain's own
+  // lattice dechannels the ions at every boundary; in registry the grains
+  // are one lattice, and the ranges are those of the single crystal.
+  const std::size_t ions = 800;
+  const auto single = run_tallies(crystal_config(5, 30.0, silicon(), ions));
+  const auto mosaic = [&](double registry_deg) {
+    auto c = crystal_config(5, 30.0, silicon(), ions);
+    crystal::Polycrystal p;
+    p.grain_size = 300.0 * angstrom;
+    p.texture = crystal::Polycrystal::Texture::mosaic;
+    p.registry_below = registry_deg * amcset::common::degree;
+    c.layers[0].crystal->polycrystal = p;
+    // The beam over one period of the grains, and over three: the lattices
+    // move with the repeats of the grains.
+    c.ion.spot.width = c.ion.spot.height = 8.0 * 300.0 * angstrom * (registry_deg > 0.0 ? 3.0 : 1.0);
+    return run_tallies(c);
+  };
+  const auto apart = mosaic(0.0);
+  const auto registry = mosaic(1.0);
+  const auto error = [&](const Moments &a, const Moments &b) {
+    return std::sqrt(a.stddev() * a.stddev() / a.n + b.stddev() * b.stddev() / b.n);
+  };
+  std::printf("[ registry ] mean range: single crystal %.0f A, grains apart %.0f A, in registry %.0f A (+- %.0f)\n",
+              single.range.mean(), apart.range.mean(), registry.range.mean(), error(single.range, registry.range));
+  EXPECT_LT(apart.range.mean(), single.range.mean() - 4.0 * error(single.range, apart.range));
+  EXPECT_NEAR(registry.range.mean(), single.range.mean(), 4.0 * error(single.range, registry.range));
+}
+
+TEST(TrimCrystal, PerGrainResults) {
+  // Two columns of Si side by side: grain 1 has the crystal's (0 0 1) along
+  // the beam (a channel), grain 2 is turned 35 degrees away from it. The
+  // grains table counts each ion once where it entered, adds up to the run's
+  // own tallies, does not depend on the threads, and shows the channel.
+  auto c = crystal_config(5, 30.0, silicon(), 600);
+  const crystal::Mat3 base = c.layers[0].crystal->rotation();
+  std::vector<crystal::Grain> grains(2);
+  grains[0].rotation = base;
+  grains[1].rotation = crystal::rotation_about({0.0, 1.0, 2.0}, 35.0 * pi_v / 180.0) * base;
+  grains[1].origin_A = {0.3, 1.1, 2.2};
+  const double period = 4000.0;
+  crystal::Polycrystal p;
+  p.source = crystal::Polycrystal::Source::grain_file;
+  p.file = "two columns";
+  p.map = std::make_shared<const crystal::GrainMap>(crystal::GrainMap::from_seeds(
+      grains, {{{0, 1000, 2000}, 0.0, 0}, {{0, 3000, 2000}, 0.0, 1}}, period, period, true));
+  c.layers[0].crystal->polycrystal = p;
+  c.ion.spot.width = c.ion.spot.height = period * angstrom;
+  TrimSimulation sim(c);
+  sim.run();
+  const auto &t = sim.tallies();
+  ASSERT_EQ(t.grains.size(), 2u);
+  double entered = 0.0, stopped = 0.0, stopped_here = 0.0, depth = 0.0;
+  for (const auto &[key, g] : t.grains) {
+    EXPECT_EQ(key.first, 0u);
+    entered += g.entered;
+    stopped += g.entered_stopped;
+    stopped_here += g.stopped_here;
+    depth += g.depth_sum_A;
+  }
+  EXPECT_DOUBLE_EQ(entered, static_cast<double>(t.ions));       // every ion entered through one grain
+  EXPECT_DOUBLE_EQ(stopped, t.range.n);                          // and those that stopped are the range's
+  EXPECT_DOUBLE_EQ(stopped_here, t.range.n);                     // (one layer: they stopped in a grain)
+  EXPECT_NEAR(depth, t.range.s1, 1e-9 * t.range.s1);
+  const auto &channel = t.grains.at({0u, 0u});
+  const auto &turned = t.grains.at({0u, 1u});
+  EXPECT_NEAR(channel.entered / t.ions, 0.5, 0.1); // the spot covers both halves
+  const double deep = channel.depth_sum_A / channel.entered_stopped;
+  const double shallow = turned.depth_sum_A / turned.entered_stopped;
+  std::printf("[ grains ] mean depth: channel grain %.0f A, turned grain %.0f A\n", deep, shallow);
+  EXPECT_GT(deep, 1.5 * shallow);
+  // The table: one row per grain, the channel's axis along the beam.
+  const auto d = make_dataset(sim);
+  const output::Table *table = nullptr;
+  for (const auto &tb : d.tables) {
+    if (tb.key == "grains") table = &tb;
+  }
+  ASSERT_NE(table, nullptr);
+  const auto column = [&](const std::string &key) -> const output::Column & {
+    for (const auto &col : table->columns) {
+      if (col.key == key) return col;
+    }
+    throw std::runtime_error("no column " + key);
+  };
+  ASSERT_EQ(column("grain").values.size(), 2u);
+  EXPECT_NEAR(column("beam_axis_angle").values[0], 0.0, 1e-6);
+  EXPECT_GT(column("beam_axis_angle").values[1], 5.0);
+  EXPECT_NEAR(column("mean_depth").values[0], deep, 1e-9 * deep);
+  // The same with one thread.
+  c.threads = 1;
+  const auto one = run_tallies(c);
+  for (const auto &[key, g] : t.grains) {
+    EXPECT_DOUBLE_EQ(one.grains.at(key).entered, g.entered);
+    EXPECT_DOUBLE_EQ(one.grains.at(key).depth_sum_A, g.depth_sum_A);
+    EXPECT_DOUBLE_EQ(one.grains.at(key).stopped_here, g.stopped_here);
+  }
+  // A single crystal has no grains to count.
+  EXPECT_TRUE(run_tallies(crystal_config(5, 30.0, silicon(), 16)).grains.empty());
+}
+
 // The trajectory and MD event files in the refined and crystal transports:
 // the recorded points form a tree with times, recording changes no tally,
 // and in the handoff mode what MD takes plus what the BCA books is the ion

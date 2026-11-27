@@ -232,6 +232,42 @@ std::vector<std::string> TrimConfig::plausibility_warnings() const {
                     "layer as amorphous (as TRIM does), with the unit cell's composition and density; set "
                     "physics.transport to \"crystal\" to follow the lattice.");
       }
+      if (l.crystal && l.crystal->polycrystal && transport == Transport::crystal) {
+        // The beam must cover the period of the grains, or only the grains
+        // under it are met (docs/CLI.md "Polycrystals").
+        const auto &p = *l.crystal->polycrystal;
+        double py = in_units(p.period_y, angstrom);
+        double pz = in_units(p.period_z, angstrom);
+        if (!(py > 0.0) || !(pz > 0.0)) {
+          if (p.source == crystal::Polycrystal::Source::voronoi) {
+            const double automatic = 8.0 * in_units(p.grain_size, angstrom);
+            if (!(py > 0.0)) py = automatic;
+            if (!(pz > 0.0)) pz = automatic;
+          } else if (p.map) {
+            if (!(py > 0.0)) py = p.map->period_y_A();
+            if (!(pz > 0.0)) pz = p.map->period_z_A();
+          }
+        }
+        const auto &spot = ion.spot;
+        const double sw = in_units(spot.width, angstrom);
+        const double sh = in_units(spot.height, angstrom);
+        const double tolerance = 1.0 - 1e-6;
+        bool small = false;
+        switch (spot.shape) {
+        case BeamSpot::Shape::point: small = true; break;
+        case BeamSpot::Shape::rectangle:
+        case BeamSpot::Shape::gaussian: small = sw < tolerance * py || sh < tolerance * pz; break;
+        case BeamSpot::Shape::circle: small = sw < tolerance * std::max(py, pz); break;
+        }
+        if (small && py > 0.0 && pz > 0.0) {
+          w.push_back(where + ": the beam spot (ion.spot: " + to_string(spot.shape) +
+                      (spot.shape == BeamSpot::Shape::point ? std::string()
+                                                            : ", " + length_text(sw) + " x " + length_text(sh)) +
+                      ") is smaller than the period of the grains (" + length_text(py) + " x " + length_text(pz) +
+                      "): the ions meet only the grains under it, not a representative sample. Make the spot "
+                      "at least as large as the period.");
+        }
+      }
       if (l.crystal && transport == Transport::crystal && crystal.thermal_vibrations) {
         // Atoms without thermal data: the tabulated Debye temperature of a
         // pure element (said, since it was not asked for), else they stand
