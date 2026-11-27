@@ -58,6 +58,11 @@
   <releases>
     <release version="@PROJECT_VERSION@" date="@AMCSET_RELEASE_DATE@">
       <description>
+        <p>A recoil atom (PKA) inside the target, random seeds, a database of 122 crystals, an automatic target depth that shrinks to the ions; fixes: missing MD crossing events in the crystal transport, GUI results no longer written to the working directory.</p>
+      </description>
+    </release>
+    <release version="1.0.0" date="2026-11-26">
+      <description>
         <p>First stable release: SRIM mode validated against TRIM-2013, crystal transport, packages for Windows and Linux.</p>
       </description>
     </release>

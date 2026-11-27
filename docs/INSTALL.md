@@ -22,7 +22,7 @@ download" below). To build from source, see `docs/DEVELOPMENT.md`.
 **MSI.** Double-click it, or install silently from an administrator console:
 
 ```powershell
-msiexec /i AMCSET-1.0.0-windows-x64.msi /qn
+msiexec /i AMCSET-1.0.1-windows-x64.msi /qn
 ```
 
 It installs to `C:\Program Files\AMCSET` (`bin\amcset-gui.exe`,
@@ -53,7 +53,7 @@ them first ("Checking a download" below).
    *Properties* > tick *Unblock* > *OK*, or in PowerShell
 
    ```powershell
-   Unblock-File AMCSET-1.0.0-windows-x64.zip
+   Unblock-File AMCSET-1.0.1-windows-x64.zip
    ```
 
    Unblock the ZIP **before** unzipping it: files unzipped from a marked
@@ -91,18 +91,18 @@ Microsoft's descriptions: "What is Smart App Control?"
 
 ## Linux
 
-**AppImage.** `chmod +x AMCSET-1.0.0-x86_64.AppImage` and run it: the GUI
-starts. The CLI is inside: `./AMCSET-1.0.0-x86_64.AppImage amcset run
+**AppImage.** `chmod +x AMCSET-1.0.1-x86_64.AppImage` and run it: the GUI
+starts. The CLI is inside: `./AMCSET-1.0.1-x86_64.AppImage amcset run
 scenario.json`. It needs FUSE 2 (`libfuse2`) or, without it, `--appimage-extract-and-run`.
 
-**Debian, Ubuntu.** `sudo apt install ./amcset_1.0.0_debian13_amd64.deb`
+**Debian, Ubuntu.** `sudo apt install ./amcset_1.0.1_debian13_amd64.deb`
 (it pulls in the Qt libraries it needs). Remove with `sudo apt remove
 amcset`.
 
-**Fedora.** `sudo dnf install ./amcset-1.0.0-1.fc42.x86_64.rpm`. Remove with
+**Fedora.** `sudo dnf install ./amcset-1.0.1-1.fc42.x86_64.rpm`. Remove with
 `sudo dnf remove amcset`.
 
-**CLI only.** Unpack `amcset-cli-1.0.0-linux-x86_64.tar.gz` anywhere and run
+**CLI only.** Unpack `amcset-cli-1.0.1-linux-x86_64.tar.gz` anywhere and run
 `bin/amcset` (the stopping tables are found in `share/amcset` next to
 `bin`). It needs only the C and C++ runtime of the system (glibc 2.35 or
 later).
@@ -117,7 +117,7 @@ and `amcset-gui(1)`.
 Each release lists the SHA-256 of every file in `SHA256SUMS.txt`:
 
 ```powershell
-Get-FileHash AMCSET-1.0.0-windows-x64.msi -Algorithm SHA256
+Get-FileHash AMCSET-1.0.1-windows-x64.msi -Algorithm SHA256
 ```
 
 ```bash
@@ -128,7 +128,7 @@ Every file also has a build attestation (GitHub's signed record of the
 workflow run that built it from the repository); with the GitHub CLI:
 
 ```bash
-gh attestation verify AMCSET-1.0.0-x86_64.AppImage --repo Shao-RMSGAL/AMCSET
+gh attestation verify AMCSET-1.0.1-x86_64.AppImage --repo Shao-RMSGAL/AMCSET
 ```
 
 ## Where AMCSET looks for its data

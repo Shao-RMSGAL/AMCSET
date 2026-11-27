@@ -26,7 +26,7 @@ Control's signing rule (RELEASING.md §3).
 | **10. Correct folders**: Program Files by default; per-user data in the user's profile; no auto-start | MSI installs to `C:\Program Files\AMCSET`; settings in the registry (QSettings), logs and recovery copies in `%LOCALAPPDATA%\AMCSET`, CLI crash reports in `%TEMP%`; results only where the user says; nothing starts with Windows | install layout listed from `cmake --install` |
 | **11. Multi-user sessions** | nothing machine-wide is written at run time; each user has their own settings | code review |
 | **12. Native x64** | x64 only | — |
-| **Version information and icon** (shown by Explorer, Task Manager, installers) | `packaging/windows/version.rc.in`: company, product, version 1.0.0, description, copyright; the logo | `(Get-Item amcset.exe).VersionInfo` |
+| **Version information and icon** (shown by Explorer, Task Manager, installers) | `packaging/windows/version.rc.in`: company, product, version (the project's), description, copyright; the logo | `(Get-Item amcset.exe).VersionInfo` |
 | **Packaging**: MSIX manifest valid, full trust declared | `packaging/windows/AppxManifest.xml.in`: runFullTrust, the GUI in Start, `amcset` and `amcset-gui` as execution aliases (the CLI as a console program) | `makeappx pack` validates the manifest against the schema |
 | **Smart App Control / SmartScreen** | signed releases (above); until then docs/INSTALL.md "Running the unsigned Windows release" says what users can do | open, with item 6 |
 

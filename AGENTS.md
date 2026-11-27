@@ -6,7 +6,7 @@ it is short on purpose and links to the details. Directory-specific rules
 live in `CLAUDE.md` files next to the code (`common/`, `common/src/trim/`,
 `gui/`, `cli/`, `test/`, `tools/`); they are loaded when you work there.
 
-State of this file: AMCSET 1.0.1 (preliminary, not released), 2026-11-26.
+State of this file: AMCSET 1.0.1, 2026-11-27.
 
 ---
 
@@ -385,7 +385,7 @@ in **`docs/HOWTO.md`**.
 
 ---
 
-## 8. Current state (2026-11-25)
+## 8. Current state (2026-11-27)
 
 - **Git:** branch `develop` (remote `git@github.com:Shao-RMSGAL/AMCSET.git`).
   Everything up to the 1.0 release files and the validation review is
@@ -403,7 +403,7 @@ in **`docs/HOWTO.md`**.
   `v1.0.0`, 2026-11-26). Not yet done: the MSIX in the workflow (needs
   signing), the App Certification Kit, AppStream screenshots, the Flatpak
   build.
-- **1.0.1 (preliminary, on `develop`, not tagged or released):** the MD
+- **1.0.1 (merged into `main` on 2026-11-27):** the MD
   crossing fix of the crystal transport, random seeds, the automatic depth
   that shrinks and rounds, a PKA inside the target (`source.repeat`,
   `--recoil`, GUI; particle sources in the crystal transport), the GUI's

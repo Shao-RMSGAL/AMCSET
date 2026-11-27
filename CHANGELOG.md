@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.1 — November 2026 (preliminary, not released)
+## 1.0.1 — November 2026
 
 ### Added
 
