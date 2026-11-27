@@ -35,7 +35,7 @@ State of this file: AMCSET 1.0.1, 2026-11-27.
    significant comparison with TRIM reference runs (`tools/trim_compare`,
    `docs/VALIDATION.md` §2). Fe → Fe is the priority case; never tune to a
    single case.
-5. **Every change builds and passes the tests** (258 CTest tests on Windows, 257 on Linux: the
+5. **Every change builds and passes the tests** (266 CTest tests on Windows, 265 on Linux: the
    GoogleTest suites and the CLI end-to-end runs). Add a focused test for
    every bug fix or feature.
 6. **One scenario model.** `config::RunConfig` (`run_config.h`) describes a
@@ -109,7 +109,8 @@ common/                     amcset-common (static library): everything except th
                               on lattice sites), materials.h (common crystals: Gemmell 1974),
                               crystal_database.h (122 crystals with sources; search, matching),
                               grain_map.h (polycrystals: grains, generated Voronoi), grain_io.h
-                              (grain files, Neper, EBSD)
+                              (grain files, Neper, EBSD), grain_summary.h (boundaries, summary,
+                              low-angle boundaries in registry)
   include/data_files.h        Locates data/ (the bundled SRIM tables) at run time
   include/element_data.h      Element table (TRIM's ATOMDATA values + NIST I-values)
   include/isotope_data.h      NIST isotopes (generated database)
@@ -120,7 +121,8 @@ common/                     amcset-common (static library): everything except th
                               trim_in.cpp, trim_dat.cpp, single_precision.cpp
   src/physics/                stopping.cpp, scattering.cpp (shared physics)
   src/crystal/                unit_cell.cpp, orientation.cpp, crystal.cpp, cell_io.cpp, lattice_search.cpp,
-                              materials.cpp, crystal_database.cpp, grain_map.cpp, grain_io.cpp
+                              materials.cpp, crystal_database.cpp, grain_map.cpp, grain_io.cpp,
+                              grain_summary.cpp
   src/output/                 table.cpp (shaping), units.cpp, writers.cpp (CSV/JSON), parquet.cpp
   src/run_config.cpp          JSON <-> RunConfig, overrides, make_engine (incl. native adapter)
   src/*.cpp                   Native engine (ion.cpp holds all ion models)
@@ -425,11 +427,15 @@ in **`docs/HOWTO.md`**.
   of the electronic stopping (0.25 to 1) without fixing it: the default 0.5
   is not a fit. Ranges in crystals exceed amorphous ones by channeling
   (`tools/crystal/range_study.py`, docs/CLI.md "Why ranges in a crystal are
-  longer"). Polycrystals (phase 3, **on hold** by the maintainer's choice:
-  single crystals and amorphous targets first) run from a scenario
-  (`layers.N.crystal.polycrystal`: generated grains, grain files, Neper,
-  EBSD) but have no GUI yet, and the Neper and EBSD readers are untested on
-  real files: `docs/CRYSTAL_DESIGN.md` §13 lists what is left. Then: dose
+  longer"). Polycrystals (phase 3, taken up again on 2026-11-27) run from a
+  scenario (`layers.N.crystal.polycrystal`: generated grains, grain files,
+  Neper, EBSD), with low-angle boundaries in registry (`registry_below`)
+  a grain summary (`amcset grains`, summary.json) and per-grain results
+  (table `grains`); the readers are checked on public Neper, MTEX and orix
+  files (the frame of EBSD Euler angles on the map stays open). The GUI
+  edits them (Crystal tab, `GrainsBox`) and draws the whole beam spot with
+  the grains (path views, `SampleScene`). `docs/CRYSTAL_DESIGN.md` §13 lists
+  what is left (a comparison with measurements next). Then: dose
   dependence (phase 5), a fit and wider validation (phase 6: low-dose
   profiles with stated tilt and twist, W and Fe, Cu/Au RBS).
 - **Not done yet:** a controlled benchmark (`tools\windows\benchmark_vs_trim.bat`

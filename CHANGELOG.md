@@ -1,5 +1,77 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Low-angle grain boundaries in registry** (`polycrystal.registry_below`,
+  off by default). Neighbouring grains misoriented by less than the angle
+  continue each other's lattice across their boundary, as at a subgrain
+  boundary; before, every grain's lattice passed through its own seed, so
+  even grains of one orientation dechannelled the beam at every boundary.
+  30 keV B along ⟨001⟩ of Si into grains of 300 Å of one orientation: mean
+  range 1909 Å apart, 3581 ± 63 Å in registry, 3673 Å in the single crystal
+  (800 ions each). With a spread only the boundaries the groups are built
+  through are exact (docs/CLI.md "Polycrystals"). Tests
+  `TrimCrystal.RegistryMakesAMosaicTheSingleCrystal`,
+  `CrystalGrains.LowAngleBoundariesInRegistry`.
+- **The grains of a polycrystal summarised**: `amcset grains scenario.json
+  [--json]` and summary.json `crystals[].grains` give the number of grains,
+  their sizes, their texture, their boundaries and what the registry joined
+  (`crystal/grain_summary.h`; docs/OUTPUT.md). Tests
+  `CrystalGrains.BoundariesBetweenSeedsAndVoxels`,
+  `CrystalGrains.SummaryOfGeneratedGrains`, `cli.grains`.
+- **A warning when the beam spot is smaller than the grains' period**: the
+  ions then meet only the grains under it.
+- **Per-grain results**: the table `grains` (crystal transport with a
+  polycrystal) lists every grain an ion entered or stopped in, with its
+  orientation, the axis nearest the beam in it, the ions that entered
+  through it and their mean final depth, and the ions that stopped in it
+  (docs/OUTPUT.md). Two columns of Si under 30 keV B, one with ⟨001⟩ along
+  the beam: 3525 Å against 1318 Å. No other tally changes. Test
+  `TrimCrystal.PerGrainResults`.
+
+- **Neper tessellations with Kocks or Roe Euler angles, and 2D
+  tessellations** (their cells become columns).
+- **GUI: the whole beam spot.** A switch in the path views (crystal
+  transport) draws every path at its true place on the sample (its ion's
+  entry point added), at true scale, with the entry points and the spot's
+  outline on the surface and the sample under the spot: sections through
+  the spot's centre in the depth views, the surface in the beam view and a
+  3D block, with grains coloured by the beam direction in their crystal
+  (inverse pole figure of cubic crystals, with a key) and their boundaries
+  drawn; hovering names the grain and the axis nearest the beam in it.
+  Trajectory points carry the entry point (`CollisionPoint::entry_x_A`,
+  `entry_y_A`); no result changes. docs/GUI.md.
+- **GUI: polycrystals in the Crystal tab.** *Polycrystal* next to the layer
+  list and the box *Grains (polycrystal)*: generated grains (size, columns,
+  texture, spread, seed) or grains from a grain file, Neper or EBSD, the
+  period, disordered boundaries and the registry, with a map of the grains
+  at the surface and their summary.
+
+### Fixed
+
+- **Neper orientations were read inverted.** Neper writes its orientations
+  in the passive convention (`rodrigues:passive`, also the default without
+  a suffix); the reader turned `:passive` values into the opposite rotation
+  and read an unmarked `rotmat` the wrong way round. Every cell of a
+  tessellation written by current Neper (`:passive` in the file) had the
+  inverse of its orientation. Found by
+  reading Neper's own test tessellations: a ⟨111⟩ fibre along x came out
+  with (0.58, -0.16, 0.80) along x. Test `CrystalGrains.NeperTessellation`
+  (Neper's documented example in every descriptor) and the optional
+  `CrystalGrains.PublicSampleFiles`.
+- **EBSD maps without a step in the header** took a step from the point
+  density, 7 % short on a grid of 15 x 15 points; now the grid's step.
+
+### Changed
+
+- **Polycrystals use about a third of the memory.** Each grain's lattice
+  shares the cell's site data instead of a copy: about a million grains of
+  Si took 1.9 GB and 2.8 s to start, now 619 MB and 0.7 s. Results are
+  identical (test `CrystalSearch.SharedSitesGiveTheSameLattice`; the
+  TRIM-format files of a 12 000-grain run are byte for byte the same).
+
 ## 1.0.1 — November 2026
 
 ### Added

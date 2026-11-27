@@ -95,10 +95,20 @@ and `output` in the working directory for a TRIM.IN.
   vibrations (Debye temperature or rms amplitude; *In use* shows what the
   transport takes, including the tabulated value of a pure element), and
   the settings of the crystal transport (`physics.crystal`, `ion.spot`).
-  Polycrystals (`layers.N.crystal.polycrystal`, docs/CLI.md "Polycrystals")
-  cannot be set up here yet: a scenario that has one opens and runs, the
-  tab lists the layer as a polycrystal and shows its unit cell, and
-  replacing the cell keeps the grains' description.
+  *Polycrystal* (next to the layer list, or *Grains* in the box *Grains
+  (polycrystal)*) makes the layer grains of its unit cell
+  (`layers.N.crystal.polycrystal`, docs/CLI.md "Polycrystals"): generated
+  grains (grain size, columns, texture random / fiber / mosaic with its
+  spread, generator seed), or grains read from an AMCSET grain file, a
+  Neper tessellation or an EBSD map (*Choose...*; unit length, the
+  misorientation that joins EBSD points and the phase); for every source
+  the lateral period, the width of disordered boundaries and *In registry
+  below* (low-angle boundaries in registry). Under the fields: a map of the
+  grains at the surface over one period, coloured by the beam direction in
+  each grain (cubic crystals: [001] red, [101] green, [111] blue), and the
+  summary of `amcset grains` (number, sizes, texture, boundaries, registry),
+  both made off the GUI thread from the grains the transport builds.
+  Replacing the cell keeps the grains' description.
   A crystal is followed by the crystal transport only: the box *Crystal
   transport (follows the lattice)* at the top of the tab switches it on and
   off (the same switch as in the Calculation tab), and the tab says so
@@ -222,6 +232,22 @@ opens it. Please attach both to a bug report.
   segments are kept (1 million take about 72 MB). If the graphics API does
   not work on a machine, set the environment variable `AMCSET_RHI` to
   `opengl`, `vulkan`, `d3d11` or `d3d12`.
+  **Whole beam spot** (crystal transport only, the one with entry points):
+  every path at its true place on the sample, i.e. with its ion's entry
+  point on the spot added (the results themselves stay relative to each
+  entry point), at true scale in every view; the entry points marked on
+  the surface and the spot's outline (rectangle, circle, or the half
+  maximum of a Gaussian) in amber; and the sample under the spot: the
+  depth-Y and depth-Z views show sections through the spot's centre (z = 0
+  and y = 0), the beam view the surface, and the 3D view a block of the
+  target (the surface and two sides) with the paths inside it. Grains are
+  coloured by the beam direction in their crystal (cubic: inverse pole
+  figure, key in the corner; other crystals one colour per grain), single
+  crystals by theirs, amorphous layers grey; boundaries and interfaces are
+  lines. Hovering over a view names the layer and grain under the mouse
+  and the axis nearest the beam in it ("grain 680: beam 7.5 deg from
+  [1 2 2]"). The sample is drawn from the scenario on a worker thread (the
+  same grains as the transport) and follows every change of it.
 - **Plots**: TRIM's plots, live while the calculation runs: ion
   distribution, ions and recoils, lateral spread, ionization, phonons,
   energy to recoils, energy absorbed by each element, vacancies, collision
@@ -266,8 +292,8 @@ the exit status 128 + the signal number.
 | `app/` | `MainWindow`: actions, menus, docks; connects the parts |
 | `model/` | `Scenario` (the edited RunConfig with undo), table models of layers and elements, unit-aware text parsing |
 | `run/` | `RunController` (engine on a worker thread, live snapshots, pause/stop/continue), `TrackStore` (path segments), datasets of the native engine and of results.json |
-| `setup/` | the setup panels (ion, target, crystal, calculation, output), `FormBinder` (two-way binding of widgets to the scenario), the periodic table and the output settings dialog |
-| `views/` | `TrackView` (QRhi path views) and `TrackPanel`, `PlotWidget` and `PlotsPanel`, `TablesPanel`, `StatsPanel`, `CellView` (the unit cell in three dimensions, QPainter) |
+| `setup/` | the setup panels (ion, target, crystal with `GrainsBox` for polycrystals, calculation, output), `FormBinder` (two-way binding of widgets to the scenario), the periodic table and the output settings dialog |
+| `views/` | `TrackView` (QRhi path views: lines for the paths, triangles for the sample of the whole-beam-spot view, with the same shaders) and `TrackPanel`, `SampleScene` (the sample under the beam spot: sections, surface and block, built from the scenario's grain maps off the GUI thread), `PlotWidget` and `PlotsPanel`, `TablesPanel`, `StatsPanel`, `CellView` (the unit cell in three dimensions, QPainter) |
 
 `gui/shaders/` holds the GLSL sources of the path shaders and their compiled
 `.qsb` files in `baked/`. The build uses the baked files by default, because
@@ -280,5 +306,7 @@ For automated checks the application accepts `--run` (start at once),
 `--screenshots DIR` (save images of every view, `plot_<id>.png` of every
 plot, `setup<n>.png` of every setup tab and `setup<n>_full.png` of the
 whole of each tab that scrolls, and the Crystal tab and its cell view as
-`crystal_tab.png` and `crystal_cell.png`, when the run ends) and
-`--quit`.
+`crystal_tab.png` and `crystal_cell.png`, when the run ends; for the
+crystal transport also the whole beam spot as `paths_spot.png`,
+`paths_spot_3d.png`, `paths_spot_surface.png` and `paths_spot_depth_y.png`)
+and `--quit`.

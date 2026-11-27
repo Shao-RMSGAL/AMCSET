@@ -1,16 +1,15 @@
 # Crystalline targets — design
 
-Status (2026-11-24): **phases 1 and 2 of §8 are implemented**: the crystal
+Status (2026-11-27): **phases 1 to 4 of §8 are implemented**: the crystal
 library, the scenario's `layers.N.crystal`, the `amcset cell` command
-(phase 1, §10), and the crystal transport for single crystals with a static
-lattice and thermal vibrations, with the beam spot (phase 2, §11). Of the
-later phases two parts are in (§12): the GUI's Crystal tab for single
-crystals (phase 4 without the grain preview) and a first comparison with
-measurements (phase 6: a channeling dip and boron profiles in silicon, which
-bracket the stopping division without fixing it). The user documentation is
-docs/CLI.md "Crystals" and docs/GUI.md. Polycrystals (phase 3) are built in
-the library, the scenario and the transport, without a GUI (§13, which also
-lists what is left). **Still a proposal**: the dose-dependent lattice
+(phase 1, §10), the crystal transport for single crystals with a static
+lattice and thermal vibrations, with the beam spot (phase 2, §11),
+polycrystals in the library, the scenario, the transport and the outputs
+(phase 3, §13), and the GUI's Crystal tab with its grains and the
+whole-beam-spot path view (phase 4, §12, §13). Of phase 6 a first
+comparison with measurements is in (§12: a channeling dip and boron
+profiles in silicon, which bracket the stopping division without fixing
+it). The user documentation is docs/CLI.md "Crystals" and docs/GUI.md. **Still a proposal**: the dose-dependent lattice
 (phase 5), a fitted stopping division and the wider validation (phase 6).
 §10-§13 list where the built parts differ from the proposal below. As further parts are built, their user-facing
 description moves to the owning document and this file keeps the design
@@ -463,11 +462,13 @@ docs/GUI.md). Differences from §6:
   export.
 - No polycrystal settings and no grain preview yet (§13).
 
-## 13. Phase 3 (polycrystals), as built so far (2026-11-24)
+## 13. Phase 3 (polycrystals), as built so far (2026-11-24, 2026-11-27)
 
-**On hold** (the maintainer's decision, 2026-11-25): work concentrates on
-single crystals and amorphous targets. What is built stays, tested and
-documented; the list of what is left (below) waits.
+Put on hold on 2026-11-25 and taken up again on 2026-11-27 (the
+maintainer's decisions): the groundwork, low-angle boundaries in registry,
+the readers checked on public Neper and EBSD files, per-grain results and
+the GUI (grain editor and the whole-beam-spot view) are built (below); a
+comparison with measurements is next.
 
 **Built** (library, scenario and transport; tested):
 
@@ -491,6 +492,51 @@ documented; the list of what is left (below) waits.
 - Tests `CrystalGrains` (7), `TrimCrystal.PolycrystalGrains`,
   `RunConfig.PolycrystalKeys`; `tools/crystal/polycrystal_checks.py`.
 
+**Built on 2026-11-27** (the groundwork and the registry):
+
+- Memory: a grain's `LatticeSearch` shares the cell's site data with the
+  layer's and keeps only its rotated vectors and offsets (the second
+  constructor; the same numbers to the last bit, test
+  `CrystalSearch.SharedSitesGiveTheSameLattice`). About a million grains of
+  Si: 1.9 GB and 2.8 s at start before, 619 MB and 0.7 s after (16 ions;
+  results identical).
+- `crystal/grain_summary.h`: `grain_boundaries` (which grains touch, with a
+  point of each boundary: points of equal power distance between nearby
+  seeds, exact but blind to faces that the line between their seeds misses,
+  plus a grid of about 500 points per grain; voxel faces for voxels),
+  `summarize_grains` (number, equivalent diameters, texture against the
+  crystal's orientation, boundaries and their misorientation), `to_json`,
+  and `put_in_registry`.
+- `polycrystal.registry_below`: neighbouring grains misoriented by less form
+  groups; breadth-first from the lowest-numbered grain, each grain takes
+  the symmetry-equivalent orientation nearest its parent's and passes
+  through the parent's lattice point nearest their boundary point. A group
+  of one orientation is one lattice; with a spread only the boundaries of
+  the spanning tree are exact, the others drift by the misorientation
+  times the distance from the anchor points (of a mosaic with 0.5° spread,
+  886 of 3994 boundaries within 0.5 Å, the 617 tree edges among them).
+  The lattices stay fixed in the layer: the map's lateral period is not a
+  lattice vector, so lattices that moved with the repeats of the map would
+  be out of step at the boundaries between repeats.
+- The summary in summary.json (`crystals[].grains`) and `amcset grains`;
+  the plausibility warning when `ion.spot` is smaller than the period.
+- Per-grain results: `TrimTallies::grains` (sparse, merged in block order)
+  and the table `grains` (docs/OUTPUT.md): each ion's entry grain with its
+  final depth, and the grain it stopped in.
+
+**The GUI (built 2026-11-27).** The maintainer asked for a view of the
+whole beam spot at true aspect, with the ions at their simulated entry
+points and the polycrystal in 2D and 3D. Built: the trajectory points carry
+each ion's entry point on the spot (`CollisionPoint::entry_x_A`,
+`entry_y_A`); the path views' *Whole beam spot* adds it to every path and
+draws `gui::SampleScene` under the paths (sections, surface and a 3D block
+sampled from the grain maps the transport builds, cells merged into quads
+along rows, boundaries as lines; grains in inverse-pole-figure colours of
+the beam direction for cubic crystals), the spot's outline and the entry
+points; the Crystal tab's `GrainsBox` edits the polycrystal with a surface
+map and the summary. Checked in the running GUI on 1 MeV He into Ni with
+grains of 250 nm under a 2 µm spot (docs/GUI.md).
+
 **Differences from §3.4.** The grain file is a keyword text file, not
 JSON/CSV. The generator's seed is the polycrystal's own, not the run's. EBSD
 grains take the orientation of their first point (no averaging), and
@@ -498,18 +544,13 @@ unindexed points take the nearest grain instead of becoming amorphous.
 
 **Not built yet.**
 
-- GUI: polycrystal settings in the Crystal tab and a preview slice coloured
-  by orientation (the rest of phase 4). The tab shows a polycrystal layer's
-  unit cell and keeps its `polycrystal` when the cell is replaced, but
-  cannot create or edit one.
-- A warning when `ion.spot` is smaller than the grains' period.
-- A check of the Neper and EBSD readers against real files (orientation
-  conventions, axes); TSL hexagonal grids are read as points but only a
-  square grid is tested.
-- A summary of the grains for the user (`amcset cell` or a `grains`
-  command: number of grains, size distribution, texture), and the grains in
-  results.json.
-- Grains in registry across low-angle boundaries (a mosaic crystal
-  dechannels too much: docs/CLI.md "Polycrystals", Limits).
+- A comparison of polycrystal runs with measurements.
+- The frame of an EBSD map's Euler angles on the map (EDAX settings 1 to 4,
+  Oxford's CS0): neither file format records it, so the readers take the
+  angles as written; a map of a grain of known orientation would settle
+  each vendor's (docs/CLI.md "Polycrystals", Limits). The readers
+  themselves are checked on public files since 2026-11-27 (Neper's test
+  tessellations, which exposed inverted orientations, now fixed; MTEX's
+  generated square and hexagonal maps; orix's measured map; docs/TESTING.md).
 - Then phase 5 (dose-dependent lattice, `amcset scan`) and the rest of
   phase 6 (a fit of the stopping division; W, Fe, Cu/Au).

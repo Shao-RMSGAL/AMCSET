@@ -676,13 +676,47 @@ are met after crossing into it.
 | `seed` | Of the grain generator (default 1). Not the run's seed: the same grains for every run. |
 | `period` | The lateral period of the grains, one length or `[y, z]`: a representative patch of the surface that repeats. Default: eight grain sizes for generated grains, the extent of the file's map otherwise. |
 | `boundary_width` | Width of a slab at every grain boundary that is treated as amorphous (random collision partners): a disordered boundary. Default 0; at most 100 A. |
+| `registry_below` | Low-angle boundaries in registry: neighbouring grains misoriented by less than this angle (default 0: off; at most 30°) continue each other's lattice across their boundary, as at a subgrain boundary. Below. |
 | `file` | The file of the grains, relative to the scenario. |
 | `scale` | Neper: the length of one unit of the tessellation (default `"1 um"`). |
 | `misorientation`, `phase` | EBSD: neighbouring points closer in orientation than this (default `"5 deg"`, up to the lattice's own rotations) are one grain; `phase` selects the phase of the map that is this crystal (default 0: every indexed point). |
 
 **The beam must cover the grains.** Each ion enters at a random point of
 `ion.spot` (default 1 um square); with a spot smaller than the `period` only
-part of the grains is met. Set the spot to the period.
+part of the grains is met, and the run warns about it. Set the spot to the
+period.
+
+**The grains of a scenario.** `amcset grains scenario.json [--json]` builds
+each polycrystal layer's grains as a run would and prints their number,
+their sizes (equivalent diameters), their texture (misorientation from the
+crystal's `orientation` and the tilt of the normal direction), their
+boundaries (how many, how misoriented, the share below 15°) and what the
+registry joined. summary.json carries the same under `crystals[].grains`
+(docs/OUTPUT.md). After a run, the table `grains` (docs/OUTPUT.md) lists
+every grain the ions entered or stopped in, with its orientation, the axis
+nearest the beam in it, and how deep the ions that entered through it went:
+which grains channel.
+
+**Low-angle boundaries in registry** (`registry_below`). Without it every
+grain's lattice passes through its own seed, so even grains of one
+orientation are out of step at their boundaries and dechannel there. With
+it, neighbouring grains misoriented by less than the threshold form
+groups; in each group, from the grain with the smallest number outwards,
+every grain takes the orientation equivalent to its own (up to the
+lattice's rotations) nearest its neighbour's and passes through the
+neighbour's lattice point nearest their common boundary. A group of one
+orientation is then one lattice everywhere: 30 keV B along ⟨001⟩ of Si
+into grains of 300 A of the crystal's orientation goes 1909 A deep on
+average with each grain's own lattice and 3581 ± 63 A in registry, against
+3673 A in the single crystal (800 ions each; test
+`TrimCrystal.RegistryMakesAMosaicTheSingleCrystal`). With a spread the
+lattices drift apart away from the boundary points the group was built
+through, by the misorientation times the distance (about 1 A over 100 A
+at 0.5°), as the dislocations of a real subgrain boundary make them do;
+of a mosaic with 0.5° spread about 22 % of the boundaries are within
+0.5 A of registry, most of the rest are not. The lateral repeats of the
+map are in registry only as far as that drift allows, so keep the spot at
+the period.
 
 **Sources.** Generated grains are a Poisson-Voronoi tessellation (random
 seed points; each grain's lattice passes through its seed). The grain file
@@ -712,17 +746,31 @@ Small random grains are the amorphous target, larger ones let some ions
 channel; a texture that keeps the channel along the beam keeps part of the
 channeling; wide disordered boundaries remove it.
 
-**Limits.** The lattices of neighbouring grains are not in registry: even
-grains of one orientation (mosaic without spread) dechannel part of the beam
-at every boundary (1752 A against 2669 A for the single crystal above),
-where real subgrain boundaries keep the lattice nearly continuous. The
-readers of Neper and EBSD files were written from the formats and are
-tested on small hand-written files, not on files produced by Neper or by an
-EBSD system: check the orientation convention with a known grain before
-relying on them. A tessellation is repeated laterally, so the cells at the
+**Limits.** Without `registry_below` the lattices of neighbouring grains are
+not in registry: even grains of one orientation (mosaic without spread)
+dechannel part of the beam at every boundary (1752 A against 2669 A for the
+single crystal above). The Neper reader follows Neper's documented
+orientation convention (passive unless a descriptor says `:active`) and is
+checked on Neper's own test tessellations, among them a ⟨111⟩ fibre along x;
+the EBSD readers are checked on MTEX's generated `.ctf` maps (every point in
+its true grain, square and hexagonal grids) and on a measured two-phase
+`.ang` map (docs/TESTING.md, "Optional test against public grain files").
+What those files cannot tell is how a vendor's Euler-angle frame lies on
+the map: AMCSET takes the angles as written, relative to the map's x and y
+and the outward normal, while EDAX's maps follow one of four "settings"
+that the file does not record (MTEX assumes setting 2 and corrects the
+angles on import). A different frame turns each grain about the normal or
+by 180° about an axis in the surface. For a beam along the normal the
+latter leaves the crystal axis along the beam the same line; for a tilted
+beam, and for the in-plane twist, it matters: export the orientations in
+the sample frame from the EBSD software (or MTEX), or check the convention
+with a grain of known orientation, before relying on tilted-beam results. A tessellation is repeated laterally, so the cells at the
 sides of a non-periodic Neper tessellation differ from Neper's. For voxels
-the distance to a boundary counts faces only. The GUI shows a polycrystal's
-unit cell but cannot edit or preview its grains.
+the distance to a boundary counts faces only. The GUI edits a polycrystal
+in the Crystal tab and draws its grains under the whole beam spot
+(docs/GUI.md). Each grain's lattice keeps
+the cell's site data and only its own orientation (about 0.6 KB per grain
+for Si: a million grains need some 600 MB).
 
 ### `cell`
 

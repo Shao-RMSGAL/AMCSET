@@ -166,11 +166,48 @@ diamond, a√3/2 along ⟨111⟩) and Lindhard's critical angle ψ₁ =
 (2 Z₁ Z₂ e²/(E d))^½ for the ion at its energy (Z₂: the cell's mean atomic
 number). An ion within about ψ₁ of an axis channels along it.
 
+A polycrystal layer's object also has **`grains`**, the summary of its
+grains as the transport builds them (`amcset grains` prints the same;
+docs/CLI.md "Polycrystals"): `grains` (in the map, generated grains
+including those just above and below the layer), `grains_in_layer` (met by
+the sample points), `columnar`, `period_A`, `samples` and
+`sample_spacing_A` (a grid over the layer, over its surface for columns:
+about 64 points per grain, at least 100 000 and at most 2 million),
+`coarse` (fewer than 32 points per grain: small grains are missed),
+`ungrained_fraction`; `diameter_A` (`mean`, `median`, `p10`, `p90`: the
+equivalent diameter of each grain met, of a sphere of its sampled volume
+or, for columns, a circle of its section; grains cut by the layer's faces
+count with their part in the layer); `misorientation_from_reference_deg`
+(`mean`, `rms`: from the crystal's own `orientation`, up to the lattice's
+rotations, weighted by volume) and `normal_tilt_mean_deg` (the crystal
+direction along the surface normal against the crystal's); for maps of up
+to 300 000 grains `boundaries`, `boundary_misorientation_mean_deg` and
+`low_angle_fraction` (below 15°); `registry_below_deg`, `registry_groups`
+and `registry_grains` (`polycrystal.registry_below`).
+
 **Table `crystals`** (CSV, JSON, Parquet): one row per crystal layer with
 `layer`, `crystal`, `followed`, `phi1`, `Phi`, `phi2`, `depth_direction`,
 `beam_direction`, `beam_off`, `tilt`, `twist`, `temperature_K`, the nearest
 axis (`nearest_axis`, `axis_angle`, `axis_spacing`, `psi1`) and the
 rotation to the output axes `r11` … `r33`.
+
+**Table `grains`** (CSV, JSON, Parquet; crystal transport with a
+polycrystal): one row per grain that an ion entered or stopped in, sorted
+by layer and grain. An ion's *entry grain* is the first grain it meets in a
+polycrystal layer (for a polycrystal at the surface, the grain under its
+entry point). Columns: `layer`, `grain` (its number in the layer's grain
+map, from 1), `phi1`, `Phi`, `phi2` (the grain's Bunge angles relative to
+the sample, as in `crystals`), `beam_axis` and `beam_axis_angle` (the
+low-index direction, indices up to 2, nearest the incident beam in the
+grain's crystal frame, and the angle to it), `entered` (ions whose entry
+grain it was) and `entered_share` (of all ions), `mean_depth` and
+`depth_straggle` (the final depths of those ions that stopped in the
+target), `left_target` (those backscattered, transmitted or handed to MD)
+and `stopped_here` (ions that stopped in this grain, by their last step).
+Grains near an axis channel: their ions go deeper. Two columns of Si under
+30 keV B, one with ⟨001⟩ along the beam: 3525 A against 1318 A for the
+other, turned by 35° (test `TrimCrystal.PerGrainResults`). Counting adds
+no random number and changes no other tally.
 
 ## dpa: displacements per atom by damage model (SRIM mode)
 
