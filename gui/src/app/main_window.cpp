@@ -41,7 +41,9 @@
 #include <QCloseEvent>
 #include <QDateTime>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QPainter>
+#include <QThread>
 #include <QTimer>
 #include <QDesktopServices>
 #include <QDockWidget>
@@ -456,6 +458,7 @@ void MainWindow::scenario_changed() {
   std::vector<double> b{0.0};
   for (const auto &l : c.trim.layers) b.push_back(b.back() + common::in_units(l.width, common::angstrom));
   paths_->set_target(b, c.mode == config::Mode::native && c.native.electron ? 0u : c.trim.ion.z);
+  paths_->set_scenario(c.trim, c.mode == config::Mode::srim && c.trim.transport == trim::TrimConfig::Transport::crystal);
   // Recoil atoms start inside the target: the views show their cascades.
   paths_->view()->set_fit_to_paths(c.mode == config::Mode::srim &&
                                    c.trim.source == trim::TrimConfig::Source::particle_recoils);
@@ -815,21 +818,33 @@ void MainWindow::save_screenshots(const QString &dir) {
     central_->setCurrentIndex(i);
     QCoreApplication::processEvents();
     QWidget *w = central_->widget(i);
-    QImage img;
-    if (w == paths_) {
-      img = paths_->view()->grabFramebuffer();
-      if (!img.isNull()) {
-        img = img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
-        img.setDevicePixelRatio(paths_->view()->devicePixelRatioF());
-        if (auto *overlay = paths_->view()->findChild<QWidget *>()) {
-          QPainter p(&img);
-          overlay->render(&p, QPoint(), QRegion(), QWidget::DrawChildren);
-        }
-      }
-    } else {
-      img = w->grab().toImage();
-    }
+    const QImage img = w == paths_ ? paths_->grab_image() : w->grab().toImage();
     img.save(QDir(dir).filePath(QStringLiteral("tab%1.png").arg(i)));
+  }
+  // The whole beam spot (crystal transport): four views, the 3D sample and
+  // the surface, once the sample is drawn.
+  if (paths_->whole_spot_available()) {
+    central_->setCurrentWidget(paths_);
+    const bool was_on = paths_->whole_spot();
+    const int arrangement = paths_->arrangement_index();
+    paths_->set_whole_spot(true);
+    QElapsedTimer waited;
+    waited.start();
+    while (paths_->view()->scene() == nullptr && waited.elapsed() < 30000) {
+      QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+      QThread::msleep(20);
+    }
+    const std::pair<int, const char *> shots[] = {
+        {0, "paths_spot.png"}, {4, "paths_spot_3d.png"}, {3, "paths_spot_surface.png"}, {1, "paths_spot_depth_y.png"}};
+    for (const auto &[index, name] : shots) {
+      paths_->set_arrangement_index(index);
+      QCoreApplication::processEvents();
+      const QImage img = paths_->grab_image();
+      if (!img.isNull()) img.save(QDir(dir).filePath(QString::fromLatin1(name)));
+    }
+    paths_->set_arrangement_index(arrangement);
+    paths_->set_whole_spot(was_on);
+    central_->setCurrentIndex(0);
   }
   // Every plot, not only the selected one.
   central_->setCurrentWidget(plots_);

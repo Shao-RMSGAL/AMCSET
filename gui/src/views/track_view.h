@@ -41,6 +41,7 @@
 class QRhi;
 class QRhiBuffer;
 class QRhiGraphicsPipeline;
+class QRhiResourceUpdateBatch;
 class QRhiShaderResourceBindings;
 
 namespace amcset {
@@ -48,6 +49,7 @@ namespace gui {
 
 class TrackStore;
 class TrackOverlay;
+struct SampleScene;
 
 class TrackView : public QRhiWidget {
   Q_OBJECT
@@ -86,6 +88,17 @@ public:
    * would be a dot in a view of the target). Off: the target and the paths.
    */
   void set_fit_to_paths(bool on);
+  /*!
+   * The whole beam spot: every path at its true place on the sample (its
+   * ion's entry point added), the entry points marked on the surface, and
+   * the sample (set_scene) drawn under them. Off: every path from the
+   * origin, as the results give them.
+   */
+  void set_spot_mode(bool on);
+  bool spot_mode() const noexcept { return spot_mode_; }
+  //! The sample the spot mode draws (null: none yet).
+  void set_scene(std::shared_ptr<const SampleScene> scene);
+  const SampleScene *scene() const noexcept { return scene_.get(); }
 
   //! Colours of the paths (also for legends).
   static QColor incident_color();
@@ -148,6 +161,9 @@ private:
   void append_vertices(std::size_t first_segment, std::size_t last_segment, std::vector<GpuVertex> &out) const;
   quint32 color_of(unsigned z, int generation) const;
   void build_outline(std::vector<GpuVertex> &out) const;
+  void upload_scene(QRhiResourceUpdateBatch *u);
+  void upload_marks(QRhiResourceUpdateBatch *u);
+  QRhiGraphicsPipeline *make_pipeline(bool triangles);
   // World (scene) position of a TRIM point for the 3D view: up = -depth.
   static QVector3D scene(float x, float y, float z) { return {y, -x, z}; }
 
@@ -186,6 +202,20 @@ private:
   bool outline_dirty_ = true;
   std::size_t outline_2d_ = 0;     // vertices of the depth outline (2D)
   std::size_t outline_3d_ = 0;     // vertices of the 3D outline
+
+  // The whole beam spot (set_spot_mode).
+  bool spot_mode_ = false;
+  std::shared_ptr<const SampleScene> scene_;
+  bool scene_dirty_ = true;
+  std::unique_ptr<QRhiGraphicsPipeline> tri_pipeline_; // the sample's filled cells
+  std::unique_ptr<QRhiBuffer> scene_tri_buf_;
+  std::unique_ptr<QRhiBuffer> scene_line_buf_;
+  std::array<quint32, 4> tri_first_{}, tri_count_{}, line_first_{}, line_count_{}; // per projection, in vertices
+  quint32 spot_first_ = 0, spot_count_ = 0; // the spot's outline (in the line buffer, drawn over the paths)
+  std::unique_ptr<QRhiBuffer> marks_buf_;  // the entry points (crosses on the surface)
+  std::size_t marks_capacity_ = 0;         // entries the buffer holds
+  std::size_t marks_uploaded_ = 0;
+  quint64 marks_revision_ = 0;
 };
 
 } // namespace gui

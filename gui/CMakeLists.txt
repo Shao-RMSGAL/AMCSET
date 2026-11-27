@@ -37,6 +37,7 @@ set(GUI_SOURCES
     src/setup/target_panel.cpp src/setup/target_panel.h
     src/setup/calculation_panel.cpp src/setup/calculation_panel.h
     src/setup/crystal_panel.cpp src/setup/crystal_panel.h
+    src/setup/grains_box.cpp src/setup/grains_box.h
     src/setup/output_panel.cpp src/setup/output_panel.h
     src/setup/output_spec_dialog.cpp src/setup/output_spec_dialog.h
     src/setup/periodic_table.cpp src/setup/periodic_table.h
@@ -48,6 +49,7 @@ set(GUI_SOURCES
     src/views/stats_panel.cpp src/views/stats_panel.h
     src/views/track_view.cpp src/views/track_view.h
     src/views/track_panel.cpp src/views/track_panel.h
+    src/views/sample_scene.cpp src/views/sample_scene.h
 )
 
 add_executable(amcset-gui WIN32 ${GUI_SOURCES} resources/icons.qrc)

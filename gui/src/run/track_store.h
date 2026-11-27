@@ -72,6 +72,20 @@ public:
   //! Bounding box of everything stored (empty store: zero box).
   const float *lower() const noexcept { return lo_; }
   const float *upper() const noexcept { return hi_; }
+  /*!
+   * The entry point of each incident particle on the beam spot (TRIM's
+   * lateral y, z; Angstrom; index = TrackSegment::history): the segments are
+   * relative to it, their true place on the sample is a + (0, y, z). Zero
+   * outside the crystal transport.
+   */
+  struct Entry {
+    float y = 0.0f;
+    float z = 0.0f;
+  };
+  const std::vector<Entry> &entries() const noexcept { return entries_; }
+  //! Bounding box of the segments at their true places (with the entry points).
+  const float *true_lower() const noexcept { return true_lo_; }
+  const float *true_upper() const noexcept { return true_hi_; }
   //! Atomic numbers of the recoils seen so far (index = Z, value = segment count).
   const std::vector<std::size_t> &species() const noexcept { return species_; }
 
@@ -82,7 +96,10 @@ private:
   std::uint64_t revision_ = 1;
   float lo_[3] = {0, 0, 0};
   float hi_[3] = {0, 0, 0};
+  float true_lo_[3] = {0, 0, 0};
+  float true_hi_[3] = {0, 0, 0};
   std::vector<std::size_t> species_;
+  std::vector<Entry> entries_;
 };
 
 } // namespace gui

@@ -25,6 +25,7 @@
 #include "model/quantity_text.h"
 #include "model/scenario.h"
 #include "setup/form_binder.h"
+#include "setup/grains_box.h"
 #include "setup/periodic_table.h"
 #include "views/cell_view.h"
 
@@ -477,10 +478,11 @@ CrystalPanel::CrystalPanel(Scenario *scenario, QWidget *parent)
   layer_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
   layer_->setMinimumContentsLength(8);
   kind_ = new QComboBox(this);
-  kind_->addItems({tr("Amorphous (as TRIM)"), tr("Single crystal")});
+  kind_->addItems({tr("Amorphous (as TRIM)"), tr("Single crystal"), tr("Polycrystal")});
   kind_->setToolTip(tr("Amorphous: atoms at random, as in every TRIM target. Single crystal: the atoms sit on the "
                        "sites of the unit cell below, and the layer's elements, stoichiometry and density are those "
-                       "of the cell. Not TRIM: only the Crystal transport follows the lattice (channeling). "
+                       "of the cell. Polycrystal: grains of that cell in many orientations (Grains, below). Not "
+                       "TRIM: only the Crystal transport follows the lattice (channeling). "
                        "(Scenario key layers.N.crystal.)"));
   needs_layer_.push_back(kind_);
   auto *top = new QHBoxLayout();
@@ -788,6 +790,10 @@ CrystalPanel::CrystalPanel(Scenario *scenario, QWidget *parent)
   // The layer list comes first: every field below shows the crystal of the
   // layer it selects (the binder refreshes in the order of registration).
   binder_->custom([this](const config::RunConfig &c) { refresh_layers(c); });
+  // The grains (after the layer list: they show the selected layer's).
+  auto *grains = new GrainsBox(scenario_, binder_, [this] { return layer(); }, this);
+  lay->insertWidget(lay->indexOf(orientation_group) + 1, grains);
+  connect(grains, &GrainsBox::message, this, &CrystalPanel::message);
   for (int i = 0; i < 6; ++i) {
     binder_->text(lattice[i], tr("Lattice parameter %1").arg(QLatin1String(lattice_name[i])),
                   [this, i](const config::RunConfig &) {
@@ -1042,7 +1048,7 @@ bool CrystalPanel::set_cell(const QString &what, const crystal::UnitCell &cell,
       // and so do the vibrations of the elements that are still there.
       cr.orientation = l.crystal->orientation;
       cr.temperature = l.crystal->temperature;
-      cr.polycrystal = l.crystal->polycrystal; // (no editor for the grains yet: they are kept)
+      cr.polycrystal = l.crystal->polycrystal; // (a new cell keeps the layer's grains)
       if (vibrations == nullptr) {
         for (const auto &v : l.crystal->vibrations) {
           if (composition.count(v.z) != 0) cr.vibrations.push_back(v);
@@ -1112,7 +1118,7 @@ void CrystalPanel::refresh(const config::RunConfig &c) {
   const crystal::Crystal *cr = l != nullptr && l->crystal ? &*l->crystal : nullptr;
   {
     const QSignalBlocker block(kind_);
-    kind_->setCurrentIndex(cr != nullptr ? 1 : 0);
+    kind_->setCurrentIndex(cr == nullptr ? 0 : cr->polycrystal ? 2 : 1);
   }
   {
     const QSignalBlocker block(material_);
@@ -1298,7 +1304,24 @@ void CrystalPanel::set_kind(int index) {
     if (!err.isEmpty()) emit message(err);
     return;
   }
-  if (l->crystal) return;
+  if (l->crystal) {
+    // Single crystal <-> polycrystal (generated grains of the layer's cell).
+    const bool poly = index == 2;
+    if (l->crystal->polycrystal.has_value() == poly) return;
+    const QString err = scenario_->modify(poly ? tr("Polycrystal") : tr("Single crystal"), [&](config::RunConfig &c) {
+      auto &cr = crystal_in(c);
+      if (poly) cr.polycrystal = crystal::Polycrystal{};
+      else cr.polycrystal.reset();
+    });
+    if (!err.isEmpty()) emit message(err);
+    return;
+  }
+  if (index == 2) {
+    // First a crystal; the grains then follow from it.
+    set_kind(1);
+    if (const auto *now = current_layer(); now != nullptr && now->crystal) set_kind(2);
+    return;
+  }
   // A pure element of the table of common crystals becomes that crystal;
   // anything else is asked for.
   if (l->elements.size() == 1) {

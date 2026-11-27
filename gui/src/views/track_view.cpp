@@ -20,6 +20,7 @@
 #include "model/quantity_text.h"
 #include "run/track_store.h"
 #include "views/axis_ticks.h"
+#include "views/sample_scene.h"
 
 #include <QFile>
 #include <QMouseEvent>
@@ -36,6 +37,35 @@ namespace gui {
 // ---------------------------------------------------------------------------
 // Overlay: axes, labels and frame painted over the GPU image
 // ---------------------------------------------------------------------------
+
+namespace {
+
+//! The colour key of a cubic crystal's inverse pole figure: the standard
+//! triangle [001] - [101] - [111], each point coloured as the grains are.
+const QImage &ipf_key() {
+  static const QImage key = [] {
+    const int w = 96, h = 70;
+    QImage img(w, h, QImage::Format_ARGB32_Premultiplied);
+    img.fill(Qt::transparent);
+    const QPointF a(2, h - 2), b(w - 2, h - 2), c(w * 0.83, 2); // [001], [101], [111]
+    const double den = (b.y() - c.y()) * (a.x() - c.x()) + (c.x() - b.x()) * (a.y() - c.y());
+    for (int y = 0; y < h; ++y) {
+      for (int x = 0; x < w; ++x) {
+        const double la = ((b.y() - c.y()) * (x - c.x()) + (c.x() - b.x()) * (y - c.y())) / den;
+        const double lb = ((c.y() - a.y()) * (x - c.x()) + (a.x() - c.x()) * (y - c.y())) / den;
+        const double lc = 1.0 - la - lb;
+        if (la < 0 || lb < 0 || lc < 0) continue;
+        const double s2 = 1.0 / std::sqrt(2.0), s3 = 1.0 / std::sqrt(3.0);
+        const crystal::Vec3 d{lb * s2 + lc * s3, lc * s3, la + lb * s2 + lc * s3};
+        img.setPixelColor(x, y, ipf_color(d));
+      }
+    }
+    return img;
+  }();
+  return key;
+}
+
+} // namespace
 
 class TrackOverlay : public QWidget {
 public:
@@ -64,17 +94,51 @@ protected:
       return;
     }
     const auto vps = view_->viewports();
+    // The whole beam spot: what the spot is, in the title of the beam view
+    // (or of the 3D view when the beam view is not shown).
+    const SampleScene *scene = view_->spot_mode() ? view_->scene() : nullptr;
+    QString caption;
+    if (scene != nullptr && scene->message.isEmpty()) {
+      const auto &spot = scene->spot;
+      const auto len = [](const common::length_quantity &q) {
+        return format_length_value(common::in_units(q, common::angstrom));
+      };
+      QString shape;
+      switch (spot.shape) {
+      case trim::BeamSpot::Shape::point: shape = tr("a point"); break;
+      case trim::BeamSpot::Shape::rectangle: shape = tr("rectangle %1 x %2").arg(len(spot.width), len(spot.height)); break;
+      case trim::BeamSpot::Shape::circle: shape = tr("circle of %1").arg(len(spot.width)); break;
+      case trim::BeamSpot::Shape::gaussian: shape = tr("Gaussian, FWHM %1 x %2").arg(len(spot.width), len(spot.height)); break;
+      }
+      const auto *st = view_->store();
+      caption = tr("spot: %1, %L2 entry points").arg(shape).arg(st ? st->entries().size() : 0);
+    }
+    const bool beam_shown = std::any_of(vps.begin(), vps.end(), [](const TrackView::Viewport &v) {
+      return v.projection == TrackView::Projection::beam;
+    });
     for (const auto &vp : vps) {
       const QRectF r = vp.rect;
       p.setPen(faint);
       if (vps.size() > 1) p.drawRect(r.adjusted(0, 0, -1, -1));
       p.setPen(text);
       QString title;
+      const bool spot = view_->spot_mode();
       switch (vp.projection) {
-      case TrackView::Projection::depth_y: title = tr("Depth (X) - Y"); break;
-      case TrackView::Projection::depth_z: title = tr("Depth (X) - Z"); break;
-      case TrackView::Projection::beam: title = tr("Beam view (Y - Z)"); break;
-      case TrackView::Projection::perspective: title = tr("3D  (drag: rotate, right-drag: pan, wheel: zoom)"); break;
+      case TrackView::Projection::depth_y:
+        title = spot ? tr("Depth (X) - Y   section through z = 0") : tr("Depth (X) - Y");
+        break;
+      case TrackView::Projection::depth_z:
+        title = spot ? tr("Depth (X) - Z   section through y = 0") : tr("Depth (X) - Z");
+        break;
+      case TrackView::Projection::beam:
+        title = spot ? tr("Surface (Y - Z)") : tr("Beam view (Y - Z)");
+        if (!caption.isEmpty()) title += QStringLiteral("   ") + caption;
+        break;
+      case TrackView::Projection::perspective:
+        title = spot ? tr("3D sample  (drag: rotate, right-drag: pan, wheel: zoom)")
+                     : tr("3D  (drag: rotate, right-drag: pan, wheel: zoom)");
+        if (!caption.isEmpty() && !beam_shown) title += QStringLiteral("   ") + caption;
+        break;
       }
       p.drawText(r.adjusted(6, 4, -6, -4), Qt::AlignLeft | Qt::AlignTop, title);
       if (vp.projection == TrackView::Projection::perspective) continue;
@@ -106,6 +170,47 @@ protected:
       const QString label = QStringLiteral("%1 (%2)").arg(hl, unit.name);
       p.drawText(QPointF(r.right() - fm.horizontalAdvance(label) - 6, r.bottom() - 7 - fm.height()), label);
       p.drawText(QPointF(r.left() + 7, r.top() + 6 + 2 * fm.height()), QStringLiteral("%1 (%2)").arg(vl, unit_v.name));
+    }
+    // The whole beam spot: the colour key of the grains (bottom right of the
+    // 3D view, else of the beam view), or why there is no sample.
+    if (view_->spot_mode()) {
+      QRectF where = vps.front().rect;
+      for (const auto want : {TrackView::Projection::perspective, TrackView::Projection::beam}) {
+        const auto it = std::find_if(vps.begin(), vps.end(), [want](const TrackView::Viewport &v) { return v.projection == want; });
+        if (it != vps.end()) {
+          where = it->rect;
+          break;
+        }
+      }
+      p.setPen(text);
+      // (Above the axis label of a 2D view and the path count.)
+      const double bottom = where.bottom() - 3 * fm.height() - 6;
+      if (scene == nullptr) {
+        p.drawText(QRectF(where.left(), where.top(), where.width() - 10, bottom - where.top()),
+                   Qt::AlignRight | Qt::AlignBottom, tr("Drawing the sample..."));
+      } else if (!scene->message.isEmpty()) {
+        p.drawText(QRectF(where.left() + 10, where.top(), where.width() - 20, bottom - where.top()),
+                   Qt::AlignRight | Qt::AlignBottom | Qt::TextWordWrap, tr("The sample cannot be drawn: %1").arg(scene->message));
+      } else if (scene->ipf) {
+        const QImage &key = ipf_key();
+        const QRectF box(where.right() - 12 - key.width(), bottom - key.height(), key.width(), key.height());
+        p.drawImage(box.topLeft(), key);
+        p.drawText(QPointF(box.left() - 2, box.bottom() + fm.ascent()), QStringLiteral("001"));
+        p.drawText(QPointF(box.right() - fm.horizontalAdvance(QStringLiteral("101")) + 4, box.bottom() + fm.ascent()),
+                   QStringLiteral("101"));
+        p.drawText(QPointF(box.left() + 0.83 * key.width() - fm.horizontalAdvance(QStringLiteral("111")) - 4,
+                           box.top() + fm.ascent()),
+                   QStringLiteral("111"));
+        const QStringList lines{tr("Grains: the beam"), tr("direction in the"), tr("crystal (inverse"), tr("pole figure)")};
+        for (int k = 0; k < lines.size(); ++k) {
+          p.drawText(QPointF(box.left() - 12 - fm.horizontalAdvance(lines[k]),
+                             box.bottom() - (lines.size() - 1 - k) * fm.height()),
+                     lines[k]);
+        }
+      } else if (scene->has_grains) {
+        const QString s = tr("Grains: one colour each");
+        p.drawText(QPointF(where.right() - 12 - fm.horizontalAdvance(s), bottom), s);
+      }
     }
     // Legend.
     const auto *store = view_->store();
@@ -288,6 +393,27 @@ void TrackView::set_fit_to_paths(bool on) {
   reset_views();
 }
 
+void TrackView::set_spot_mode(bool on) {
+  if (on == spot_mode_) return;
+  spot_mode_ = on;
+  reupload_ = true; // the paths move to their true places (or back)
+  marks_uploaded_ = 0;
+  reset_views();
+}
+
+void TrackView::set_scene(std::shared_ptr<const SampleScene> scene) {
+  scene_ = std::move(scene);
+  scene_dirty_ = true;
+  marks_uploaded_ = 0; // (their size follows the scene)
+  if (spot_mode_) {
+    for (auto &c : cameras_) {
+      if (!c.user_moved) c.scale = -1.0;
+    }
+  }
+  overlay_->update();
+  update();
+}
+
 void TrackView::resizeEvent(QResizeEvent *e) {
   // Called by Qt: no exception may leave (app/guard.h).
   try {
@@ -336,9 +462,49 @@ QRectF TrackView::visible_world(const Viewport &v) const {
 void TrackView::fit(Projection p, const QRectF &rect) {
   Camera &c = camera(p);
   const double thickness = boundaries_.back();
-  const float *lo = store_->lower();
-  const float *hi = store_->upper();
+  const float *lo = spot_mode_ ? store_->true_lower() : store_->lower();
+  const float *hi = spot_mode_ ? store_->true_upper() : store_->upper();
   const bool have = store_->size() > 0;
+  if (spot_mode_) {
+    // The whole spot at true aspect: the sample's region and every path.
+    double l3[3] = {0.0, 0.0, 0.0}, h3[3] = {thickness, 0.0, 0.0};
+    if (scene_ && scene_->message.isEmpty()) {
+      l3[1] = scene_->y0, h3[1] = scene_->y1, l3[2] = scene_->z0, h3[2] = scene_->z1;
+      h3[0] = std::max(h3[0], scene_->depth_A);
+    }
+    if (have) {
+      for (int k = 0; k < 3; ++k) {
+        l3[k] = std::min(l3[k], static_cast<double>(lo[k]));
+        h3[k] = std::max(h3[k], static_cast<double>(hi[k]));
+      }
+    }
+    double c3[3], d3[3];
+    for (int k = 0; k < 3; ++k) {
+      c3[k] = 0.5 * (l3[k] + h3[k]);
+      d3[k] = std::max(h3[k] - l3[k], 1.0);
+    }
+    const double w = std::max(rect.width(), 10.0);
+    const double h = std::max(rect.height(), 10.0);
+    switch (p) {
+    case Projection::depth_y:
+    case Projection::depth_z: {
+      const int v = p == Projection::depth_y ? 1 : 2;
+      c.center = QPointF(c3[0], c3[v]);
+      c.scale = 0.92 * std::min(w / d3[0], h / d3[v]);
+      break;
+    }
+    case Projection::beam:
+      c.center = QPointF(c3[1], c3[2]);
+      c.scale = 0.92 * std::min(w / d3[1], h / d3[2]);
+      break;
+    case Projection::perspective:
+      c.target = scene(static_cast<float>(c3[0]), static_cast<float>(c3[1]), static_cast<float>(c3[2]));
+      c.distance = 1.15f * static_cast<float>(std::max({d3[0], d3[1], d3[2]})) / std::tan(qDegreesToRadians(20.0f));
+      c.scale = 1.0;
+      break;
+    }
+    return;
+  }
   const double x0 = std::min(0.0, have ? static_cast<double>(lo[0]) : 0.0);
   const double x1 = std::max(thickness, have ? static_cast<double>(hi[0]) : thickness);
   double lat = 0.0;
@@ -438,14 +604,99 @@ QMatrix4x4 TrackView::matrix(Projection p, const QRectF &rect, const QSize &) co
 
 void TrackView::append_vertices(std::size_t first, std::size_t last, std::vector<GpuVertex> &out) const {
   const auto &segs = store_->segments();
+  const auto &entries = store_->entries();
   out.reserve(out.size() + 2 * (last - first));
   for (std::size_t i = first; i < last; ++i) {
     const auto &s = segs[i];
     const quint32 col = color_of(s.z, s.generation);
     const float g = static_cast<float>(s.generation);
-    out.push_back({s.a[0], s.a[1], s.a[2], col, g});
-    out.push_back({s.b[0], s.b[1], s.b[2], col, g});
+    // In the spot mode, at the true place: the ion's entry point added.
+    float dy = 0.0f, dz = 0.0f;
+    if (spot_mode_ && s.history < entries.size()) {
+      dy = entries[s.history].y;
+      dz = entries[s.history].z;
+    }
+    out.push_back({s.a[0], s.a[1] + dy, s.a[2] + dz, col, g});
+    out.push_back({s.b[0], s.b[1] + dy, s.b[2] + dz, col, g});
   }
+}
+
+void TrackView::upload_scene(QRhiResourceUpdateBatch *u) {
+  // The sample's cells and lines, one block per projection.
+  scene_dirty_ = false;
+  tri_first_.fill(0), tri_count_.fill(0), line_first_.fill(0), line_count_.fill(0);
+  spot_first_ = spot_count_ = 0;
+  if (!scene_) return;
+  std::vector<GpuVertex> tri, lin;
+  const auto convert = [](const SceneVertex &v) { return GpuVertex{v.x, v.y, v.z, v.rgba, -1.0f}; };
+  for (std::size_t k = 0; k < 4; ++k) {
+    tri_first_[k] = static_cast<quint32>(tri.size());
+    for (const auto &v : scene_->triangles[k]) tri.push_back(convert(v));
+    tri_count_[k] = static_cast<quint32>(tri.size()) - tri_first_[k];
+    line_first_[k] = static_cast<quint32>(lin.size());
+    for (const auto &v : scene_->lines[k]) lin.push_back(convert(v));
+    line_count_[k] = static_cast<quint32>(lin.size()) - line_first_[k];
+  }
+  spot_first_ = static_cast<quint32>(lin.size());
+  for (const auto &v : scene_->spot_lines) lin.push_back(convert(v));
+  spot_count_ = static_cast<quint32>(lin.size()) - spot_first_;
+  const auto upload = [&](std::unique_ptr<QRhiBuffer> &buf, const std::vector<GpuVertex> &v) {
+    const auto bytes = static_cast<quint32>(std::max<std::size_t>(v.size(), 1) * sizeof(GpuVertex));
+    if (!buf || buf->size() < bytes) {
+      buf.reset(rhi_->newBuffer(QRhiBuffer::Static, QRhiBuffer::VertexBuffer, bytes));
+      if (!buf->create()) {
+        buf.reset();
+        return false;
+      }
+    }
+    if (!v.empty()) u->uploadStaticBuffer(buf.get(), 0, static_cast<quint32>(v.size() * sizeof(GpuVertex)), v.data());
+    return true;
+  };
+  if (!upload(scene_tri_buf_, tri)) tri_count_.fill(0);
+  if (!upload(scene_line_buf_, lin)) {
+    line_count_.fill(0);
+    spot_count_ = 0;
+  }
+}
+
+void TrackView::upload_marks(QRhiResourceUpdateBatch *u) {
+  // The entry points: a small cross on the surface for every ion.
+  const auto &entries = store_->entries();
+  if (marks_revision_ != store_->revision()) {
+    marks_revision_ = store_->revision();
+    marks_uploaded_ = 0;
+  }
+  const std::size_t n = entries.size();
+  if (n > marks_capacity_) {
+    marks_capacity_ = std::max<std::size_t>({n + n / 2, 4096, marks_capacity_ * 2});
+    marks_buf_.reset(rhi_->newBuffer(QRhiBuffer::Static, QRhiBuffer::VertexBuffer,
+                                     static_cast<quint32>(marks_capacity_ * 4 * sizeof(GpuVertex))));
+    if (!marks_buf_->create()) {
+      marks_buf_.reset();
+      marks_capacity_ = 0;
+      return;
+    }
+    marks_uploaded_ = 0;
+  }
+  if (!marks_buf_ || marks_uploaded_ >= n) return;
+  double extent = 1000.0;
+  if (scene_ && scene_->message.isEmpty()) extent = std::max(scene_->y1 - scene_->y0, scene_->z1 - scene_->z0);
+  const float s = static_cast<float>(extent / 220.0);
+  const QColor ic = SampleScene::spot_color();
+  const quint32 col = static_cast<quint32>(ic.red()) | (static_cast<quint32>(ic.green()) << 8) |
+                      (static_cast<quint32>(ic.blue()) << 16) | (235u << 24);
+  std::vector<GpuVertex> v;
+  v.reserve(4 * (n - marks_uploaded_));
+  for (std::size_t i = marks_uploaded_; i < n; ++i) {
+    const float y = entries[i].y, z = entries[i].z;
+    v.push_back({0.0f, y - s, z, col, -1.0f});
+    v.push_back({0.0f, y + s, z, col, -1.0f});
+    v.push_back({0.0f, y, z - s, col, -1.0f});
+    v.push_back({0.0f, y, z + s, col, -1.0f});
+  }
+  u->uploadStaticBuffer(marks_buf_.get(), static_cast<quint32>(marks_uploaded_ * 4 * sizeof(GpuVertex)),
+                        static_cast<quint32>(v.size() * sizeof(GpuVertex)), v.data());
+  marks_uploaded_ = n;
 }
 
 void TrackView::build_outline(std::vector<GpuVertex> &out) const {
@@ -507,19 +758,59 @@ QShader load_shader(const QString &name) {
 
 } // namespace
 
+QRhiGraphicsPipeline *TrackView::make_pipeline(bool triangles) {
+  // Lines (paths, outlines) or triangles (the sample's cells): the same
+  // shaders, vertices and uniforms, premultiplied alpha, no depth test.
+  auto *p = rhi_->newGraphicsPipeline();
+  p->setTopology(triangles ? QRhiGraphicsPipeline::Triangles : QRhiGraphicsPipeline::Lines);
+  QRhiGraphicsPipeline::TargetBlend blend;
+  blend.enable = true;
+  blend.srcColor = QRhiGraphicsPipeline::One;
+  blend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+  blend.srcAlpha = QRhiGraphicsPipeline::One;
+  blend.dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+  p->setTargetBlends({blend});
+  p->setDepthTest(false);
+  p->setDepthWrite(false);
+  p->setCullMode(QRhiGraphicsPipeline::None);
+  p->setSampleCount(sampleCount());
+  p->setShaderStages({{QRhiShaderStage::Vertex, load_shader(QStringLiteral(":/shaders/tracks.vert.qsb"))},
+                      {QRhiShaderStage::Fragment, load_shader(QStringLiteral(":/shaders/tracks.frag.qsb"))}});
+  QRhiVertexInputLayout layout;
+  layout.setBindings({{sizeof(GpuVertex)}});
+  layout.setAttributes({{0, 0, QRhiVertexInputAttribute::Float3, offsetof(GpuVertex, x)},
+                        {0, 1, QRhiVertexInputAttribute::UNormByte4, offsetof(GpuVertex, rgba)},
+                        {0, 2, QRhiVertexInputAttribute::Float, offsetof(GpuVertex, generation)}});
+  p->setVertexInputLayout(layout);
+  p->setShaderResourceBindings(srbs_[0].get());
+  p->setRenderPassDescriptor(renderTarget()->renderPassDescriptor());
+  if (!p->create()) {
+    delete p;
+    return nullptr;
+  }
+  return p;
+}
+
 void TrackView::initialize(QRhiCommandBuffer *) {
   // Called by Qt: no exception may leave (app/guard.h).
   try {
     if (rhi_ != rhi() || (pipeline_ && pipeline_->sampleCount() != sampleCount())) {
       pipeline_.reset();
+      tri_pipeline_.reset();
       vbuf_.reset();
       outline_buf_.reset();
+      scene_tri_buf_.reset();
+      scene_line_buf_.reset();
+      marks_buf_.reset();
       for (auto &b : ubufs_) b.reset();
       for (auto &s : srbs_) s.reset();
       rhi_ = rhi();
       capacity_ = 0;
       uploaded_ = 0;
+      marks_capacity_ = 0;
+      marks_uploaded_ = 0;
       outline_dirty_ = true;
+      scene_dirty_ = true;
     }
     if (rhi_ == nullptr || pipeline_) return;
     const QRhiDriverInfo info = rhi_->driverInfo();
@@ -533,32 +824,9 @@ void TrackView::initialize(QRhiCommandBuffer *) {
                                                                       ubufs_[i].get())});
       srbs_[i]->create();
     }
-    pipeline_.reset(rhi_->newGraphicsPipeline());
-    pipeline_->setTopology(QRhiGraphicsPipeline::Lines);
-    QRhiGraphicsPipeline::TargetBlend blend;
-    blend.enable = true;
-    blend.srcColor = QRhiGraphicsPipeline::One;
-    blend.dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
-    blend.srcAlpha = QRhiGraphicsPipeline::One;
-    blend.dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
-    pipeline_->setTargetBlends({blend});
-    pipeline_->setDepthTest(false);
-    pipeline_->setDepthWrite(false);
-    pipeline_->setSampleCount(sampleCount());
-    pipeline_->setShaderStages({{QRhiShaderStage::Vertex, load_shader(QStringLiteral(":/shaders/tracks.vert.qsb"))},
-                                {QRhiShaderStage::Fragment, load_shader(QStringLiteral(":/shaders/tracks.frag.qsb"))}});
-    QRhiVertexInputLayout layout;
-    layout.setBindings({{sizeof(GpuVertex)}});
-    layout.setAttributes({{0, 0, QRhiVertexInputAttribute::Float3, offsetof(GpuVertex, x)},
-                          {0, 1, QRhiVertexInputAttribute::UNormByte4, offsetof(GpuVertex, rgba)},
-                          {0, 2, QRhiVertexInputAttribute::Float, offsetof(GpuVertex, generation)}});
-    pipeline_->setVertexInputLayout(layout);
-    pipeline_->setShaderResourceBindings(srbs_[0].get());
-    pipeline_->setRenderPassDescriptor(renderTarget()->renderPassDescriptor());
-    if (!pipeline_->create()) {
-      failed_ = true;
-      pipeline_.reset();
-    }
+    pipeline_.reset(make_pipeline(false));
+    if (!pipeline_) failed_ = true;
+    tri_pipeline_.reset(make_pipeline(true)); // (without it the sample is not drawn)
   } catch (...) {
     report_exception_quietly(QStringLiteral("Path view (initialize)"), std::current_exception());
   }
@@ -614,6 +882,10 @@ void TrackView::render(QRhiCommandBuffer *cb) {
       u->updateDynamicBuffer(outline_buf_.get(), 0, bytes, o.data());
       outline_dirty_ = false;
     }
+    // The whole beam spot: the sample and the entry points.
+    const bool sample = spot_mode_ && scene_ && scene_->message.isEmpty();
+    if (sample && scene_dirty_) upload_scene(u);
+    if (spot_mode_) upload_marks(u);
 
     // Cameras and uniforms.
     const QSize px = renderTarget()->pixelSize();
@@ -647,9 +919,27 @@ void TrackView::render(QRhiCommandBuffer *cb) {
       const float y = static_cast<float>(px.height() - r.bottom() * ratio);
       cb->setViewport(QRhiViewport(x, std::max(0.0f, y), static_cast<float>(r.width() * ratio),
                                    static_cast<float>(r.height() * ratio)));
-      cb->setShaderResources(srbs_[i].get());
       const bool is3d = vps[i].projection == Projection::perspective;
-      if (vps[i].projection != Projection::beam && outline_buf_) {
+      const auto pi = static_cast<std::size_t>(vps[i].projection);
+      if (sample && tri_pipeline_ && scene_tri_buf_ && tri_count_[pi] > 0) {
+        // The sample's cells under everything else.
+        cb->setGraphicsPipeline(tri_pipeline_.get());
+        cb->setShaderResources(srbs_[i].get());
+        const QRhiCommandBuffer::VertexInput in(scene_tri_buf_.get(),
+                                                static_cast<quint32>(tri_first_[pi] * sizeof(GpuVertex)));
+        cb->setVertexInput(0, 1, &in);
+        cb->draw(tri_count_[pi]);
+        cb->setGraphicsPipeline(pipeline_.get());
+      }
+      cb->setShaderResources(srbs_[i].get());
+      if (sample && scene_line_buf_ && line_count_[pi] > 0) {
+        const QRhiCommandBuffer::VertexInput in(scene_line_buf_.get(),
+                                                static_cast<quint32>(line_first_[pi] * sizeof(GpuVertex)));
+        cb->setVertexInput(0, 1, &in);
+        cb->draw(line_count_[pi]);
+      }
+      // (The block's edges replace the 3D outline in the spot mode.)
+      if (vps[i].projection != Projection::beam && outline_buf_ && !(is3d && sample)) {
         const quint32 offset = is3d ? static_cast<quint32>(outline_2d_ * sizeof(GpuVertex)) : 0;
         const QRhiCommandBuffer::VertexInput in(outline_buf_.get(), offset);
         cb->setVertexInput(0, 1, &in);
@@ -665,6 +955,21 @@ void TrackView::render(QRhiCommandBuffer *cb) {
           cb->draw(static_cast<quint32>(2 * uploaded_));
         }
       }
+      // The spot's outline and the entry points, on top (on the surface: the
+      // beam and 3D views).
+      const bool surface = vps[i].projection == Projection::beam || is3d;
+      if (sample && surface && scene_line_buf_ && spot_count_ > 0) {
+        cb->setShaderResources(srbs_[i].get());
+        const QRhiCommandBuffer::VertexInput in(scene_line_buf_.get(), static_cast<quint32>(spot_first_ * sizeof(GpuVertex)));
+        cb->setVertexInput(0, 1, &in);
+        cb->draw(spot_count_);
+      }
+      if (spot_mode_ && marks_buf_ && marks_uploaded_ > 0 && show_incident_ && surface) {
+        cb->setShaderResources(srbs_[i].get());
+        const QRhiCommandBuffer::VertexInput in(marks_buf_.get(), 0);
+        cb->setVertexInput(0, 1, &in);
+        cb->draw(static_cast<quint32>(4 * marks_uploaded_));
+      }
     }
     cb->endPass();
   } catch (...) {
@@ -676,14 +981,21 @@ void TrackView::releaseResources() {
   // Called by Qt: no exception may leave (app/guard.h).
   try {
     pipeline_.reset();
+    tri_pipeline_.reset();
     vbuf_.reset();
     outline_buf_.reset();
+    scene_tri_buf_.reset();
+    scene_line_buf_.reset();
+    marks_buf_.reset();
     for (auto &b : ubufs_) b.reset();
     for (auto &s : srbs_) s.reset();
     rhi_ = nullptr;
     capacity_ = 0;
     uploaded_ = 0;
+    marks_capacity_ = 0;
+    marks_uploaded_ = 0;
     outline_dirty_ = true;
+    scene_dirty_ = true;
   } catch (...) {
     report_exception_quietly(QStringLiteral("Path view (releaseResources)"), std::current_exception());
   }
@@ -740,10 +1052,25 @@ void TrackView::mouseMoveEvent(QMouseEvent *e) {
       const double v = w.top() + (vp.rect.bottom() - e->position().y()) / vp.rect.height() * w.height();
       const auto fmt = [](double a) { return format_length_value(a); };
       QString text;
+      // The sample there (spot mode): on the section or the surface shown.
+      double sx = 0.0, sy = 0.0, sz = 0.0;
       switch (vp.projection) {
-      case Projection::depth_y: text = tr("depth %1, y %2").arg(fmt(h), fmt(v)); break;
-      case Projection::depth_z: text = tr("depth %1, z %2").arg(fmt(h), fmt(v)); break;
-      default: text = tr("y %1, z %2").arg(fmt(h), fmt(v)); break;
+      case Projection::depth_y:
+        text = tr("depth %1, y %2").arg(fmt(h), fmt(v));
+        sx = h, sy = v;
+        break;
+      case Projection::depth_z:
+        text = tr("depth %1, z %2").arg(fmt(h), fmt(v));
+        sx = h, sz = v;
+        break;
+      default:
+        text = tr("y %1, z %2").arg(fmt(h), fmt(v));
+        sy = h, sz = v;
+        break;
+      }
+      if (spot_mode_ && scene_ && scene_->message.isEmpty()) {
+        const QString what = scene_->describe(sx, sy, sz);
+        if (!what.isEmpty()) text += QStringLiteral("   |   ") + what;
       }
       emit hover_text(text);
     } else {

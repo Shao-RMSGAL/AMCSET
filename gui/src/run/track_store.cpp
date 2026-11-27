@@ -31,13 +31,23 @@ void TrackStore::clear() {
   segments_.shrink_to_fit();
   histories_ = 0;
   species_.clear();
-  for (int k = 0; k < 3; ++k) lo_[k] = hi_[k] = 0.0f;
+  entries_.clear();
+  entries_.shrink_to_fit();
+  for (int k = 0; k < 3; ++k) lo_[k] = hi_[k] = true_lo_[k] = true_hi_[k] = 0.0f;
   ++revision_;
 }
 
 bool TrackStore::add_history(const std::vector<common::CollisionPoint> &points) {
   if (full()) return false;
   const auto history = static_cast<std::uint32_t>(histories_++);
+  // The entry point on the beam spot (AMCSET x, y = TRIM y, z).
+  Entry entry;
+  if (!points.empty()) {
+    entry.y = static_cast<float>(points.front().entry_x_A);
+    entry.z = static_cast<float>(points.front().entry_y_A);
+  }
+  entries_.push_back(entry);
+  const float shift[3] = {0.0f, entry.y, entry.z};
   // Last point of every open path.
   struct Last {
     float p[3];
@@ -69,12 +79,18 @@ bool TrackStore::add_history(const std::vector<common::CollisionPoint> &points) 
         ++species_[s.z];
       }
       for (int k = 0; k < 3; ++k) {
+        const float ta = s.a[k] + shift[k];
+        const float tb = s.b[k] + shift[k];
         if (first_history && segments_.size() == 1) {
           lo_[k] = std::min(s.a[k], s.b[k]);
           hi_[k] = std::max(s.a[k], s.b[k]);
+          true_lo_[k] = std::min(ta, tb);
+          true_hi_[k] = std::max(ta, tb);
         } else {
           lo_[k] = std::min(lo_[k], std::min(s.a[k], s.b[k]));
           hi_[k] = std::max(hi_[k], std::max(s.a[k], s.b[k]));
+          true_lo_[k] = std::min(true_lo_[k], std::min(ta, tb));
+          true_hi_[k] = std::max(true_hi_[k], std::max(ta, tb));
         }
       }
       for (int k = 0; k < 3; ++k) it->second.p[k] = p[k];
