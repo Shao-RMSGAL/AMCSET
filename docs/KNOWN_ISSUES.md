@@ -365,11 +365,29 @@ Details, numbers and diagnostics: `docs/VALIDATION.md` and `docs/SRIM_MODE.md` �
   been compared with tabulated values (`docs/CRYSTAL_DESIGN.md` §10).
 - [Low] Results of the same seed are identical on every thread count and
   run, but not between Windows (MSVC, Microsoft's C runtime) and Linux
-  (GCC, glibc): `exp`, `log` and `pow` differ in the last bits. GCC with
-  `-march=native` also fuses multiply-adds (FMA) where the code allows it,
-  so moving code without changing its arithmetic can change the last bits of
-  a GCC build (seen 2026-11-25 in the refined transport; MSVC builds stayed
-  identical): bit-identity checks are made with MSVC.
+  (GCC, glibc): `exp`, `log` and `pow` differ in the last bits. Since
+  2026-11-27 GCC and Clang compile with `-ffp-contract=off` (no fused
+  multiply-adds the source does not write, as MSVC), so moving code without
+  changing its arithmetic no longer changes the last bits of a GCC build
+  (seen 2026-11-25 in the refined transport, before that flag).
+- [Medium] GPU backends (docs/GPU.md): the CUDA backend has not been run
+  on NVIDIA hardware (written from the driver API and NVRTC headers; HIP,
+  which shares its code, works); the GPU results have been compared with
+  the CPU's (`tools/gpu_compare`), not with the TRIM reference runs. On
+  Linux (GCC 15, WSL) AMCSET builds with the backends and passes its tests
+  (the `reference` kernel bit for bit), but no GPU backend has been run
+  there. On a consumer GPU the double-precision kernel is no faster than
+  the CPU, and runs below some 10⁵ ions do not fill the GPU (the 16 ions of
+  a block run in order; AMCSET warns). HIP's six-run comparison with the
+  CPU scatters more than Student's t expects (rms z 1.39 against 1.12);
+  every group behind it agreed when rerun with ten times the ions, but a
+  small HIP-specific effect below that resolution is not excluded.
+  Mixed precision has not been compared with the TRIM reference runs.
+  Still on the CPU, by decision (with a warning that
+  says why; the run works): the refined and crystal transports, MD events,
+  trajectories of every ion, EXYZ.txt with more than 256 records per ion;
+  and, as single blocks, the ions whose paths are drawn or detailed in
+  COLLISON.txt (docs/GPU.md "What the results are").
 - [Low] The automatic target depth sizes the last layer from the deepest of
   `auto_depth.test_ions` test ions; a much longer calculation can still
   transmit a few ions of the far tail (reported during the run). It does not

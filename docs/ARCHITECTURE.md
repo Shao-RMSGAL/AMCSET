@@ -143,6 +143,20 @@ run()
   per element, replacements, interstitials, ionization, phonons, energy to
   recoils, …), moments, counts, surface-energy histograms, recoil spectra,
   exit lists, ion positions, EXYZ records, cascade records. `add()` merges.
+- **GPU backends** (`TrimConfig::compute`, `common/src/compute/`,
+  docs/GPU.md): with a backend other than `cpu`, `run()` builds a
+  `compute::KernelInput` (the target model in the kernel's flat arrays),
+  opens a `compute::Device` and starts a device thread beside the CPU
+  workers. The CPU workers run the blocks the kernel leaves out (kept
+  trajectories, COLLISON.txt details: always the first blocks); the device
+  then starts its running total from the host's tallies and streams through
+  the rest: lanes take blocks into a ring of slots, and between launches a
+  merge kernel adds the finished blocks at the head of the ring in block
+  order (the CPU's order of additions). The host reads per launch only the
+  merged blocks' status and their packed lists, and the total at most twice
+  a second (snapshots for the live plots) and at the end. A block the
+  device gives back (outgrown recoil slots or exit list) is rerun on the
+  CPU and put back in its slot before the merge.
 
 ### Outputs
 

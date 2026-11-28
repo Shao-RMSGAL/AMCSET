@@ -11,6 +11,7 @@ validation workflow: `docs/TESTING.md`.
 | `common/crystal_test.cpp` | `common-test` | `CrystalGeometry`, `CrystalLattice`, `CrystalStructures`, `CrystalOrientation`, `CrystalVibrations`, `CrystalFiles`, `CrystalSearch`, `CrystalMaterials`, `CrystalDatabase`, `CrystalGrains` |
 | `common/physics_test.cpp` | `common-test` | `Units`, `Elements`, `Stopping`, `StoppingTable`, `Scattering` |
 | `common/output_test.cpp` | `common-test` | `OutputUnits`, `OutputFormat`, `OutputSpec`, `OutputWriters` |
+| `common/compute_test.cpp` | `common-test` | `ComputeBackend`, `ComputeKernel` (the GPU kernel as C++ = the CPU transport bit for bit), `ComputeGpu` (a real GPU, with `AMCSET_TEST_GPU`) |
 | `common/fast_math_test.cpp` | `common-test` | `Scattering` (shared exponentials, half-angle kinematics, `MagicTable`), `FastMath` |
 | `common/diagnostics_test.cpp` | `common-test` | `Diagnostics`, `ParallelTasks` |
 | `common/tallies_test.cpp`, `tallies_more_test.cpp` | `common-test` | `TalliesUnit`, `TalliesIntegration` |
@@ -18,9 +19,9 @@ validation workflow: `docs/TESTING.md`.
 | `cli/cli_test.cpp` | `cli-test` | `RunConfigUnits`, `RunConfig`, `Cli` |
 | `CMakeLists.txt` | `amcset` | `cli.*` end-to-end runs (version, template, elements, stopping, cell, grains, validate, run, convert, trim, bad option, crash reports via `diag-crash`) |
 
-266 CTest tests in total (265 on Linux); 4 are skipped by design (two need SRIM data
-and one the public grain files through environment variables, one native test is
-a placeholder). CTest
+289 CTest tests in total (288 on Linux); 6 are skipped by design (two need SRIM data,
+one the public grain files and one a GPU through environment variables, one
+needs a Kokkos build, one native test is a placeholder). CTest
 runs everything with the repository root as working directory.
 
 ## Rules

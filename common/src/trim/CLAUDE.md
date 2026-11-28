@@ -92,9 +92,12 @@ the other two transports (`bench.py compare`).
    (exact) path must give bit-identical output: same expressions in the
    same order (no reassociation, no reciprocal instead of a division, no
    other math function), checked with `tools/perf/bench.py run` on the old
-   and new executable and `bench.py compare` (all files identical). Compare MSVC builds: GCC with
-   `-march=native` fuses multiply-adds (`-ffp-contract=fast`) depending on
-   where code sits, so moving code can change its last bits there. Anything
+   and new executable and `bench.py compare` (all files identical). Compare
+   builds of one compiler (MSVC and glibc differ in the last bits of `exp`,
+   `log`, `pow`). GCC and Clang build with `-ffp-contract=off` (top-level
+   CMakeLists.txt), so they fuse no multiply-adds the source does not
+   write; keep it, or code that moves changes its last bits and the GPU
+   kernel compiled as C++ stops matching the CPU transport. Anything
    that changes the last bits — tables, polynomial approximations,
    reciprocals — goes behind `cfg_.fast_math` (`docs/SRIM_MODE.md` §8.2)
    through the Transporter helpers `scatter`, `azimuth` and `turn`. The

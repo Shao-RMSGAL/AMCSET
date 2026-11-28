@@ -50,6 +50,12 @@ amcset trim TRIM.IN -o out --fix-trim-bugs                  # correct TRIM's bug
 | `-o, --output DIR` | Output directory (default `output`) |
 | `-n, --ions N` | Number of incident ions |
 | `-j, --threads N` | Worker threads (0 or omitted: all cores). Results do not depend on it. |
+| `--compute BACKEND` | Where the histories run (`compute.backend`): `cpu` (default), `opencl`, `hip`, `cuda`, `kokkos`, or `reference` (the GPU kernel on the CPU). A GPU gives statistically the same results, not number for number; `amcset devices` lists the devices. `docs/GPU.md` |
+| `--device N` | Device of that backend (`compute.device`, default 0) |
+| `--precision double\|mixed` | GPU arithmetic (`compute.precision`): `mixed` computes most of the collision arithmetic in single precision, several times faster on consumer GPUs (`docs/GPU.md` "Precision") |
+| `--gpu-memory MIB` | Device memory for the run (`compute.memory_mib`; 0: 2048 MiB) |
+| `--recoil-slots N` | Recoil stack depth per lane (`compute.recoil_slots`; 0: automatic) |
+| `--exit-records N` | Exit-list records per block of 16 ions (`compute.exit_records`; 0: 256) |
 | `-s, --seed S` | Random-number seed (SRIM mode; TRIM's default 716381); `random`: a new seed for every run (`"seed": "random"`), printed and recorded in the outputs |
 | `--mode srim\|native` | Engine (scenario files only) |
 | `--damage kp\|full\|monolayer` | TRIM's damage calculation: quick Kinchin-Pease, full cascades, monolayer steps |
@@ -315,6 +321,17 @@ Keys:
   every transport; md_events needs full cascades or monolayer steps, 1 to
   32 E_c in increasing order, E_min below the smallest E_c and one E_c in
   handoff mode. Every column and rule: `docs/OUTPUT.md`.
+- `compute` (always written; not TRIM): where the histories run,
+  `{"backend": "cpu", "device": 0, "precision": "double", "memory_mib": 0,
+  "recoil_slots": 0, "exit_records": 0}`, or just `"compute": "opencl"`.
+  `backend`: `cpu`, `opencl`, `hip`, `cuda`, `kokkos`, `reference`;
+  `precision`: `double` or `mixed` (`physics.fast_math` selects `mixed` on a
+  GPU); `memory_mib` (0: 2048) caps the device memory; `recoil_slots` (0: from the path length of the most energetic
+  recoil) and `exit_records` (0: 256 per block of 16 ions) size the device's
+  buffers, and a block that outgrows them runs on the CPU. SRIM mode's
+  trim2013 transport (beam, TRIM.DAT ions and recoils, EXYZ.txt); other runs
+  go to the CPU with a warning.
+  `docs/GPU.md`.
 - `auto_depth` (written only when not the defaults): `enabled` (default
   `false`), `test_ions` (1 to 10 000 000, default 1000), `margin` (0.01 to
   0.5, default 0.1), `shrink_below` (0.1 to 0.99, default 0.7; used as at
@@ -798,6 +815,15 @@ The summary lists the cell parameters, volume, atoms per cell, atomic and
 mass density (standard atomic weights), composition, the sites, the
 neighbour shells of the first lattice site (8 at 2.48 A and 6 at 2.87 A
 identify bcc iron) and the crystal directions of the laboratory axes.
+
+## `devices`
+
+`amcset devices` lists the compute devices of every backend this machine
+has (the CPU, OpenCL platforms and devices, HIP and CUDA GPUs, Kokkos's
+execution space if AMCSET was built with it, and the reference backend),
+with driver, compute units and memory, and says why a backend is missing
+(no runtime, no double precision). Run on one with `--compute BACKEND
+--device N`. `docs/GPU.md`.
 
 ## `stopping`
 

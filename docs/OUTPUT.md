@@ -19,7 +19,14 @@ option existed. The seed of the run is in `TDATA.txt` ("Random number
 seed"), `summary.json` (`"seed"`) and the run table; a seed drawn at
 random (`"seed": "random"`) is the one drawn, and `summary.json` adds
 `"seed_random": true` (the run table says "drawn at random"). That seed
-repeats the run.
+repeats the run. A run on a GPU backend (`compute.backend`, docs/GPU.md)
+adds a `compute` object to `summary.json`: `backend`, `precision` (the one
+used: `physics.fast_math` selects mixed), `device`, `device_blocks`,
+`cpu_blocks`, `reruns` (blocks the device gave back), `lanes`,
+`ring_blocks`, `deepest_recoil_slot`, the times `setup_seconds`,
+`device_seconds`, `kernel_seconds`, `read_seconds`, `host_seconds`, and
+`launches`, `merges`, `block_steps_mean`, `block_steps_max`, `total_steps`
+(the lines the CLI's summary and the GUI's log show). A CPU run has none.
 
 ## Tables
 

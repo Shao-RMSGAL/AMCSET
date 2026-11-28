@@ -28,6 +28,7 @@ Then read what your task needs:
 | [HOWTO.md](HOWTO.md) | recipes for the common changes | developers |
 | [TESTING.md](TESTING.md) | suites, what they cover, optional SRIM-data tests, TRIM comparison, GUI smoke test, determinism harness | developers |
 | [SRIM_MODE.md](SRIM_MODE.md) | SRIM-mode physics, parameters, stopping tables, tallies, TRIM's bugs, performance | users, developers |
+| [GPU.md](GPU.md) | the GPU backends (OpenCL, HIP, CUDA, Kokkos): using them from the CLI and the GUI, how a run works (diagrams, animations), precision, the comparison with the CPU, speed, profile, building, changing the kernel; figures in `gpu/figures/` | users, developers |
 | [VALIDATION.md](VALIDATION.md) | Every comparison with references: 161 TRIM runs and published SRIM calculations, the SRIM-2013 stopping tables against the IAEA database and NIST, measured ranges (Ni ions, 350 ranges in Si and light targets), sputtering yields, damage models against MD, the crystal transport against measurements, the ionization of slow recoils; the deviations and the corrections that can be switched on | users, developers |
 | [validation/](validation/README.md) | The validation as a review with 35 figures, in nine chapters: TRIM.exe, stopping, the Ni-ion problem, ranges, sputtering, damage, crystals, ionization, conclusions and recommendations | users, developers |
 | [TRIM2013_ALGORITHM.md](TRIM2013_ALGORITHM.md) | TRIM.exe's algorithm as recovered by disassembly, with routine addresses | developers |

@@ -35,7 +35,7 @@ State of this file: AMCSET 1.0.1, 2026-11-27.
    significant comparison with TRIM reference runs (`tools/trim_compare`,
    `docs/VALIDATION.md` §2). Fe → Fe is the priority case; never tune to a
    single case.
-5. **Every change builds and passes the tests** (266 CTest tests on Windows, 265 on Linux: the
+5. **Every change builds and passes the tests** (289 CTest tests on Windows, 288 on Linux: the
    GoogleTest suites and the CLI end-to-end runs). Add a focused test for
    every bug fix or feature.
 6. **One scenario model.** `config::RunConfig` (`run_config.h`) describes a
@@ -117,8 +117,15 @@ common/                     amcset-common (static library): everything except th
   include/amcset_common.h     Native engine: Particle/Ion/Electron/Layer/Volume/Simulation
   include/tallies.h           Welford, Histogram, Tallies (live statistics of both engines)
   src/trim/                   SRIM mode: trim_engine.cpp (model + transport + driver),
+                              target_model.h (the precomputed target, internal),
                               trim_output.cpp (TRIM files, summary.json), trim_tables.cpp,
                               trim_in.cpp, trim_dat.cpp, single_precision.cpp
+  include/compute/compute.h   GPU backends: Backend, Precision, Options (compute.*), list_devices
+  src/compute/                trim_kernel.h (the trim2013 transport as one kernel source for
+                              OpenCL C / HIP / CUDA / C++ / Kokkos), device.h (Device interface,
+                              KernelInput), kernel_input.cpp (model -> kernel arrays, block tallies
+                              back), opencl.cpp, hip.cpp (HIP and CUDA), kokkos*.cpp, reference*.cpp,
+                              dynlib.h (frameworks loaded at run time); docs/GPU.md
   src/physics/                stopping.cpp, scattering.cpp (shared physics)
   src/crystal/                unit_cell.cpp, orientation.cpp, crystal.cpp, cell_io.cpp, lattice_search.cpp,
                               materials.cpp, crystal_database.cpp, grain_map.cpp, grain_io.cpp,
@@ -366,6 +373,7 @@ in **`docs/HOWTO.md`**.
 | Architecture, data flow, threading, module boundaries | `docs/ARCHITECTURE.md` |
 | Building, environments, workstation, validation runs, benchmark | `docs/DEVELOPMENT.md` |
 | Recipes for common changes | `docs/HOWTO.md` |
+| GPU backends (OpenCL, HIP, CUDA, Kokkos): kernel, precision, speed, building | `docs/GPU.md` |
 | Tests, suites, determinism harness, optional SRIM-data tests | `docs/TESTING.md` |
 | SRIM-mode physics, parameters, TRIM bugs, performance | `docs/SRIM_MODE.md` |
 | Validation: TRIM comparison, measurements, MD, deviations and optional corrections | `docs/VALIDATION.md` (numbers, parameters); `docs/validation/` (the review with figures; redraw with `tools/validation/make_figures.py` after a rerun) |
@@ -391,7 +399,8 @@ in **`docs/HOWTO.md`**.
 
 - **Git:** branch `develop` (remote `git@github.com:Shao-RMSGAL/AMCSET.git`).
   Everything up to the 1.0 release files and the validation review is
-  committed and pushed (2026-11-26). Commit only when asked; then group the
+  committed and pushed (2026-11-26), the polycrystal work and the GPU
+  backends on 2026-11-27. Commit only when asked; then group the
   commits and check `git status` for build outputs first. The data file is under
   GitHub's 50 MB warning size; use Git LFS if it ever grows past it.
 - **Release 1.0:** version 1.0.0, packages, release workflow, signing script
@@ -438,6 +447,24 @@ in **`docs/HOWTO.md`**.
   what is left (a comparison with measurements next). Then: dose
   dependence (phase 5), a fit and wider validation (phase 6: low-dose
   profiles with stated tilt and twist, W and Fe, Cu/Au RBS).
+- **GPU backends (committed 2026-11-27):** `compute.backend` = opencl,
+  hip, cuda, kokkos or reference runs the trim2013 transport from
+  `common/src/compute/trim_kernel.h` (docs/GPU.md). OpenCL and HIP ran on the
+  workstation's RX 7900 XTX (HIP with the ROCm 10.2 Python SDK in
+  `C:\Users\natha\rocm-venv`, hipcc for the built-in code object via
+  `AMCSET_HIPCC`); Kokkos 4.6.02 (Threads) was built in `build\kokkos` and
+  AMCSET with it in `build\kokkos\amcset`. CUDA is written but not run.
+  The CLI and the GUI have the same six compute settings and show the same
+  report (`ComputeReport::lines()`, summary.json `compute`). Mixed
+  precision was fixed after `tools/gpu_compare` found a bias (docs/GPU.md
+  "Precision"); GPU and CPU agree within the statistics (docs/GPU.md "CPU
+  against GPU", outputs in `build\gpu_compare\`). docs/GPU.md has diagrams
+  (hand-drawn SVG) and plots and animations drawn by
+  `tools/gpu_compare/make_figures.py` in `docs/gpu/figures/`.
+  Open: a TRIM comparison of `precision: mixed` and of the GPU backends
+  (`tools/trim_compare` with `--compute`), a GPU backend run on Linux (the
+  build and tests pass there with GCC 15; GCC and Clang compile with
+  `-ffp-contract=off`), reading the RGP capture.
 - **Not done yet:** a controlled benchmark (`tools\windows\benchmark_vs_trim.bat`
   on an idle machine), validation of the native engine, a Linux CI job.
 

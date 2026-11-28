@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5">
+  <title>The ring of block slots and the merge in block order</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#334155"/>
+    </marker>
+    <style>
+      .h{font-weight:700;font-size:15px;fill:#0f172a}
+      .s{fill:#334155}
+      .m{fill:#475569;font-size:11.5px}
+      .ln{stroke:#334155;stroke-width:1.3;fill:none;marker-end:url(#a)}
+      .merged{fill:#e0e7ff;stroke:#6366f1}
+      .fin{fill:#86efac;stroke:#15803d}
+      .run{fill:#fed7aa;stroke:#ea580c}
+      .wait{fill:#f1f5f9;stroke:#94a3b8;stroke-dasharray:3 3}
+      .cell{stroke-width:1.2}
+    </style>
+  </defs>
+  <rect width="1000" height="600" fill="#ffffff"/>
+  <text class="h" x="20" y="28">Device blocks (16 ions each) and the ring of slots (here ring = 8)</text>
+
+  <!-- block strip -->
+  <g>
+    <!-- merged 0..11 -->
+    <rect class="cell merged" x="20" y="48" width="276" height="34" rx="4"/>
+    <text class="s" x="158" y="70" text-anchor="middle">blocks 0–11: merged into the running total</text>
+    <!-- 12..19 -->
+    <rect class="cell run"  x="302" y="48" width="44" height="34" rx="4"/><text class="s" x="324" y="70" text-anchor="middle">12</text>
+    <rect class="cell fin"  x="350" y="48" width="44" height="34" rx="4"/><text class="s" x="372" y="70" text-anchor="middle">13</text>
+    <rect class="cell run"  x="398" y="48" width="44" height="34" rx="4"/><text class="s" x="420" y="70" text-anchor="middle">14</text>
+    <rect class="cell fin"  x="446" y="48" width="44" height="34" rx="4"/><text class="s" x="468" y="70" text-anchor="middle">15</text>
+    <rect class="cell run"  x="494" y="48" width="44" height="34" rx="4"/><text class="s" x="516" y="70" text-anchor="middle">16</text>
+    <rect class="cell run"  x="542" y="48" width="44" height="34" rx="4"/><text class="s" x="564" y="70" text-anchor="middle">17</text>
+    <rect class="cell fin"  x="590" y="48" width="44" height="34" rx="4"/><text class="s" x="612" y="70" text-anchor="middle">18</text>
+    <rect class="cell run"  x="638" y="48" width="44" height="34" rx="4"/><text class="s" x="660" y="70" text-anchor="middle">19</text>
+    <rect class="cell wait" x="686" y="48" width="44" height="34" rx="4"/><text class="s" x="708" y="70" text-anchor="middle">20</text>
+    <rect class="cell wait" x="734" y="48" width="44" height="34" rx="4"/><text class="s" x="756" y="70" text-anchor="middle">21</text>
+    <rect class="cell wait" x="782" y="48" width="198" height="34" rx="4"/><text class="s" x="881" y="70" text-anchor="middle">… n_dev − 1: not started</text>
+  </g>
+  <!-- pointers -->
+  <path class="ln" d="M302,112 L302,86"/><text class="s" x="302" y="126" text-anchor="middle" font-weight="600">merged = 12</text>
+  <path class="ln" d="M686,112 L686,86"/><text class="s" x="686" y="126" text-anchor="middle" font-weight="600">counter = limit = 20</text>
+  <text class="m" x="686" y="142" text-anchor="middle">limit = merged + ring: block 20 needs slot 4,</text>
+  <text class="m" x="686" y="156" text-anchor="middle">which block 12 still holds → a free lane waits</text>
+
+  <!-- ring slots -->
+  <text class="h" x="20" y="196">Ring slots on the device: block d lives in slot d % ring until it is merged</text>
+  <g>
+    <rect class="cell run" x="60"  y="214" width="100" height="60" rx="6"/><text class="s" x="110" y="238" text-anchor="middle">slot 0</text><text class="m" x="110" y="258" text-anchor="middle">block 16 · lane 5</text>
+    <rect class="cell run" x="170" y="214" width="100" height="60" rx="6"/><text class="s" x="220" y="238" text-anchor="middle">slot 1</text><text class="m" x="220" y="258" text-anchor="middle">block 17 · lane 0</text>
+    <rect class="cell fin" x="280" y="214" width="100" height="60" rx="6"/><text class="s" x="330" y="238" text-anchor="middle">slot 2</text><text class="m" x="330" y="258" text-anchor="middle">block 18 · done</text>
+    <rect class="cell run" x="390" y="214" width="100" height="60" rx="6"/><text class="s" x="440" y="238" text-anchor="middle">slot 3</text><text class="m" x="440" y="258" text-anchor="middle">block 19 · lane 2</text>
+    <rect class="cell run" x="500" y="214" width="100" height="60" rx="6" stroke-width="2.5"/><text class="s" x="550" y="238" text-anchor="middle">slot 4</text><text class="m" x="550" y="258" text-anchor="middle">block 12 · lane 1</text>
+    <rect class="cell fin" x="610" y="214" width="100" height="60" rx="6"/><text class="s" x="660" y="238" text-anchor="middle">slot 5</text><text class="m" x="660" y="258" text-anchor="middle">block 13 · done</text>
+    <rect class="cell run" x="720" y="214" width="100" height="60" rx="6"/><text class="s" x="770" y="238" text-anchor="middle">slot 6</text><text class="m" x="770" y="258" text-anchor="middle">block 14 · lane 4</text>
+    <rect class="cell fin" x="830" y="214" width="100" height="60" rx="6"/><text class="s" x="880" y="238" text-anchor="middle">slot 7</text><text class="m" x="880" y="258" text-anchor="middle">block 15 · done</text>
+  </g>
+  <text class="m" x="60" y="296">The scan finds the finished blocks at the head (from merged): block 12 is still running, so nothing is merged yet, although 13, 15 and 18 are done.</text>
+  <text class="m" x="60" y="312">When 12 finishes, the next scan returns 2 (blocks 12, 13): one merge kernel adds both to the total in that order, and slots 4 and 5 are free for blocks 20 and 21.</text>
+
+  <!-- legend -->
+  <rect class="cell merged" x="60" y="328" width="18" height="14" rx="3"/><text class="m" x="84" y="340">merged</text>
+  <rect class="cell fin" x="150" y="328" width="18" height="14" rx="3"/><text class="m" x="174" y="340">finished, waiting for the blocks before it</text>
+  <rect class="cell run" x="420" y="328" width="18" height="14" rx="3"/><text class="m" x="444" y="340">a lane is running it</text>
+  <rect class="cell wait" x="580" y="328" width="18" height="14" rx="3"/><text class="m" x="604" y="340">no slot yet</text>
+
+  <!-- interleaved layout -->
+  <text class="h" x="20" y="384">Interleaved tallies: element e of slot j at tallies[e × ring + j]</text>
+  <g font-size="11">
+    <text class="m" x="60" y="410">e = 0 (depth bin 0 of the range)</text>
+    <text class="m" x="60" y="440">e = 1</text>
+    <text class="m" x="60" y="470">e = 2</text>
+    <text class="m" x="60" y="500">…  (≈ 3000 doubles per block with 100 depth bins)</text>
+  </g>
+  <g>
+    <rect x="330" y="396" width="480" height="22" fill="#fff7ed" stroke="#fdba74"/>
+    <rect x="330" y="426" width="480" height="22" fill="#fff7ed" stroke="#fdba74"/>
+    <rect x="330" y="456" width="480" height="22" fill="#fff7ed" stroke="#fdba74"/>
+    <g stroke="#fdba74">
+      <line x1="390" y1="396" x2="390" y2="478"/><line x1="450" y1="396" x2="450" y2="478"/><line x1="510" y1="396" x2="510" y2="478"/>
+      <line x1="570" y1="396" x2="570" y2="478"/><line x1="630" y1="396" x2="630" y2="478"/><line x1="690" y1="396" x2="690" y2="478"/>
+      <line x1="750" y1="396" x2="750" y2="478"/>
+    </g>
+    <g class="m" text-anchor="middle">
+      <text x="360" y="412">slot 0</text><text x="420" y="412">slot 1</text><text x="480" y="412">slot 2</text><text x="540" y="412">slot 3</text>
+      <text x="600" y="412">slot 4</text><text x="660" y="412">slot 5</text><text x="720" y="412">slot 6</text><text x="780" y="412">slot 7</text>
+    </g>
+  </g>
+  <text class="m" x="330" y="500">Lanes of one wavefront run neighbouring blocks, so when they add to the same tally element they touch</text>
+  <text class="m" x="330" y="516">neighbouring addresses (one memory transaction), and the merge kernel (one work item per element e)</text>
+  <text class="m" x="330" y="532">reads one contiguous row: total[e] += row[merged % ring], row[(merged+1) % ring], … in block order.</text>
+  <text class="m" x="20" y="566">Ring size: memory_mib minus the lanes, at most 1.5 × the lanes. Sums are added in block order, element by element, as TrimTallies::add on the CPU:</text>
+  <text class="m" x="20" y="582">with the C++-compiled kernel (reference, Kokkos on the host) every tally equals the CPU transport's bit for bit (ComputeKernel.* tests).</text>
+</svg>

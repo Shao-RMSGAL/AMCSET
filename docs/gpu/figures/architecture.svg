@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 640" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13">
+  <title>AMCSET GPU architecture: front ends, library, backends, one kernel source</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .box{stroke-width:1.5;rx:8}
+      .fe{fill:#eef2ff;stroke:#4f46e5}
+      .lib{fill:#f8fafc;stroke:#64748b}
+      .cpu{fill:#dbeafe;stroke:#2563eb}
+      .gpu{fill:#ffedd5;stroke:#ea580c}
+      .src{fill:#dcfce7;stroke:#16a34a}
+      .t{fill:#0f172a}
+      .s{fill:#475569;font-size:11.5px}
+      .h{font-weight:600;font-size:14px;fill:#0f172a}
+      .ln{stroke:#475569;stroke-width:1.4;fill:none;marker-end:url(#a)}
+      .dash{stroke:#16a34a;stroke-width:1.4;fill:none;stroke-dasharray:5 4;marker-end:url(#a)}
+    </style>
+  </defs>
+  <rect width="980" height="640" fill="#ffffff"/>
+
+  <!-- Front ends -->
+  <rect class="box fe" x="150" y="20" width="250" height="70"/>
+  <text class="h" x="275" y="45" text-anchor="middle">amcset (CLI)</text>
+  <text class="s" x="275" y="63" text-anchor="middle">--compute --device --precision</text>
+  <text class="s" x="275" y="78" text-anchor="middle">--gpu-memory --recoil-slots --exit-records</text>
+  <rect class="box fe" x="580" y="20" width="250" height="70"/>
+  <text class="h" x="705" y="45" text-anchor="middle">amcset-gui</text>
+  <text class="s" x="705" y="63" text-anchor="middle">Calculation tab: Compute (SRIM mode)</text>
+  <text class="s" x="705" y="78" text-anchor="middle">the same six fields; device list; log</text>
+
+  <!-- Library frame -->
+  <rect x="20" y="110" width="940" height="510" rx="12" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <text x="36" y="132" font-weight="600" fill="#64748b">amcset-common (static library: everything below is shared by both front ends)</text>
+
+  <path class="ln" d="M275,90 L420,150"/>
+  <path class="ln" d="M705,90 L560,150"/>
+
+  <rect class="box lib" x="330" y="150" width="320" height="58"/>
+  <text class="h" x="490" y="172" text-anchor="middle">config::RunConfig  →  config::make_engine</text>
+  <text class="s" x="490" y="192" text-anchor="middle">"compute": {backend, device, precision, memory_mib, recoil_slots, exit_records}</text>
+
+  <path class="ln" d="M490,208 L490,232"/>
+  <rect class="box lib" x="230" y="232" width="520" height="72"/>
+  <text class="h" x="490" y="254" text-anchor="middle">trim::TrimSimulation::run()</text>
+  <text class="s" x="490" y="273" text-anchor="middle">TargetModel (layers, elements, pairs, stopping curves) · blocks of 16 ions · per-ion L'Ecuyer streams</text>
+  <text class="s" x="490" y="290" text-anchor="middle">warnings (why a run stays on the CPU) · ComputeReport::lines() · summary.json "compute"</text>
+
+  <!-- CPU and device workers -->
+  <path class="ln" d="M330,304 L200,340"/>
+  <path class="ln" d="M650,304 L760,340"/>
+  <rect class="box cpu" x="40" y="340" width="330" height="80"/>
+  <text class="h" x="205" y="362" text-anchor="middle">CPU workers (std::thread × cores)</text>
+  <text class="s" x="205" y="381" text-anchor="middle">Transporter::run_ion_2013 / cascade_2013</text>
+  <text class="s" x="205" y="397" text-anchor="middle">blocks whose paths are drawn or detailed,</text>
+  <text class="s" x="205" y="412" text-anchor="middle">blocks the device gives back, whole CPU runs</text>
+  <rect class="box gpu" x="560" y="340" width="380" height="80"/>
+  <text class="h" x="750" y="362" text-anchor="middle">device worker (one thread)</text>
+  <text class="s" x="750" y="381" text-anchor="middle">compute::make_kernel_input → Device::load</text>
+  <text class="s" x="750" y="397" text-anchor="middle">launch · scan · read_rows · put_block · merge · pack_lists</text>
+  <text class="s" x="750" y="412" text-anchor="middle">publish the running total ≤ 2× per second</text>
+  <path class="ln" d="M560,380 L370,380" />
+  <text class="s" x="465" y="372" text-anchor="middle">reruns</text>
+
+  <!-- Backends -->
+  <path d="M750,420 L750,436 M125,436 L860,436" stroke="#475569" stroke-width="1.4" fill="none"/>
+  <rect x="420" y="428" width="160" height="16" fill="#ffffff"/>
+  <text x="500" y="440" text-anchor="middle" class="s">compute::Device (device.h)</text>
+  <g>
+    <rect class="box gpu" x="40" y="450" width="170" height="78"/>
+    <text class="h" x="125" y="472" text-anchor="middle">OpenCL</text>
+    <text class="s" x="125" y="490" text-anchor="middle">OpenCL.dll / libOpenCL</text>
+    <text class="s" x="125" y="505" text-anchor="middle">source compiled by the</text>
+    <text class="s" x="125" y="519" text-anchor="middle">driver at run time</text>
+
+    <rect class="box gpu" x="225" y="450" width="170" height="78"/>
+    <text class="h" x="310" y="472" text-anchor="middle">HIP (AMD)</text>
+    <text class="s" x="310" y="490" text-anchor="middle">amdhip64 driver runtime</text>
+    <text class="s" x="310" y="505" text-anchor="middle">built-in code object (hipcc)</text>
+    <text class="s" x="310" y="519" text-anchor="middle">or hiprtc at run time</text>
+
+    <rect class="box gpu" x="410" y="450" width="170" height="78"/>
+    <text class="h" x="495" y="472" text-anchor="middle">CUDA (NVIDIA)</text>
+    <text class="s" x="495" y="490" text-anchor="middle">nvcuda driver API</text>
+    <text class="s" x="495" y="505" text-anchor="middle">NVRTC → PTX at run time</text>
+    <text class="s" x="495" y="519" text-anchor="middle">(written, not yet run)</text>
+
+    <rect class="box gpu" x="595" y="450" width="170" height="78"/>
+    <text class="h" x="680" y="472" text-anchor="middle">Kokkos</text>
+    <text class="s" x="680" y="490" text-anchor="middle">built in (a CMake option)</text>
+    <text class="s" x="680" y="505" text-anchor="middle">Threads, OpenMP, HIP,</text>
+    <text class="s" x="680" y="519" text-anchor="middle">CUDA or SYCL space</text>
+
+    <rect class="box cpu" x="780" y="450" width="160" height="78"/>
+    <text class="h" x="860" y="472" text-anchor="middle">reference</text>
+    <text class="s" x="860" y="490" text-anchor="middle">the kernel as C++</text>
+    <text class="s" x="860" y="505" text-anchor="middle">on CPU threads:</text>
+    <text class="s" x="860" y="519" text-anchor="middle">= CPU bit for bit</text>
+  </g>
+  <path class="ln" d="M125,436 L125,450"/>
+  <path class="ln" d="M310,436 L310,450"/>
+  <path class="ln" d="M495,444 L495,450"/>
+  <path class="ln" d="M680,436 L680,450"/>
+  <path class="ln" d="M860,436 L860,450"/>
+
+  <!-- Kernel source -->
+  <rect class="box src" x="40" y="550" width="900" height="56"/>
+  <text class="h" x="490" y="572" text-anchor="middle">common/src/compute/trim_kernel.h: one kernel source (the trim2013 transport, its step machine, ring and merge kernels)</text>
+  <text class="s" x="490" y="592" text-anchor="middle">compiled as OpenCL C · HIP / CUDA C++ · C++ (reference, Kokkos)  —  double or mixed precision (-DAMK_MIXED)  —  frameworks loaded at run time (dynlib.h)</text>
+  <path class="dash" d="M125,550 L125,530"/>
+  <path class="dash" d="M310,550 L310,530"/>
+  <path class="dash" d="M495,550 L495,530"/>
+  <path class="dash" d="M680,550 L680,530"/>
+  <path class="dash" d="M860,550 L860,530"/>
+</svg>

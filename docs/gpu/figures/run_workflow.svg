@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 980" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5">
+  <title>One run on a GPU backend, step by step (TrimSimulation::run, device worker)</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#334155"/>
+    </marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <style>
+      .hd{font-weight:700;font-size:14px;fill:#0f172a}
+      .s{fill:#334155}
+      .m{fill:#475569;font-size:11.5px}
+      .life{stroke:#cbd5e1;stroke-width:2;stroke-dasharray:4 4}
+      .act{rx:4;stroke-width:1.2}
+      .host{fill:#f1f5f9;stroke:#64748b}
+      .gpu{fill:#ffedd5;stroke:#ea580c}
+      .cpu{fill:#dbeafe;stroke:#2563eb}
+      .fe{fill:#eef2ff;stroke:#4f46e5}
+      .ln{stroke:#334155;stroke-width:1.3;fill:none;marker-end:url(#a)}
+      .bus{stroke:#16a34a;stroke-width:1.6;fill:none;marker-end:url(#g)}
+      .bt{fill:#15803d;font-size:11.5px;font-weight:600}
+      .ph{font-weight:600;fill:#7c3aed;font-size:12.5px}
+    </style>
+  </defs>
+  <rect width="1000" height="980" fill="#ffffff"/>
+
+  <!-- headers -->
+  <rect class="act fe" x="20" y="16" width="170" height="40"/><text class="hd" x="105" y="41" text-anchor="middle">Front end (CLI / GUI)</text>
+  <rect class="act host" x="250" y="16" width="230" height="40"/><text class="hd" x="365" y="41" text-anchor="middle">Device worker (host thread)</text>
+  <rect class="act gpu" x="560" y="16" width="200" height="40"/><text class="hd" x="660" y="41" text-anchor="middle">GPU</text>
+  <rect class="act cpu" x="820" y="16" width="160" height="40"/><text class="hd" x="900" y="41" text-anchor="middle">CPU workers</text>
+  <line class="life" x1="105" y1="56" x2="105" y2="960"/>
+  <line class="life" x1="365" y1="56" x2="365" y2="960"/>
+  <line class="life" x1="660" y1="56" x2="660" y2="960"/>
+  <line class="life" x1="900" y1="56" x2="900" y2="960"/>
+
+  <!-- 1. setup -->
+  <text class="ph" x="20" y="86">1 · setup (once)</text>
+  <path class="ln" d="M105,100 L355,100"/><text class="m" x="230" y="94" text-anchor="middle">RunConfig → make_engine → run()</text>
+  <rect class="act host" x="250" y="108" width="230" height="62"/>
+  <text class="s" x="365" y="126" text-anchor="middle">TargetModel → make_kernel_input</text>
+  <text class="m" x="365" y="142" text-anchor="middle">KParams, layers, elements, pairs,</text>
+  <text class="m" x="365" y="157" text-anchor="middle">stopping curves (SI, plain structs)</text>
+  <path class="bus" d="M480,150 L578,150"/><text class="bt" x="528" y="144" text-anchor="middle">once</text>
+  <rect class="act gpu" x="580" y="112" width="160" height="58"/>
+  <text class="s" x="660" y="130" text-anchor="middle">kernel: built-in code</text>
+  <text class="s" x="660" y="146" text-anchor="middle">object, or compiled</text>
+  <text class="m" x="660" y="162" text-anchor="middle">(OpenCL, hiprtc, NVRTC)</text>
+  <rect class="act gpu" x="580" y="176" width="160" height="40"/>
+  <text class="s" x="660" y="193" text-anchor="middle">lanes + recoil stacks,</text>
+  <text class="s" x="660" y="208" text-anchor="middle">ring of block slots</text>
+  <text class="m" x="365" y="196" text-anchor="middle">memory_mib: ≤ 40 % lanes, rest ring</text>
+
+  <!-- 2. CPU blocks first -->
+  <text class="ph" x="20" y="246">2 · drawn / detailed blocks</text>
+  <path class="ln" d="M375,258 L890,258"/><text class="m" x="760" y="252" text-anchor="middle">blocks with trajectory_ions or COLLISON details</text>
+  <rect class="act cpu" x="830" y="264" width="140" height="44"/>
+  <text class="s" x="900" y="282" text-anchor="middle">run_block (CPU</text>
+  <text class="s" x="900" y="298" text-anchor="middle">transport, paths)</text>
+  <path class="ln" d="M830,300 L375,300"/><text class="m" x="600" y="294" text-anchor="middle">tallies, in block order</text>
+  <path class="bus" d="M375,318 L650,318"/><text class="bt" x="510" y="312" text-anchor="middle">set_total(prefix): 24 kB</text>
+  <path class="ln" d="M830,286 L115,286" stroke-dasharray="3 3"/><text class="m" x="240" y="280" text-anchor="middle">paths for the views</text>
+
+  <!-- 3. launch loop -->
+  <rect x="14" y="336" width="972" height="470" rx="10" fill="none" stroke="#7c3aed" stroke-width="1.3" stroke-dasharray="7 4"/>
+  <text class="ph" x="24" y="356">3 · loop until every device block is merged (each turn 0.05–0.2 s)</text>
+
+  <path class="ln" d="M365,374 L650,374"/><text class="m" x="507" y="368" text-anchor="middle">launch(lanes, steps, limit = merged + ring)</text>
+  <rect class="act gpu" x="560" y="380" width="200" height="96"/>
+  <text class="s" x="660" y="398" text-anchor="middle">amcset_trim_lanes: every</text>
+  <text class="s" x="660" y="414" text-anchor="middle">lane runs its step machine</text>
+  <text class="m" x="660" y="431" text-anchor="middle">takes blocks by atomic counter,</text>
+  <text class="m" x="660" y="446" text-anchor="middle">tallies into its ring slot,</text>
+  <text class="m" x="660" y="461" text-anchor="middle">marks slot_block when done</text>
+  <path class="bus" d="M560,486 L375,486"/><text class="bt" x="468" y="481" text-anchor="middle">lanes done: 8 bytes</text>
+
+  <path class="ln" d="M365,500 L650,500"/><text class="m" x="507" y="494" text-anchor="middle">scan(merged)</text>
+  <rect class="act gpu" x="580" y="504" width="160" height="26"/><text class="s" x="660" y="522" text-anchor="middle">finished blocks at the head</text>
+  <path class="bus" d="M650,538 L375,538"/><text class="bt" x="510" y="532" text-anchor="middle">count: 8 bytes</text>
+
+  <path class="bus" d="M650,560 L375,560"/><text class="bt" x="510" y="554" text-anchor="middle">read_rows: 6 rows × ring doubles</text>
+  <text class="m" x="510" y="574" text-anchor="middle">(status, positions, exits, steps, recoil depth, EXYZ)</text>
+
+  <rect class="act host" x="270" y="582" width="190" height="34"/>
+  <text class="s" x="365" y="603" text-anchor="middle">status ≠ OK? → rerun on CPU</text>
+  <path class="ln" d="M460,598 L890,598"/>
+  <rect class="act cpu" x="830" y="604" width="140" height="30"/><text class="s" x="900" y="623" text-anchor="middle">run_block (rerun)</text>
+  <path class="bus" d="M375,644 L650,644"/><text class="bt" x="510" y="638" text-anchor="middle">put_block(slot, its tallies)</text>
+
+  <path class="ln" d="M365,666 L650,666"/><text class="m" x="507" y="660" text-anchor="middle">merge(merged, count)</text>
+  <rect class="act gpu" x="560" y="670" width="200" height="40"/>
+  <text class="s" x="660" y="687" text-anchor="middle">total[e] += slot rows, block</text>
+  <text class="s" x="660" y="702" text-anchor="middle">order: the CPU's additions</text>
+
+  <path class="ln" d="M365,722 L650,722"/><text class="m" x="507" y="716" text-anchor="middle">pack_lists (only if the scenario keeps lists)</text>
+  <path class="bus" d="M650,742 L375,742"/><text class="bt" x="510" y="736" text-anchor="middle">packed positions / exits / EXYZ: their length</text>
+  <rect class="act host" x="270" y="748" width="190" height="24"/><text class="s" x="365" y="765" text-anchor="middle">append to the run's lists</text>
+  <path class="bus" d="M650,786 L375,786"/><text class="bt" x="510" y="780" text-anchor="middle">every 0.5 s: read_total, ~24 kB</text>
+  <path class="ln" d="M355,796 L115,796"/><text class="m" x="235" y="790" text-anchor="middle">live tallies: plots, progress</text>
+
+  <!-- 4. end -->
+  <text class="ph" x="20" y="836">4 · end</text>
+  <path class="bus" d="M650,850 L375,850"/><text class="bt" x="510" y="844" text-anchor="middle">read_total (final)</text>
+  <rect class="act host" x="270" y="858" width="190" height="44"/>
+  <text class="s" x="365" y="876" text-anchor="middle">TrimTallies of the run</text>
+  <text class="m" x="365" y="892" text-anchor="middle">ComputeReport (times, steps)</text>
+  <path class="ln" d="M355,914 L115,914"/>
+  <text class="m" x="235" y="908" text-anchor="middle">results, warnings, report lines</text>
+  <rect class="act fe" x="20" y="920" width="170" height="40"/>
+  <text class="s" x="105" y="937" text-anchor="middle">the same writers: TRIM files,</text>
+  <text class="s" x="105" y="952" text-anchor="middle">CSV/JSON/Parquet, summary.json</text>
+  <text class="m" x="700" y="900">green: what crosses the bus (PCIe)</text>
+  <line class="bus" x1="640" y1="896" x2="690" y2="896"/>
+</svg>

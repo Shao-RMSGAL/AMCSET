@@ -4,6 +4,54 @@
 
 ### Added
 
+- **GPU backends** (`compute.backend`, `--compute`; docs/GPU.md): the
+  trim2013 transport runs on a GPU through OpenCL, HIP or CUDA, or through
+  Kokkos (built with `-DAMCSET_WITH_KOKKOS=ON`), from one kernel source
+  (`common/src/compute/trim_kernel.h`); the CPU stays the default. The
+  frameworks are loaded from the system's driver at run time, so one build
+  runs everywhere. The library runs it for both front ends with the same
+  six settings (`compute.backend`, `device`, `precision`, `memory_mib`,
+  `recoil_slots`, `exit_records`; CLI `--compute`, `--device`,
+  `--precision`, `--gpu-memory`, `--recoil-slots`, `--exit-records`; the
+  GUI's Calculation tab), `amcset devices` and the GUI list the devices,
+  and both show the same report after a run
+  (`TrimSimulation::ComputeReport::lines()`; `summary.json` gets a
+  `compute` object). A GPU run of fewer than 100,000 ions gets a note that
+  the CPU is usually faster. The kernel compiled as C++ (`reference`, or Kokkos on a CPU
+  space) reproduces the CPU transport bit for bit (`ComputeKernel.*`); on
+  a GPU the vendor's math library differs in the last bit, so results agree
+  statistically and are reproducible on the same device. Runs and blocks
+  of 16 ions the kernel does not cover run on the CPU, with a warning that
+  says why: the refined and crystal transports, MD events, trajectories of
+  every ion and very dense EXYZ.txt stay there by decision (docs/GPU.md
+  "What the results are"), as do the drawn and detailed ions and blocks
+  that outgrow their buffers. `compute.precision: mixed` computes most of
+  the collision arithmetic in single precision (positions, energies,
+  tallies and the cancelling part of the scattering angle in double;
+  `physics.fast_math` selects it on a GPU): the closest approach gets one
+  Newton step in double and 1 − cos²(θ/2) is formed in double, and
+  rotations use y² + z², because in single precision they made the radial
+  range of 100 keV H in Si 0.4 % too large (z = 4.2).
+  The device streams through the run: lanes take blocks into a ring of
+  slots, a merge kernel adds finished blocks to the running total on the
+  device in block order, and the host reads only the merged blocks' status
+  and packed lists per launch and the total at most twice a second (live
+  plots); launches last 0.05 to 0.2 s, so other programs on the GPU are
+  not held up. The kernel covers the beam, TRIM.DAT ions and recoils and
+  EXYZ.txt. Measured on an RX 7900 XTX that was running other work
+  (indications): 200,000 ions of 50 keV Fe in Fe with full cascades in
+  6.0 s with HIP, mixed precision (OpenCL 12.8 s) against 26.0 s on the
+  16-thread CPU, 1,000,000 ions with quick damage in 0.8 s against 3.7 s;
+  runs below about 10⁵ ions (too few blocks of 16 to fill a GPU) and
+  double precision are faster on the CPU here. The GPU agrees with the CPU
+  within the statistics (`tools/gpu_compare`: seven cases, six runs each,
+  and the deviating groups rerun with 10⁵–10⁶ ions per run; docs/GPU.md
+  "CPU against GPU", with diagrams of the workflow, plots and animations
+  drawn by `tools/gpu_compare/make_figures.py`). HIP was run with the ROCm
+  10.2 SDK; CUDA has not been run on NVIDIA hardware yet. The HIP code
+  object's compiler, given in the environment variable `AMCSET_HIPCC`, is
+  kept in the CMake cache (a later configure without the variable dropped
+  the code object before).
 - **Low-angle grain boundaries in registry** (`polycrystal.registry_below`,
   off by default). Neighbouring grains misoriented by less than the angle
   continue each other's lattice across their boundary, as at a subgrain
@@ -71,6 +119,14 @@
   Si took 1.9 GB and 2.8 s to start, now 619 MB and 0.7 s. Results are
   identical (test `CrystalSearch.SharedSitesGiveTheSameLattice`; the
   TRIM-format files of a 12 000-grain run are byte for byte the same).
+- **GCC and Clang builds no longer fuse multiply-adds** the source does not
+  write (`-ffp-contract=off`, as MSVC). With `-march=native` GCC fused them
+  differently in code that computes the same expressions: on Linux the GPU
+  kernel compiled as C++ no longer matched the CPU transport bit for bit
+  (nine `ComputeKernel` tests) and two MD event times that are equal came
+  out a bit apart (`TrimMdEvents.CrystalCrossesEveryLevelOnceAndLevelsNest`).
+  Linux results change in their last bits only (statistically the same);
+  Windows builds are unchanged.
 
 ## 1.0.1 — November 2026
 

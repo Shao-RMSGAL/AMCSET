@@ -117,7 +117,16 @@ and `output` in the working directory for a TRIM.IN.
   calculation (quick Kinchin-Pease, full cascades, monolayer steps), number
   of ions, seed (or *New random seed for every run*: the drawn seed is
   shown in the log and recorded in the outputs; continuing keeps it),
-  threads; for SRIM mode the transport of amorphous targets
+  threads; for SRIM mode the *Compute* group: the backend (CPU, OpenCL,
+  HIP, CUDA, Kokkos or the reference kernel on the CPU), the device number,
+  the precision (double, or mixed, several times faster on consumer GPUs),
+  the device memory, recoil slots and exit records (0 = automatic), with
+  the devices found listed under them (probed on a worker thread when the
+  tab is built; the CLI's `amcset devices`); the blocks whose paths the
+  views draw run on the CPU (docs/GPU.md). After a GPU run the log shows
+  the same report lines as the CLI's summary (device, blocks, kernel,
+  transfer and host times, steps), and `summary.json` records them under
+  `compute`; the transport of amorphous targets
   (TRIM-2013 or refined) and the switch *Crystal transport (follows the
   lattice)*, which turns the crystal transport on and off: on, layers that
   have a crystal are followed atom by atom (not TRIM, and the division of

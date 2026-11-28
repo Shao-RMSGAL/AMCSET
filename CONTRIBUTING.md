@@ -28,8 +28,8 @@ were used (docs/SRIM_MODE.md lists what SRIM mode reproduces).
 3. A change that must **not** change results (refactoring, speed):
    - SRIM mode (`trim2013`, `refined`): `tools/perf/bench.py run` with the
      old and the new executable, then `bench.py compare`: every output file
-     identical. Compare MSVC builds (GCC with `-march=native` may fuse
-     multiply-adds differently when code moves).
+     identical. Compare builds of one compiler (MSVC and GCC differ in the
+     last bits of `exp`, `log` and `pow`).
    - the native engine: the determinism harness before and after
      ([docs/TESTING.md](docs/TESTING.md)).
 4. A change that **does** change results (a physics fix): one thing at a
