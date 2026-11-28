@@ -64,6 +64,11 @@ target_compile_options(compiler_flags INTERFACE
   "$<${gcc_like_cxx}:$<BUILD_INTERFACE:-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;>>"
    "$<${only_clang}:$<BUILD_INTERFACE:-fbracket-depth=3500>>"
   "$<${msvc_cxx}:$<BUILD_INTERFACE:-W3>>"
+  # No fused multiply-adds where the source has none (MSVC's default): GCC
+  # fuses wherever -march allows, differently in code that computes the same
+  # expressions, which broke the bit-for-bit comparison of the CPU transport
+  # with the GPU kernel compiled as C++ and exact equalities of event times.
+  "$<${gcc_like_cxx}:-ffp-contract=off>"
 )
 
 # Performance: tune Release flags for maximum runtime performance.
@@ -101,7 +106,8 @@ else()
     else()
         set(AMCSET_LTO_LINK_FLAG "-flto")
     endif()
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} ${AMCSET_LTO_LINK_FLAG}")
+    # (-ffp-contract=off also at the link: the link-time code generation.)
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} ${AMCSET_LTO_LINK_FLAG} -ffp-contract=off")
     target_compile_options(compiler_flags INTERFACE
         $<$<CONFIG:Release>:-O3;-march=${AMCSET_MARCH};-flto;-funroll-loops;-pipe>
     )

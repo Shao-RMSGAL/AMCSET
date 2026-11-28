@@ -33,6 +33,8 @@ ConanPresets.json
 CMakeUserPresets.json
 compile_commands.json
 .vscode/.conan_tools/
+# GoogleTest's test discovery, when CTest runs from the repository root.
+cmake_test_discovery_*.json
 
 # --- Editors, tools, operating systems ---------------------------------------------
 .cache/

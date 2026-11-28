@@ -1312,7 +1312,9 @@ TEST(CrystalDatabase, EveryRowBuildsWithItsSources) {
   for (const auto &r : rows) {
     SCOPED_TRACE(std::string(r.name) + " " + std::string(r.structure));
     EXPECT_FALSE(database_citation(r.lattice_source).empty());
-    if (r.debye_temperature_K > 0.0) EXPECT_FALSE(database_citation(r.debye_source).empty());
+    if (r.debye_temperature_K > 0.0) {
+      EXPECT_FALSE(database_citation(r.debye_source).empty());
+    }
     EXPECT_EQ(r.sublattices.size(), structure_info(r.structure).sublattices.size());
     EXPECT_EQ(structure_info(r.structure).hexagonal, r.c_A > 0.0);
     const Crystal c = make_database_crystal(r);
