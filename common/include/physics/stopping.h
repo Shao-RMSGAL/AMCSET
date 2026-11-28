@@ -378,6 +378,11 @@ public:
   number_density_quantity atomic_density() const noexcept { return density_; }
   //! Whether the curve has been built.
   bool empty() const noexcept { return log_s_.empty(); }
+  //! The interpolation table stopping_power() reads (the GPU backends copy
+  //! it): ln(E_min / eV), 1 / step in ln E, and ln(N S_e / (eV/Angstrom)).
+  double log_e0() const noexcept { return log_e0_; }
+  double inv_step() const noexcept { return inv_step_; }
+  const std::vector<double> &log_table() const noexcept { return log_s_; }
 
 private:
   double log_e0_ = 0.0;    // ln(E_min / eV)

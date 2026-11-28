@@ -82,6 +82,7 @@ Usage:
                                             amcset crystals nitride, amcset crystals Ga As
   amcset grains <scenario.json> [--json]    The grains of each polycrystal layer: number,
                                             sizes, texture, boundaries, registry
+  amcset devices                            The compute devices (CPU, OpenCL, HIP, CUDA, Kokkos)
   amcset template [srim|native] [-o FILE]   Print (or save) an example scenario
   amcset validate <scenario.json|TRIM.IN>   Check a scenario without running it
   amcset version | help
@@ -90,6 +91,18 @@ Options for run/trim/validate:
   -o, --output DIR          Output directory (TRIM-format files, summary.json)
   -n, --ions N              Number of incident ions
   -j, --threads N           Worker threads (default: all cores)
+      --compute BACKEND     cpu (default) | opencl | hip | cuda | kokkos | reference:
+                            run the trim2013 transport on a GPU (compute.backend);
+                            statistically the same results, not number for number
+      --device N            Device of the backend (amcset devices; compute.device)
+      --precision P         double (default) | mixed: single precision for most of
+                            the collision arithmetic on the GPU, several times
+                            faster there (compute.precision)
+      --gpu-memory MIB      Device memory for the run (0: 2048; compute.memory_mib)
+      --recoil-slots N      Recoil stack depth per lane (0: automatic; a block that
+                            needs more reruns on the CPU; compute.recoil_slots)
+      --exit-records N      Exit-list records per block of 16 ions (0: 256;
+                            compute.exit_records)
   -s, --seed S|random       Random number seed; random: a new one for every run
                             (the outputs record the seed used)
       --mode srim|native    Engine (scenario files only)
@@ -210,6 +223,11 @@ void print_summary(const config::RunConfig &cfg, const SimulationEngine &engine,
     std::cout << std::fixed << std::setprecision(1);
     std::cout << "\nSRIM mode results (" << r.ions << " ions, " << std::setprecision(1)
               << t->elapsed_seconds() << " s)\n";
+    // A GPU backend: the library's report (the GUI's log shows the same lines).
+    const auto compute_lines = t->compute_report().lines();
+    for (std::size_t i = 0; i < compute_lines.size(); ++i) {
+      std::cout << (i == 0 ? "  " : "                       ") << compute_lines[i] << "\n";
+    }
     std::cout << "  Projected range      " << r.range.mean() << " A   straggling "
               << r.range.stddev() << " A\n";
     std::cout << "  Lateral range        " << r.lateral_abs_y.mean() << " A   straggling "
@@ -570,6 +588,24 @@ int cmd_crystals(const cli::Options &opt) {
   return 0;
 }
 
+int cmd_devices(const cli::Options &) {
+  // Every compute device of every framework (compute/compute.h).
+  std::vector<std::string> notes;
+  const auto devices = compute::list_devices(&notes);
+  std::cout << "Backend    Device  Name\n";
+  for (const auto &d : devices) {
+    char buf[160];
+    std::snprintf(buf, sizeof buf, "%-10s %6d  %s%s\n", compute::to_string(d.backend).c_str(), d.index, d.name.c_str(),
+                  d.usable ? "" : "  (not usable)");
+    std::cout << buf;
+    if (!d.details.empty()) std::cout << "                   " << d.details << "\n";
+    if (!d.usable) std::cout << "                   " << d.problem << "\n";
+  }
+  for (const auto &n : notes) std::cout << "Note: " << n << "\n";
+  std::cout << "\nRun on one with --compute BACKEND [--device N] (scenario key \"compute\"); docs/GPU.md.\n";
+  return 0;
+}
+
 int cmd_stopping(const cli::Options &opt) {
   return cli::print_stopping_table(opt, std::cout);
 }
@@ -659,6 +695,7 @@ int main(int argc, char **argv) {
     if (opt.command == "cell") return cmd_cell(opt);
     if (opt.command == "crystals") return cmd_crystals(opt);
     if (opt.command == "grains") return cmd_grains(opt);
+    if (opt.command == "devices") return cmd_devices(opt);
     if (opt.command == "diag-crash") return cmd_diag_crash(opt);
     throw cli::UsageError("unknown command '" + opt.command + "'");
   } catch (const cli::UsageError &e) {

@@ -52,6 +52,12 @@ struct Options {
   std::optional<std::string> output;
   std::optional<std::size_t> ions;
   std::optional<unsigned> threads;
+  std::optional<std::string> compute; //!< --compute BACKEND (scenario key compute.backend)
+  std::optional<int> device;          //!< --device N (compute.device)
+  std::optional<std::string> precision; //!< --precision double|mixed (compute.precision)
+  std::optional<std::size_t> gpu_memory;   //!< --gpu-memory MIB (compute.memory_mib)
+  std::optional<std::size_t> recoil_slots; //!< --recoil-slots N (compute.recoil_slots)
+  std::optional<std::size_t> exit_records; //!< --exit-records N (compute.exit_records)
   std::optional<std::uint32_t> seed;
   bool random_seed = false;  //!< --seed random (TrimConfig::random_seed)
   std::optional<std::string> mode;

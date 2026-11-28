@@ -711,6 +711,34 @@ void TrimSimulation::write_outputs(const std::filesystem::path &directory) const
   common::run_tasks(tasks);
 }
 
+std::vector<std::string> TrimSimulation::ComputeReport::lines() const {
+  if (device.empty()) return {};
+  std::vector<std::string> out;
+  // Seconds: one decimal, or three significant digits below 0.1 s (transfers
+  // take milliseconds); step counts: whole numbers, totals in exponent form.
+  const auto sec = [](double x) { return fmt(x < 0.1 ? "%.3g s" : "%.1f s", x); };
+  const auto count = [](double x) { return fmt("%.0f", x); };
+  const auto big = [](double x) { return fmt("%.3g", x); };
+  std::ostringstream s;
+  const auto take = [&] {
+    out.push_back(s.str());
+    s.str("");
+  };
+  s << "Ran on " << device << ": " << device_blocks << " blocks of 16 ions; CPU " << cpu_blocks << " blocks";
+  if (reruns > 0) s << " (" << reruns << " the device gave back)";
+  take();
+  s << "setup " << sec(setup_seconds) << ", device " << sec(device_seconds) << "; " << lanes
+    << " lanes, a ring of " << batch_blocks << " blocks, recoil stack depth " << deepest_slot;
+  take();
+  s << "kernel " << sec(kernel_seconds) << " in " << launches << " launches, " << merges
+    << " merges on the device; results to the host " << sec(read_seconds) << ", host side " << sec(host_seconds);
+  take();
+  s << "steps per block: mean " << count(block_steps_mean) << ", max " << count(block_steps_max) << "; total "
+    << big(total_steps) << " (" << big(kernel_seconds > 0 ? total_steps / kernel_seconds : 0.0) << " per second)";
+  take();
+  return out;
+}
+
 std::string TrimSimulation::summary_json() const {
   const auto &t = tallies_;
   const double n = std::max<double>(1.0, static_cast<double>(t.ions));
@@ -733,6 +761,23 @@ std::string TrimSimulation::summary_json() const {
   if (config_.random_seed) j << "  \"seed_random\": true,\n"; // (drawn for this run; "seed" reruns it)
   j << "  \"ions\": " << t.ions << ",\n";
   j << "  \"elapsed_seconds\": " << json_number(elapsed_seconds_.load()) << ",\n";
+  // A GPU backend (docs/GPU.md): where the run went and where its time went.
+  if (const auto cr = compute_report(); !cr.device.empty()) {
+    const auto precision = config_.fast_math ? compute::Precision::mixed : config_.compute.precision;
+    j << "  \"compute\": {\"backend\": \"" << compute::to_string(config_.compute.backend) << "\", \"precision\": \""
+      << compute::to_string(precision) << "\", \"device\": \"" << json_escape(cr.device)
+      << "\", \"device_blocks\": " << cr.device_blocks << ", \"cpu_blocks\": " << cr.cpu_blocks
+      << ", \"reruns\": " << cr.reruns << ", \"lanes\": " << cr.lanes << ", \"ring_blocks\": " << cr.batch_blocks
+      << ", \"deepest_recoil_slot\": " << cr.deepest_slot
+      << ", \"setup_seconds\": " << json_number(cr.setup_seconds)
+      << ", \"device_seconds\": " << json_number(cr.device_seconds)
+      << ", \"kernel_seconds\": " << json_number(cr.kernel_seconds)
+      << ", \"read_seconds\": " << json_number(cr.read_seconds)
+      << ", \"host_seconds\": " << json_number(cr.host_seconds) << ", \"launches\": " << cr.launches
+      << ", \"merges\": " << cr.merges << ", \"block_steps_mean\": " << json_number(cr.block_steps_mean)
+      << ", \"block_steps_max\": " << json_number(cr.block_steps_max)
+      << ", \"total_steps\": " << json_number(cr.total_steps) << "},\n";
+  }
   j << "  \"range\": {\"mean_A\": " << json_number(t.range.mean())
     << ", \"straggling_A\": " << json_number(t.range.stddev())
     << ", \"skewness\": " << json_number(t.range.skewness())

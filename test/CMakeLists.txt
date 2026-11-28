@@ -26,6 +26,7 @@ add_executable(common-test
     ${PROJECT_SOURCE_DIR}/test/common/fast_math_test.cpp
     ${PROJECT_SOURCE_DIR}/test/common/diagnostics_test.cpp
     ${PROJECT_SOURCE_DIR}/test/common/crystal_test.cpp
+    ${PROJECT_SOURCE_DIR}/test/common/compute_test.cpp
     )
 target_link_libraries(common-test PRIVATE GTest::gtest_main amcset-common)
 
@@ -75,6 +76,13 @@ if(AMCSET_BUILD_CLI)
 ]=])
   add_test(NAME cli.grains COMMAND amcset grains ${_cli_out}/polycrystal.json)
   set_tests_properties(cli.grains PROPERTIES PASS_REGULAR_EXPRESSION "Registry +below 2 deg: 1 groups")
+  add_test(NAME cli.devices COMMAND amcset devices)
+  set_tests_properties(cli.devices PROPERTIES PASS_REGULAR_EXPRESSION "reference +0")
+  # The GPU kernel on the CPU (reference backend) through the command line.
+  add_test(NAME cli.run_reference
+           COMMAND amcset run ${_cli_out}/scenario.json -n 32 -q --compute reference -o ${_cli_out}/reference)
+  set_tests_properties(cli.run_reference PROPERTIES DEPENDS cli.template_save
+                       PASS_REGULAR_EXPRESSION "Ran on +reference")
   add_test(NAME cli.bad_option COMMAND amcset run --no-such-option)
   set_tests_properties(cli.bad_option PROPERTIES WILL_FAIL TRUE)
   # Crash reports (diagnostics.h): a deliberate crash must produce a report

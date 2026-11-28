@@ -25,7 +25,9 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPointer>
 #include <QPushButton>
+#include <QThread>
 #include <QVBoxLayout>
 
 #include <cmath>
@@ -126,6 +128,119 @@ CalculationPanel::CalculationPanel(Scenario *scenario, QWidget *parent)
   binder_->custom([seed](const config::RunConfig &c) { seed->setEnabled(!c.trim.random_seed); });
   binder_->spin(threads, tr("Threads"), [](const config::RunConfig &c) { return static_cast<int>(c.trim.threads); },
                 [](config::RunConfig &c, int v) { c.trim.threads = static_cast<unsigned>(v); });
+
+  // --- Compute device (SRIM mode) ---------------------------------------------
+  compute_ = new QGroupBox(tr("Compute (SRIM mode)"), this);
+  auto *kf = new QFormLayout(compute_);
+  auto *backend = new QComboBox(compute_);
+  backend->addItems({tr("CPU (all cores)"), tr("GPU: OpenCL"), tr("GPU: HIP (AMD)"), tr("GPU: CUDA (NVIDIA)"),
+                     tr("Kokkos"), tr("Reference (GPU kernel on the CPU)")});
+  backend->setToolTip(
+      tr("Where the histories run. The GPU backends run the trim2013 transport from one kernel source through "
+         "OpenCL, HIP, CUDA or Kokkos (the drivers are loaded at run time; Kokkos only if AMCSET was built with "
+         "it). Their results agree with the CPU's statistically, not number for number (the GPU's math library "
+         "differs in the last bit), and are reproducible on the same GPU and driver. Runs the GPU kernel does not "
+         "cover run on the CPU, with a warning that says why (the refined and crystal transports, MD events, "
+         "trajectories of every ion, very dense EXYZ.txt), and so do the blocks of 16 ions whose paths are drawn. "
+         "A GPU pays off for long runs: on a consumer GPU "
+         "(slow double precision) with mixed precision, from about 10^5 ions. Reference runs the GPU kernel on "
+         "the CPU and reproduces the CPU exactly (a check). (Not TRIM; scenario key compute.backend; docs/GPU.md.)"));
+  auto *device = count_spin(compute_, 64);
+  device->setToolTip(tr("Device number within the framework (the list below; amcset devices). (compute.device)"));
+  auto *precision = new QComboBox(compute_);
+  precision->addItems({tr("Double (as the CPU)"), tr("Mixed (single-precision scattering angle and stopping)")});
+  precision->setToolTip(
+      tr("Mixed: the magic formula's iteration, the stopping-power interpolation, rotations and collision "
+         "kinematics in single precision; positions, energies, tallies and the cancelling part of the scattering "
+         "angle in double. Consumer GPUs run single precision 16 to 64 times faster than double, which makes "
+         "the kernel several times faster there. Statistically the same results (tools/gpu_compare); not number "
+         "for number. No effect on the CPU backend. (compute.precision)"));
+  // Device memory and buffer sizes (0 = automatic, as in the scenario).
+  auto *memory = count_spin(compute_, 1'048'576);
+  memory->setSpecialValueText(tr("Automatic (2048 MiB)"));
+  memory->setSuffix(tr(" MiB"));
+  memory->setSingleStep(256);
+  memory->setToolTip(
+      tr("Device memory for the run: up to 40 % for the lanes (work items, each with its own recoil stack), the "
+         "rest for the ring of blocks waiting to be merged. More memory, more lanes: the GPU is used better, up "
+         "to what other programs on it leave free. (compute.memory_mib; 0 = 2048 MiB)"));
+  auto *recoil_slots = count_spin(compute_, 1'000'000);
+  recoil_slots->setSpecialValueText(tr("Automatic"));
+  recoil_slots->setToolTip(
+      tr("Recoil slots per lane: the depth of TRIM's recoil stack a lane can hold (73, 196, 593 and 1778 slots "
+         "for Fe in Fe at 10 keV, 50 keV, 200 keV and 1 MeV). A block that needs more is rerun on the CPU. "
+         "Automatic sizes it from the path length of the most energetic possible recoil. (compute.recoil_slots)"));
+  auto *exit_records = count_spin(compute_, 1'000'000);
+  exit_records->setSpecialValueText(tr("Automatic (256)"));
+  exit_records->setToolTip(
+      tr("Records per block of 16 ions for the exit lists (backscattered, transmitted and sputtered atoms; only "
+         "with exit lists on). A block with more is rerun on the CPU. (compute.exit_records; 0 = 256)"));
+  devices_label_ = new QLabel(tr("Looking for devices..."), compute_);
+  devices_label_->setWordWrap(true);
+  devices_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  for (auto *c : {backend, precision}) {
+    c->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    c->setMinimumContentsLength(18);
+  }
+  kf->addRow(tr("Backend"), backend);
+  kf->addRow(tr("Device"), device);
+  kf->addRow(tr("Precision"), precision);
+  kf->addRow(tr("Device memory"), memory);
+  kf->addRow(tr("Recoil slots"), recoil_slots);
+  kf->addRow(tr("Exit records"), exit_records);
+  kf->addRow(QString(), devices_label_);
+  lay->addWidget(compute_);
+  binder_->combo(backend, tr("Compute backend"),
+                 [](const config::RunConfig &c) { return static_cast<int>(c.trim.compute.backend); },
+                 [](config::RunConfig &c, int i) { c.trim.compute.backend = static_cast<compute::Backend>(i); });
+  binder_->spin(device, tr("Compute device"), [](const config::RunConfig &c) { return c.trim.compute.device; },
+                [](config::RunConfig &c, int v) { c.trim.compute.device = v; });
+  binder_->combo(precision, tr("Compute precision"),
+                 [](const config::RunConfig &c) { return c.trim.compute.precision == compute::Precision::mixed ? 1 : 0; },
+                 [](config::RunConfig &c, int i) {
+                   c.trim.compute.precision = i == 1 ? compute::Precision::mixed : compute::Precision::double_precision;
+                 });
+  binder_->spin(memory, tr("Compute memory"),
+                [](const config::RunConfig &c) { return static_cast<int>(c.trim.compute.memory_mib); },
+                [](config::RunConfig &c, int v) { c.trim.compute.memory_mib = static_cast<std::size_t>(v); });
+  binder_->spin(recoil_slots, tr("Compute recoil slots"),
+                [](const config::RunConfig &c) { return static_cast<int>(c.trim.compute.recoil_slots); },
+                [](config::RunConfig &c, int v) { c.trim.compute.recoil_slots = static_cast<std::size_t>(v); });
+  binder_->spin(exit_records, tr("Compute exit records"),
+                [](const config::RunConfig &c) { return static_cast<int>(c.trim.compute.exit_records); },
+                [](config::RunConfig &c, int v) { c.trim.compute.exit_records = static_cast<std::size_t>(v); });
+  binder_->custom([this, device, precision, memory, recoil_slots, exit_records](const config::RunConfig &c) {
+    compute_->setVisible(c.mode == config::Mode::srim);
+    const bool gpu = c.trim.compute.backend != compute::Backend::cpu;
+    for (QWidget *w : std::initializer_list<QWidget *>{device, precision, memory, recoil_slots, exit_records})
+      w->setEnabled(gpu);
+    show_devices();
+  });
+  // The drivers are probed on a worker thread (a few hundred milliseconds).
+  {
+    QPointer<CalculationPanel> self(this);
+    auto *worker = QThread::create([self] {
+      std::vector<std::string> notes;
+      std::vector<compute::DeviceInfo> found;
+      try {
+        found = compute::list_devices(&notes);
+      } catch (const std::exception &e) {
+        notes.push_back(e.what());
+      }
+      if (!self) return;
+      QMetaObject::invokeMethod(
+          self, [self, found = std::move(found), notes = std::move(notes)]() mutable {
+            if (!self) return;
+            self->devices_ = std::move(found);
+            self->device_notes_ = std::move(notes);
+            self->devices_known_ = true;
+            self->show_devices();
+          },
+          Qt::QueuedConnection);
+    });
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+    worker->start();
+  }
 
   // --- SRIM-mode physics -----------------------------------------------------
   srim_ = new QGroupBox(tr("Physics (SRIM mode)"), this);
@@ -513,6 +628,32 @@ CalculationPanel::CalculationPanel(Scenario *scenario, QWidget *parent)
     damage->setEnabled(srim);
   });
   binder_->refresh();
+}
+
+void CalculationPanel::show_devices() {
+  if (devices_label_ == nullptr) return;
+  if (!devices_known_) {
+    devices_label_->setText(tr("Looking for devices..."));
+    return;
+  }
+  const auto b = scenario_->config().trim.compute.backend;
+  QStringList lines;
+  for (const auto &d : devices_) {
+    if (d.backend != b) continue;
+    QString line = QStringLiteral("%1: %2").arg(d.index).arg(QString::fromStdString(d.name));
+    if (!d.usable) line += tr(" (not usable: %1)").arg(QString::fromStdString(d.problem));
+    lines << line;
+  }
+  if (lines.isEmpty()) {
+    const std::string prefix = b == compute::Backend::hip ? "HIP" : b == compute::Backend::cuda ? "CUDA"
+                               : b == compute::Backend::opencl ? "OpenCL" : b == compute::Backend::kokkos ? "Kokkos" : "";
+    QString why = tr("No device for this backend.");
+    for (const auto &n : device_notes_) {
+      if (!prefix.empty() && n.rfind(prefix, 0) == 0) why = QString::fromStdString(n);
+    }
+    lines << why;
+  }
+  devices_label_->setText(lines.join(QLatin1Char('\n')));
 }
 
 } // namespace gui

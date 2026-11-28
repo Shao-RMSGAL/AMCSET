@@ -969,7 +969,7 @@ RunConfig parse_config(std::string_view json_text, const std::filesystem::path &
   const Reader r(root.as_object(), "");
   r.reject_unknown({"mode", "title", "ion", "layers", "target", "ions", "first_ion", "seed", "threads",
                     "damage", "source", "stopping", "srim_data", "physics", "output", "native",
-                    "auto_depth", "$schema", "comment", "description"});
+                    "auto_depth", "compute", "$schema", "comment", "description"});
 
   RunConfig c;
   auto &t = c.trim;
@@ -1100,6 +1100,34 @@ RunConfig parse_config(std::string_view json_text, const std::filesystem::path &
     t.seed = static_cast<std::uint32_t>(r.count("seed", t.seed, 4294967295u));
   }
   t.threads = static_cast<unsigned>(r.count("threads", 0, trim::TrimConfig::max_threads));
+  if (r.has("compute")) {
+    // Where the histories run (docs/GPU.md): "compute": "opencl" or an object.
+    auto &co = t.compute;
+    if (const auto *v = r.get("compute"); v != nullptr && v->is_string()) {
+      try {
+        co.backend = compute::parse_backend(v->as_string());
+      } catch (const std::invalid_argument &e) {
+        throw std::invalid_argument(std::string("compute: ") + e.what());
+      }
+    } else {
+      const Reader cr(r.object("compute"), "compute");
+      cr.reject_unknown({"backend", "device", "precision", "memory_mib", "recoil_slots", "exit_records"});
+      try {
+        co.backend = compute::parse_backend(cr.str("backend", compute::to_string(co.backend)));
+      } catch (const std::invalid_argument &e) {
+        throw std::invalid_argument(std::string("compute.backend: ") + e.what());
+      }
+      try {
+        co.precision = compute::parse_precision(cr.str("precision", compute::to_string(co.precision)));
+      } catch (const std::invalid_argument &e) {
+        throw std::invalid_argument(std::string("compute.precision: ") + e.what());
+      }
+      co.device = static_cast<int>(cr.count("device", 0, 1024));
+      co.memory_mib = cr.count("memory_mib", 0, 1u << 20);
+      co.recoil_slots = cr.count("recoil_slots", 0, 1u << 20);
+      co.exit_records = cr.count("exit_records", 0, 1u << 20);
+    }
+  }
   t.damage = trim::parse_damage_calculation(r.str("damage", trim::to_string(t.damage)));
   {
     // Automatic target depth (trim::size_target) and the escape warning.
@@ -1509,6 +1537,17 @@ json::object to_object(const RunConfig &c) {
   if (t.random_seed) root["seed"] = "random";
   else root["seed"] = t.seed;
   root["threads"] = t.threads;
+  {
+    // Written whole (0 = automatic), so that --set reaches every key.
+    json::object co;
+    co["backend"] = compute::to_string(t.compute.backend);
+    co["device"] = t.compute.device;
+    co["precision"] = compute::to_string(t.compute.precision);
+    co["memory_mib"] = t.compute.memory_mib;
+    co["recoil_slots"] = t.compute.recoil_slots;
+    co["exit_records"] = t.compute.exit_records;
+    root["compute"] = std::move(co);
+  }
   root["damage"] = trim::to_string(t.damage);
   if (t.source != trim::TrimConfig::Source::beam) {
     json::object so;

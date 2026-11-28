@@ -155,6 +155,7 @@ MainWindow::MainWindow() : run_(&tracks_) {
   connect(&run_, &RunController::finished, this, guarded(this, tr("Main window (finished)"), [this](bool ok, const QString &message) {
     status_->setText(message);
     log(message, !ok);
+    for (const auto &line : run_.compute_lines()) log(line); // a GPU backend: the CLI's report lines
     if (escaped_ > 0) {
       log(tr("%L1 of %L2 ions left through the back of the target (transmitted).").arg(escaped_).arg(run_.completed()),
           true);

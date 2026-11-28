@@ -92,6 +92,12 @@ Options parse_arguments(const std::vector<std::string> &args) {
     else if (a == "-o" || a == "--output") o.output = value(a);
     else if (a == "-n" || a == "--ions") o.ions = to_count(a, value(a));
     else if (a == "-j" || a == "--threads") o.threads = static_cast<unsigned>(to_count(a, value(a)));
+    else if (a == "--compute") o.compute = value(a);
+    else if (a == "--device") o.device = static_cast<int>(to_count(a, value(a)));
+    else if (a == "--precision") o.precision = value(a);
+    else if (a == "--gpu-memory") o.gpu_memory = to_count(a, value(a));
+    else if (a == "--recoil-slots") o.recoil_slots = to_count(a, value(a));
+    else if (a == "--exit-records") o.exit_records = to_count(a, value(a));
     else if (a == "-s" || a == "--seed") {
       const std::string v = value(a);
       if (v == "random") {
@@ -196,6 +202,24 @@ void apply_options(config::RunConfig &c, const Options &o) {
   if (o.output) c.trim.output_directory = *o.output;
   if (o.ions) c.trim.ion_count = *o.ions;
   if (o.threads) c.trim.threads = *o.threads;
+  if (o.compute) {
+    try {
+      c.trim.compute.backend = compute::parse_backend(*o.compute);
+    } catch (const std::invalid_argument &e) {
+      throw UsageError(std::string("--compute: ") + e.what());
+    }
+  }
+  if (o.device) c.trim.compute.device = *o.device;
+  if (o.precision) {
+    try {
+      c.trim.compute.precision = compute::parse_precision(*o.precision);
+    } catch (const std::invalid_argument &e) {
+      throw UsageError(std::string("--precision: ") + e.what());
+    }
+  }
+  if (o.gpu_memory) c.trim.compute.memory_mib = *o.gpu_memory;
+  if (o.recoil_slots) c.trim.compute.recoil_slots = *o.recoil_slots;
+  if (o.exit_records) c.trim.compute.exit_records = *o.exit_records;
   if (o.seed) {
     c.trim.seed = *o.seed;
     c.trim.random_seed = false;

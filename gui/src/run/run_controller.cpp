@@ -392,6 +392,7 @@ void RunController::finish() {
   const bool cancelled = engine_->is_cancelled();
   const bool ok = !error_;
   QString message;
+  compute_lines_.clear();
   if (!ok) {
     message = tr("The calculation failed: %1").arg(what_of(error_));
   } else {
@@ -401,6 +402,19 @@ void RunController::finish() {
                         : tr("Finished %1 particles in %2 s.")
                               .arg(completed_)
                               .arg(static_cast<double>(clock_.elapsed()) / 1000.0, 0, 'f', 1);
+    if (trim_ != nullptr) {
+      // A GPU backend (compute.backend): which device, and what the CPU ran.
+      // The library's report: the same lines as the CLI's summary (the log
+      // shows them after this message).
+      const auto cr = trim_->compute_report();
+      if (!cr.device.empty()) {
+        message += tr(" Ran on %1: %2 blocks of 16 ions; the CPU ran %3.")
+                       .arg(QString::fromStdString(cr.device))
+                       .arg(cr.device_blocks)
+                       .arg(cr.cpu_blocks);
+      }
+      for (const auto &l : cr.lines()) compute_lines_ << QString::fromStdString(l);
+    }
     if (!dir.isEmpty()) message += tr(" Output files in %1.").arg(QFileInfo(dir).absoluteFilePath());
   }
   AMCSET_LOG(info) << "GUI: " << message.toStdString();

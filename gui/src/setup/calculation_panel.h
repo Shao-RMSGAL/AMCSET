@@ -23,6 +23,8 @@
 
 #include <QWidget>
 
+#include "compute/compute.h"
+
 #include <vector>
 
 class QGroupBox;
@@ -44,8 +46,16 @@ signals:
   void message(const QString &text);
 
 private:
+  //! The device line for the scenario's backend (from the list found at start).
+  void show_devices();
+
   Scenario *scenario_;
   FormBinder *binder_;
+  QGroupBox *compute_ = nullptr;
+  QLabel *devices_label_ = nullptr;
+  bool devices_known_ = false;
+  std::vector<compute::DeviceInfo> devices_; // compute::list_devices(), found on a worker thread
+  std::vector<std::string> device_notes_;
   QGroupBox *srim_;
   QGroupBox *bugs_;
   QLabel *bugs_note_ = nullptr;        // shown with the crystal transport

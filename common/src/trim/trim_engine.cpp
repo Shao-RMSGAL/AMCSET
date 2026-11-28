@@ -21,6 +21,8 @@
 
 #include "trim/trim.h"
 #include "trim_export.h"
+#include "target_model.h"
+#include "../compute/device.h"
 
 #include "data_files.h"
 #include "diagnostics.h"
@@ -845,133 +847,6 @@ double kinchin_pease_vacancies(unsigned z, mass_quantity mass,
   return 1.0;
 }
 
-namespace detail {
-
-struct ElementModel {
-  unsigned z = 0;
-  mass_quantity mass;
-  double cumulative = 1.0;  // cumulative stoichiometric fraction
-  double fraction = 1.0;    // stoichiometric fraction
-  energy_quantity ed, eb, es;
-  std::size_t tally_index = 0;
-  std::size_t species = 0;
-  // Kinchin-Pease (Robinson) constants for this element as a recoil.
-  double kp_kd = 0.0;
-  double kp_eps_per_eV = 0.0;
-  // arc-dpa / rpa constants (has_efficiency: known for this element).
-  // arc_scale = (1 - c_arc)/(2 Ed/0.8)^b_arc, rpa_bc = b_rpa^c_rpa and
-  // rpa_scale = rpa_bc/(2 Ed/0.8)^c_rpa + 1: the per-element factors of
-  // Nordlund et al. 2018 Eqs. 7 and 9, computed once.
-  bool has_efficiency = false;
-  double arc_b = 0.0, arc_c = 1.0, rpa_c = 1.0;
-  double arc_scale = 0.0, rpa_bc = 0.0, rpa_scale = 1.0;
-};
-
-/*!
- * Layer constants of SRIM-2013's TRIM.exe (TRIMSTART setup routine). TRIM
- * averages the layer into one "atom" for the ion's free flight path, the
- * Kinchin-Pease partition and the straggling: its mean atomic number is an
- * integer, accumulated as z = CInt(c_j Z_j + z) over the elements.
- */
-struct Trim2013Layer {
-  double z_int = 0.0;                //!< CInt-accumulated layer atomic number
-  mass_quantity mass;                //!< Stoichiometric mean mass
-  length_quantity pmax0;             //!< Monolayer impact parameter N^(-1/3)/sqrt(pi)
-  length_quantity screening;         //!< 0.5292*0.8853 A / (Z1^0.23 + Z^0.23), ion on the layer
-  common::inverse_energy_quantity fi; //!< Reduced energy per lab energy, ion on the layer
-  double epsdg = 0.0;                //!< eps_min-type factor of TRIM's p_max (E_min = 5 eV)
-  double kp_eps_per_eV = 0.0;        //!< 0.01 Z^(-7/3) per eV
-  double kp_k = 0.0;                 //!< 0.1334 Z^(2/3) M^(-1/2)
-  //! Straggling constants (TRIM's G754/G758, ion constants also used for
-  //! recoils): Omega = min(k_low E, k_bohr f_rel) in eV/sqrt(Angstrom), with
-  //! k_low in 1/sqrt(Angstrom) (times E in eV); includes TRIM's sqrt(12)
-  //! for its uniform deviate.
-  double k_low = 0.0;
-  double k_bohr = 0.0;
-};
-
-struct LayerModel {
-  length_quantity top, bottom;
-  number_density_quantity density;
-  length_quantity monolayer;  // N^(-1/3)
-  length_quantity min_flight; // shortest free flight path
-  bool gas = false;
-  std::vector<ElementModel> elements;
-  Trim2013Layer t13;
-  //! Crystal transport: the layer's lattice (null: amorphous).
-  std::shared_ptr<const crystal::LatticeSearch> lattice;
-  /*!
-   * Crystal transport, polycrystal: the grains and the lattice of each
-   * (#lattice then stands for all of them: the same cell, impact parameter
-   * and reach), and half the width of the slab at the grain boundaries
-   * that is treated as amorphous.
-   */
-  std::shared_ptr<const crystal::GrainMap> grains;
-  std::vector<crystal::LatticeSearch> grain_lattices;
-  double boundary_half_A = 0.0;
-  //! Number of the layer's lattice among all lattices of the target (a
-  //! polycrystal's grains follow): tells their sites apart.
-  std::uint32_t domain = 0;
-
-  //! Index in #elements of element \p z (the first, if listed twice).
-  std::size_t element_of(unsigned z) const {
-    for (std::size_t j = 0; j < elements.size(); ++j) {
-      if (elements[j].z == z) return j;
-    }
-    throw std::logic_error("crystal transport: an atom of the lattice is not among the layer's elements");
-  }
-};
-
-struct SpeciesInfo {
-  unsigned z = 0;
-  mass_quantity mass;
-};
-
-struct SpeciesLayer {
-  physics::StoppingCurve stopping;
-  std::vector<CollisionPair> pairs; // per element of the layer
-  std::vector<double> eps_min;      // reduced T_min per pair
-  // Electronic straggling per path length is tabulated on the same grid
-  // as the stopping: Omega^2/L in eV^2/Angstrom (log-spaced, linear interp).
-  double strag_log_e0 = 0.0;
-  double strag_inv_step = 1.0;
-  std::vector<double> strag;
-};
-
-} // namespace detail
-
-using detail::ElementModel;
-using detail::LayerModel;
-using detail::SpeciesInfo;
-using detail::SpeciesLayer;
-
-//! A TRIM.DAT particle checked against the target.
-struct ResolvedParticle {
-  SourceParticle particle;
-  std::size_t layer = 0;   // layer at the starting depth
-  std::size_t species = 0; // recoils: species of the atom
-  std::size_t element_layer = 0; // recoils: layer whose element entry describes the atom
-  std::size_t element = 0;       // recoils: element index in that layer
-};
-
-class TargetModel {
-public:
-  std::vector<ResolvedParticle> sources; // TRIM.DAT particles (valid ones)
-  std::vector<SpeciesInfo> species; // index 0 = the ion
-  std::vector<LayerModel> layers;
-  std::vector<std::vector<SpeciesLayer>> data; // [species][layer]
-  length_quantity thickness;
-  energy_quantity lowest_ed;
-  std::shared_ptr<const physics::SrimStoppingDatabase> stopping_db;
-  std::shared_ptr<const physics::PairPotentialTable> potentials;
-
-  std::size_t layer_index(length_quantity x) const {
-    for (std::size_t i = 0; i < layers.size(); ++i) {
-      if (x < layers[i].bottom) return i;
-    }
-    return layers.size() - 1;
-  }
-};
 
 namespace {
 
@@ -1383,7 +1258,22 @@ TrimSimulation::TrimSimulation(TrimConfig config)
                    << ", " << std::chrono::duration<double>(std::chrono::steady_clock::now() - t_setup).count()
                    << " s";
   for (const auto &w : config_.plausibility_warnings()) warnings_.push_back(w);
+  if (config_.compute.backend != compute::Backend::cpu) {
+    // GPU backends: a run they cannot take goes to the CPU (with a warning).
+    const std::string why = compute::unsupported_reason(config_);
+    if (!why.empty()) {
+      warnings_.push_back("compute." + compute::to_string(config_.compute.backend) + ": " + why +
+                          "; this calculation runs on the CPU");
+    } else {
+      for (const auto &n : compute::device_notes(config_)) warnings_.push_back(n);
+    }
+  }
   for (const auto &w : warnings_) AMCSET_LOG(warning) << "SRIM-mode input: " << w;
+}
+
+TrimSimulation::ComputeReport TrimSimulation::compute_report() const {
+  std::lock_guard<std::mutex> lock(compute_mutex_);
+  return compute_report_;
 }
 
 TrimTallies TrimSimulation::snapshot(bool with_lists) const {
@@ -4519,6 +4409,39 @@ int TrimSimulation::run() {
   };
   std::map<std::size_t, BlockResult> pending;
   std::size_t next_merge = 0;
+
+  // A GPU backend (TrimConfig::compute) takes every block it can; the CPU
+  // workers take the others (cpu_list). Which blocks run where depends only
+  // on the configuration, so results are reproducible on a given device.
+  const bool use_device = config_.compute.backend != compute::Backend::cpu &&
+                          compute::unsupported_reason(config_).empty() && blocks > 0;
+  std::unique_ptr<compute::Device> device;
+  compute::KernelInput kernel_in;
+  std::vector<std::size_t> cpu_list;
+  std::vector<std::size_t> device_list;
+  {
+    std::lock_guard<std::mutex> lock(compute_mutex_);
+    compute_report_ = {};
+  }
+  const auto t_setup = std::chrono::steady_clock::now();
+  if (use_device) {
+    kernel_in = compute::make_kernel_input(config_, *model_, n, element_names_.size(), bin_start(0), bin_width());
+    compute::Options options = config_.compute;
+    // fast_math's tables are the CPU's; on a GPU it selects mixed precision.
+    if (config_.fast_math) options.precision = compute::Precision::mixed;
+    device = compute::open_device(options);
+    for (std::size_t b = 0; b < blocks; ++b) {
+      (compute::block_needs_cpu(config_, b) ? cpu_list : device_list).push_back(b);
+    }
+    std::lock_guard<std::mutex> lock(compute_mutex_);
+    compute_report_.device = device->description();
+  }
+  // Blocks the device gives back (too few recoil slots, a full exit list):
+  // the CPU workers rerun them while the device goes on.
+  std::mutex rerun_mutex;
+  std::condition_variable rerun_cv;
+  std::deque<std::size_t> rerun_queue;
+  bool device_done = !use_device;
   // Trajectory and MD event files (opt-in), opened before any ion runs.
   std::unique_ptr<ExportWriters> writers;
   if (!config_.trajectory_export.file.empty() || config_.md_events.enabled()) {
@@ -4546,49 +4469,295 @@ int TrimSimulation::run() {
                    << " blocks of " << block << ", seed " << config_.seed << ", " << threads
                    << " threads" << (config_.fast_math ? ", fast approximations" : "");
 
+  // Hand a finished block over; blocks are merged in block order.
+  const auto deliver = [&](std::size_t b, BlockResult &&result) {
+    std::lock_guard<std::mutex> lock(merge_mutex);
+    pending.emplace(b, std::move(result));
+    while (!pending.empty() && pending.begin()->first == next_merge) {
+      {
+        std::lock_guard<std::mutex> tlock(tallies_mutex_);
+        tallies_.add(pending.begin()->second.tallies, config_.max_exit_records);
+        transmitted_.store(tallies_.transmitted, std::memory_order_relaxed);
+      }
+      if (writers) writers->write(pending.begin()->second.exported);
+      pending.erase(pending.begin());
+      ++next_merge;
+    }
+  };
+  const auto fail = [&](const char *who) {
+    {
+      std::lock_guard<std::mutex> lock(error_mutex);
+      if (!error) error = std::current_exception();
+    }
+    cancel_.store(true);
+    pause_cv_.notify_all();
+    {
+      std::lock_guard<std::mutex> lock(rerun_mutex);
+      rerun_cv.notify_all();
+    }
+    AMCSET_LOG(error) << who << " failed";
+  };
+  const auto wait_if_paused = [&]() {
+    if (paused_.load()) {
+      std::unique_lock<std::mutex> lock(pause_mutex_);
+      pause_cv_.wait(lock, [&] { return !paused_.load() || cancel_.load(); });
+    }
+  };
   auto worker = [&]() {
     diag::Activity activity("SRIM worker");
     std::size_t done_blocks = 0;
     try {
       while (true) {
-        if (paused_.load()) {
-          std::unique_lock<std::mutex> lock(pause_mutex_);
-          pause_cv_.wait(lock, [&] { return !paused_.load() || cancel_.load(); });
+        wait_if_paused();
+        if (cancel_.load()) break;
+        const std::size_t i = next.fetch_add(1);
+        std::size_t b = i;
+        if (!use_device) {
+          if (i >= blocks) break;
+        } else if (i < cpu_list.size()) {
+          b = cpu_list[i];
+        } else {
+          // The blocks the device gives back, until it is done.
+          std::unique_lock<std::mutex> lock(rerun_mutex);
+          rerun_cv.wait(lock, [&] { return !rerun_queue.empty() || device_done || cancel_.load(); });
+          if (rerun_queue.empty() || cancel_.load()) break;
+          b = rerun_queue.front();
+          rerun_queue.pop_front();
         }
-        const std::size_t b = next.fetch_add(1);
-        if (b >= blocks || cancel_.load()) break;
         BlockResult result;
         result.tallies.resize(config_.depth_bins, element_names_.size());
         const std::size_t first = b * block;
         run_block(first_ion + first, std::min(block, n - first), result.tallies, &activity,
                   writers ? &result.exported : nullptr);
         ++done_blocks;
-        std::lock_guard<std::mutex> lock(merge_mutex);
-        pending.emplace(b, std::move(result));
-        while (!pending.empty() && pending.begin()->first == next_merge) {
-          {
-            std::lock_guard<std::mutex> tlock(tallies_mutex_);
-            tallies_.add(pending.begin()->second.tallies, config_.max_exit_records);
-            transmitted_.store(tallies_.transmitted, std::memory_order_relaxed);
-          }
-          if (writers) writers->write(pending.begin()->second.exported);
-          pending.erase(pending.begin());
-          ++next_merge;
-        }
+        deliver(b, std::move(result));
       }
-    } catch (const std::exception &e) {
-      AMCSET_LOG(error) << "SRIM worker failed: " << e.what();
-      std::lock_guard<std::mutex> lock(error_mutex);
-      if (!error) error = std::current_exception();
-      cancel_.store(true);
     } catch (...) {
-      AMCSET_LOG(error) << "SRIM worker failed with an unknown exception";
-      std::lock_guard<std::mutex> lock(error_mutex);
-      if (!error) error = std::current_exception();
-      cancel_.store(true);
+      fail("SRIM worker");
+    }
+    if (use_device) {
+      std::lock_guard<std::mutex> lock(compute_mutex_);
+      compute_report_.cpu_blocks += done_blocks;
     }
     AMCSET_LOG(debug) << "SRIM worker finished " << done_blocks << " blocks";
   };
+
+  // The device: lanes (work items) take the device's blocks one after the
+  // other and step through them in launches of `steps` steps, sized from the
+  // launch times (0.05 to 0.2 s: no launch nears the display driver's
+  // watchdog, and other programs on the GPU wait little). A finished block
+  // waits in its ring slot until every block before it has finished; then a
+  // merge kernel adds it to the running
+  // total on the device, in block order (the CPU's order of additions). Per
+  // launch the host reads a few numbers, the status of the merged blocks and
+  // their packed lists (only if the scenario keeps them); the total itself
+  // comes to the host at most twice a second (live plots) and at the end.
+  auto device_worker = [&]() {
+    diag::Activity activity("SRIM device");
+    try {
+      const std::size_t budget =
+          (config_.compute.memory_mib != 0 ? config_.compute.memory_mib : std::size_t{2048}) << 20;
+      const std::size_t n_dev = device_list.size();
+      const std::size_t first_dev = device_list.front();
+      for (std::size_t i = 0; i < n_dev; ++i) {
+        if (device_list[i] != first_dev + i) throw std::logic_error("SRIM device: the device's blocks are not consecutive");
+      }
+      const std::size_t lb = compute::lane_bytes(kernel_in);
+      const std::size_t bb = compute::block_bytes(kernel_in);
+      // Lanes take up to 40 % of the memory, the ring of block slots the rest
+      // (at least as many slots as lanes, and half as many again if it fits).
+      std::size_t lanes = std::max<std::size_t>(1, std::min({device->preferred_lanes(), budget * 2 / 5 / lb, n_dev}));
+      std::size_t ring = std::max<std::size_t>(1, std::min(n_dev, (budget - std::min(budget, lanes * lb)) / bb));
+      ring = std::min(ring, std::max(lanes + lanes / 2, lanes));
+      lanes = std::min(lanes, ring);
+      device->load(kernel_in, ring, lanes);
+      std::size_t steps = 2000;
+      // Profiling (docs/GPU.md "Profile"): a fixed number of steps per launch,
+      // so that a profiler can capture short dispatches.
+      std::size_t fixed_steps = 0;
+      if (const char *e = std::getenv("AMCSET_GPU_STEPS"); e != nullptr && e[0] != 0) {
+        fixed_steps = static_cast<std::size_t>(std::strtoull(e, nullptr, 10));
+        if (fixed_steps > 0) steps = fixed_steps;
+      }
+      // The CPU's blocks come first (the blocks whose paths are drawn): the
+      // device's total starts where they end.
+      while (!cancel_.load()) {
+        {
+          std::lock_guard<std::mutex> lock(merge_mutex);
+          if (next_merge >= first_dev) break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+      }
+      {
+        std::vector<double> flat;
+        {
+          std::lock_guard<std::mutex> lock(tallies_mutex_);
+          flat = compute::pack_tallies(kernel_in, tallies_);
+        }
+        device->set_total(flat.data());
+      }
+      const auto t_dev = std::chrono::steady_clock::now();
+      struct {
+        double kernel = 0.0, read = 0.0, host = 0.0;
+        double steps = 0.0, max_steps = 0.0;
+        std::size_t launches = 0, deepest = 0, merges = 0;
+      } prof;
+      {
+        std::lock_guard<std::mutex> lock(compute_mutex_);
+        compute_report_.setup_seconds = std::chrono::duration<double>(t_dev - t_setup).count();
+        compute_report_.lanes = lanes;
+        compute_report_.batch_blocks = ring;
+      }
+      const std::vector<std::size_t> rows = {
+          compute::scalar_row(kernel_in, AMK_S_STATUS), compute::scalar_row(kernel_in, AMK_S_POSITIONS),
+          compute::scalar_row(kernel_in, AMK_S_EXITS), compute::scalar_row(kernel_in, AMK_S_STEPS),
+          compute::scalar_row(kernel_in, AMK_S_MAX_K), compute::scalar_row(kernel_in, AMK_S_EXYZ)};
+      const bool exyz = kernel_in.params.exyz_capacity > 0;
+      const bool keep_lists = config_.record_ion_positions || config_.record_exiting_atoms || exyz;
+      std::vector<double> R(rows.size() * ring);
+      std::vector<double> total(static_cast<std::size_t>(kernel_in.params.tally_stride));
+      std::vector<double> packed_positions;
+      std::vector<double> packed_exits;
+      const auto publish = [&]() {
+        const auto t_read = std::chrono::steady_clock::now();
+        device->read_total(total.data());
+        std::lock_guard<std::mutex> lock(tallies_mutex_);
+        compute::unpack_block(kernel_in, total.data(), nullptr, tallies_); // the lists stay
+        transmitted_.store(tallies_.transmitted, std::memory_order_relaxed);
+        prof.read += std::chrono::duration<double>(std::chrono::steady_clock::now() - t_read).count();
+      };
+      auto last_publish = std::chrono::steady_clock::now();
+      std::size_t merged = 0;
+      bool init = true;
+      while (merged < n_dev && !cancel_.load()) {
+        wait_if_paused();
+        if (cancel_.load()) break;
+        const auto t0l = std::chrono::steady_clock::now();
+        const std::size_t done = device->launch(first_dev, n_dev, lanes, merged + ring, steps, init);
+        init = false;
+        const double dt = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0l).count();
+        prof.kernel += dt;
+        ++prof.launches;
+        // Launches of 0.05 to 0.2 s: far from Windows' display watchdog (2 s),
+        // and short enough that other programs on the GPU are not held up
+        // for long. Results do not depend on the steps per launch.
+        if (fixed_steps == 0) {
+          if (dt > 0.2 && steps > 64) steps /= 2;
+          else if (dt < 0.05 && steps < (std::size_t{1} << 24)) steps *= 2;
+        }
+        const auto t1 = std::chrono::steady_clock::now();
+        const std::size_t count = device->scan(merged, n_dev);
+        if (count == 0) {
+          if (done >= lanes) throw std::logic_error("SRIM device: every lane finished, but blocks were not merged");
+          continue;
+        }
+        device->read_rows(rows, R.data());
+        const auto row = [&](std::size_t r, std::size_t slot) { return R[r * ring + slot]; };
+        // Blocks the device gave back are rerun here and put back in their
+        // slot, so that the merge adds them in order.
+        // Offsets: positions and exits per block; with EXYZ the start of its
+        // records in the exit buffer and each block's first record.
+        std::vector<std::int64_t> offsets(2 * count + (exyz ? count + 1 : 0));
+        std::size_t n_exyz = 0;
+        std::map<std::size_t, TrimTallies> reran;
+        std::size_t n_pos = 0;
+        std::size_t n_exit = 0;
+        std::size_t ions_done = 0;
+        for (std::size_t k = 0; k < count; ++k) {
+          const std::size_t slot = (merged + k) % ring;
+          const std::size_t b = first_dev + merged + k;
+          offsets[2 * k] = static_cast<std::int64_t>(n_pos);
+          offsets[2 * k + 1] = static_cast<std::int64_t>(n_exit);
+          prof.steps += row(3, slot);
+          prof.max_steps = std::max(prof.max_steps, row(3, slot));
+          prof.deepest = std::max(prof.deepest, static_cast<std::size_t>(row(4, slot)));
+          if (static_cast<int>(row(0, slot)) != AMK_OK) {
+            TrimTallies &tt = reran[k];
+            tt.resize(config_.depth_bins, element_names_.size());
+            run_block(first_ion + b * block, std::min(block, n - b * block), tt, &activity, nullptr);
+            device->put_block(slot, compute::pack_tallies(kernel_in, tt).data());
+            continue;
+          }
+          n_pos += static_cast<std::size_t>(row(1, slot));
+          n_exit += static_cast<std::size_t>(row(2, slot));
+          if (exyz) {
+            offsets[2 * count + 1 + k] = static_cast<std::int64_t>(n_exyz);
+            n_exyz += static_cast<std::size_t>(row(5, slot));
+          }
+          ions_done += std::min(block, n - b * block);
+        }
+        device->merge(merged, count);
+        if (keep_lists) {
+          const std::size_t exit_doubles = n_exit * AMK_EXIT_DOUBLES + n_exyz * AMK_EXYZ_DOUBLES;
+          if (exyz) offsets[2 * count] = static_cast<std::int64_t>(n_exit * AMK_EXIT_DOUBLES);
+          packed_positions.resize(std::max<std::size_t>(1, n_pos) * AMK_POSITION_DOUBLES);
+          packed_exits.resize(std::max<std::size_t>(1, exit_doubles));
+          if (n_pos + n_exit + n_exyz > 0) {
+            device->pack_lists(merged, count, offsets, n_pos, exit_doubles, packed_positions.data(),
+                               packed_exits.data());
+          }
+          std::lock_guard<std::mutex> lock(tallies_mutex_);
+          for (std::size_t k = 0; k < count; ++k) {
+            if (auto it = reran.find(k); it != reran.end()) {
+              tallies_.positions.insert(tallies_.positions.end(), it->second.positions.begin(), it->second.positions.end());
+              for (const auto &r : it->second.exits) {
+                if (tallies_.exits.size() >= config_.max_exit_records) break;
+                tallies_.exits.push_back(r);
+              }
+              for (const auto &r : it->second.exyz) {
+                if (tallies_.exyz.size() >= config_.max_exit_records) break;
+                tallies_.exyz.push_back(r);
+              }
+              continue;
+            }
+            const std::size_t slot = (merged + k) % ring;
+            compute::append_positions(packed_positions.data() + static_cast<std::size_t>(offsets[2 * k]) * AMK_POSITION_DOUBLES,
+                                      static_cast<std::size_t>(row(1, slot)), tallies_.positions);
+            compute::append_exits(packed_exits.data() + static_cast<std::size_t>(offsets[2 * k + 1]) * AMK_EXIT_DOUBLES,
+                                  static_cast<std::size_t>(row(2, slot)), config_.max_exit_records, tallies_.exits);
+            if (exyz) {
+              compute::append_exyz(packed_exits.data() + n_exit * AMK_EXIT_DOUBLES +
+                                       static_cast<std::size_t>(offsets[2 * count + 1 + k]) * AMK_EXYZ_DOUBLES,
+                                   static_cast<std::size_t>(row(5, slot)), config_.max_exit_records, tallies_.exyz);
+            }
+          }
+        }
+        merged += count;
+        ++prof.merges;
+        completed_.fetch_add(ions_done, std::memory_order_relaxed);
+        prof.host += std::chrono::duration<double>(std::chrono::steady_clock::now() - t1).count();
+        if (std::chrono::steady_clock::now() - last_publish > std::chrono::milliseconds(500)) {
+          publish();
+          last_publish = std::chrono::steady_clock::now();
+        }
+        std::lock_guard<std::mutex> lock(compute_mutex_);
+        compute_report_.device_blocks += count - reran.size();
+        compute_report_.cpu_blocks += reran.size();
+        compute_report_.reruns += reran.size();
+        compute_report_.deepest_slot = prof.deepest;
+        compute_report_.kernel_seconds = prof.kernel;
+        compute_report_.read_seconds = prof.read;
+        compute_report_.host_seconds = prof.host;
+        compute_report_.launches = prof.launches;
+        compute_report_.total_steps = prof.steps;
+        compute_report_.block_steps_max = prof.max_steps;
+        compute_report_.block_steps_mean = prof.steps / static_cast<double>(merged);
+        compute_report_.device_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_dev).count();
+      }
+      if (!cancel_.load() || merged > 0) publish(); // the run's (or the stopped run's merged) results
+      std::lock_guard<std::mutex> lock(compute_mutex_);
+      compute_report_.read_seconds = prof.read;
+      compute_report_.merges = prof.merges;
+      compute_report_.device_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_dev).count();
+    } catch (...) {
+      fail("SRIM device");
+    }
+    std::lock_guard<std::mutex> lock(rerun_mutex);
+    device_done = true;
+    rerun_cv.notify_all();
+  };
+  std::thread device_thread;
+  if (use_device) device_thread = std::thread(device_worker);
 
   // A thread that cannot be created leaves its blocks to the others (the
   // results do not depend on the number of threads).
@@ -4605,6 +4774,7 @@ int TrimSimulation::run() {
   }
   worker();
   for (auto &t : pool) t.join();
+  if (device_thread.joinable()) device_thread.join();
   // Blocks finished out of order after a cancellation are merged as well.
   {
     std::lock_guard<std::mutex> tlock(tallies_mutex_);

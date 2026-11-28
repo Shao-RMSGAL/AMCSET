@@ -271,6 +271,30 @@ TEST(Cli, OptionsOverrideTheConfiguration) {
   EXPECT_EQ(c.trim.output_directory, "elsewhere");
 }
 
+TEST(Cli, ComputeOptions) {
+  auto c = parse_config(alloy_json);
+  const auto o = cli::parse_arguments(std::vector<std::string>{"run", "x.json", "--compute", "opencl", "--device",
+                                                               "2", "--precision", "mixed"});
+  cli::apply_options(c, o);
+  EXPECT_EQ(c.trim.compute.backend, compute::Backend::opencl);
+  EXPECT_EQ(c.trim.compute.device, 2);
+  EXPECT_EQ(c.trim.compute.precision, compute::Precision::mixed);
+  // The sizing keys have options of their own (the GUI's fields) and --set.
+  cli::apply_options(c, cli::parse_arguments(std::vector<std::string>{
+                            "run", "x.json", "--gpu-memory", "4096", "--recoil-slots", "800", "--exit-records", "64"}));
+  EXPECT_EQ(c.trim.compute.memory_mib, 4096u);
+  EXPECT_EQ(c.trim.compute.recoil_slots, 800u);
+  EXPECT_EQ(c.trim.compute.exit_records, 64u);
+  config::apply_override(c, "compute.recoil_slots=500");
+  EXPECT_EQ(c.trim.compute.recoil_slots, 500u);
+  auto bad = parse_config(alloy_json);
+  EXPECT_THROW(cli::apply_options(bad, cli::parse_arguments(std::vector<std::string>{"run", "x", "--compute", "metal"})),
+               cli::UsageError);
+  EXPECT_THROW(
+      cli::apply_options(bad, cli::parse_arguments(std::vector<std::string>{"run", "x", "--precision", "half"})),
+      cli::UsageError);
+}
+
 TEST(Cli, CompositionSpecifications) {
   const auto a = cli::parse_composition("Fe:0.91,Cr:0.09");
   ASSERT_EQ(a.size(), 2u);

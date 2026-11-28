@@ -88,6 +88,9 @@ public:
   std::size_t total() const noexcept { return total_; }
   double elapsed_seconds() const;
   QStringList warnings() const { return warnings_; }
+  //! The last run's GPU report (trim::TrimSimulation::ComputeReport::lines(),
+  //! the CLI's lines); empty after a run on the CPU. Valid in finished().
+  QStringList compute_lines() const { return compute_lines_; }
 
 signals:
   void state_changed(amcset::gui::RunController::State state);
@@ -145,6 +148,7 @@ private:
   double elapsed_offset_ = 0.0;
   std::shared_ptr<const output::Dataset> dataset_;
   QStringList warnings_;
+  QStringList compute_lines_;
   // For extend().
   bool has_previous_ = false;
   trim::TrimTallies previous_;

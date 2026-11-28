@@ -55,6 +55,7 @@
 #pragma once
 
 #include "amcset_units.h"
+#include "compute/compute.h"
 #include "crystal/crystal.h"
 #include "output/table.h"
 #include "physics/scattering.h"
@@ -434,6 +435,18 @@ struct TrimConfig {
   //! one longer run, because every ion has its own random-number stream.
   std::size_t first_ion = 0;
   std::uint32_t seed = 716381; //!< TRIM's default seed
+  /*!
+   * \brief Where the histories run (scenario key "compute"; not TRIM): the
+   * CPU (default) or a GPU framework (compute/compute.h, docs/GPU.md). A
+   * GPU runs the trim2013 transport from the same algorithm; its results
+   * agree with the CPU's statistically, not number for number (its math
+   * library differs in the last bit), and are reproducible on the same
+   * device and driver. What a GPU cannot run goes to the CPU: a whole run
+   * (compute::unsupported_reason, with a warning) or single blocks of 16
+   * ions (kept trajectories, COLLISON.txt details, a block that outgrows
+   * its recoil slots).
+   */
+  compute::Options compute;
   //! A new seed for every calculation (scenario "seed": "random", CLI
   //! --seed random): TrimSimulation replaces #seed by draw_random_seed()
   //! when it is built; its config() and every output (TDATA.txt,
@@ -1224,7 +1237,40 @@ public:
   struct ExportBlock;   //!< A block's rows for the export files (trim_export.cpp)
   struct ExportWriters; //!< The open export files of a run
 
+  //! The precomputed target (internal: common/src/trim/target_model.h).
+  const TargetModel &target_model() const noexcept { return *model_; }
+  /*!
+   * \brief What ran where in the last run(): the compute device (empty: the
+   * CPU), and the blocks of 16 ions the device and the CPU ran.
+   */
+  struct ComputeReport {
+    std::string device;
+    std::size_t device_blocks = 0;
+    std::size_t cpu_blocks = 0;
+    std::size_t reruns = 0; //!< blocks the device gave back (recoil slots, exit list) and the CPU reran
+    double setup_seconds = 0.0;  //!< opening the device, compiling the kernel, uploading the target
+    double device_seconds = 0.0; //!< the device's launches and copies after that
+    std::size_t lanes = 0;        //!< work items that ran the blocks
+    std::size_t batch_blocks = 0; //!< ring slots: blocks the device holds before they are merged
+    std::size_t deepest_slot = 0; //!< deepest recoil slot a block used (compute.recoil_slots limits it)
+    // Where the device thread's time went (profiling; docs/GPU.md "Profile").
+    double kernel_seconds = 0.0; //!< launches, until the kernel finished
+    double read_seconds = 0.0;   //!< copying the running total to the host (live plots, the end)
+    double host_seconds = 0.0;   //!< scans, block status, merges, packed lists, CPU reruns
+    std::size_t launches = 0;
+    std::size_t merges = 0;        //!< merge kernels (groups of finished blocks added in order)
+    double block_steps_mean = 0.0; //!< kernel steps per block (one flight or recoil step each)
+    double block_steps_max = 0.0;
+    double total_steps = 0.0;
+    //! The report as text, one line each (the CLI's summary and the GUI's
+    //! log show the same lines); empty for a run on the CPU backend.
+    std::vector<std::string> lines() const;
+  };
+  ComputeReport compute_report() const;
+
 private:
+  ComputeReport compute_report_;
+  mutable std::mutex compute_mutex_;
   void run_block(std::size_t first_ion, std::size_t count, TrimTallies &out,
                  diag::Activity *activity, ExportBlock *exported = nullptr);
 

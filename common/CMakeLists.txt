@@ -43,6 +43,19 @@ add_library(amcset-common STATIC
     ${PROJECT_SOURCE_DIR}/common/src/trim/single_precision.cpp
     ${PROJECT_SOURCE_DIR}/common/src/trim/trim_tables.cpp
     ${PROJECT_SOURCE_DIR}/common/src/trim/layer_crystal.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/trim/target_model.h
+    # GPU backends (docs/GPU.md): one kernel source, frameworks loaded at run time
+    ${PROJECT_SOURCE_DIR}/common/src/compute/trim_kernel.h
+    ${PROJECT_SOURCE_DIR}/common/src/compute/device.h
+    ${PROJECT_SOURCE_DIR}/common/src/compute/dynlib.h
+    ${PROJECT_SOURCE_DIR}/common/src/compute/kernel_input.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/compute/reference.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/compute/reference_mixed.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/compute/opencl.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/compute/hip.cpp
+    ${PROJECT_SOURCE_DIR}/common/src/compute/kokkos.cpp
+    ${PROJECT_SOURCE_DIR}/common/include/compute/compute.h
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/kernel_source.cpp
     # Crystals (unit cells, orientation, cell files; not TRIM)
     ${PROJECT_SOURCE_DIR}/common/src/crystal/unit_cell.cpp
     ${PROJECT_SOURCE_DIR}/common/src/crystal/orientation.cpp
@@ -93,6 +106,86 @@ add_library(amcset-common STATIC
 set_target_properties(amcset-common PROPERTIES
                         POSITION_INDEPENDENT_CODE ${BUILD_SHARED_LIBS}
                         )
+
+# The GPU kernel's text, compiled at run time by OpenCL, hiprtc or NVRTC.
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/kernel_source.cpp
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${PROJECT_SOURCE_DIR}/common/src/compute/trim_kernel.h
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/generated/kernel_source.cpp
+            -P ${PROJECT_SOURCE_DIR}/common/cmake/embed_kernel.cmake
+    DEPENDS ${PROJECT_SOURCE_DIR}/common/src/compute/trim_kernel.h
+            ${PROJECT_SOURCE_DIR}/common/cmake/embed_kernel.cmake
+    COMMENT "Embedding the GPU kernel source"
+)
+# The HIP code object, compiled ahead of time when a HIP compiler is given
+# (-DAMCSET_HIPCC=path/to/hipcc or the environment variable AMCSET_HIPCC), for
+# AMCSET_HIP_ARCHITECTURES; GPUs it does not cover compile the kernel at run
+# time with hiprtc. Without hipcc the code object is empty (docs/GPU.md).
+set(AMCSET_HIPCC "" CACHE FILEPATH "hipcc for the HIP backend's built-in code object (optional)")
+# The environment variable is stored in the cache, so that a later configure
+# without it keeps the code object (an empty cache entry would drop it).
+if(NOT AMCSET_HIPCC AND DEFINED ENV{AMCSET_HIPCC})
+    set(AMCSET_HIPCC "$ENV{AMCSET_HIPCC}" CACHE FILEPATH "hipcc for the HIP backend's built-in code object (optional)" FORCE)
+endif()
+if(AMCSET_HIPCC)
+    message(STATUS "HIP code object: compiled with ${AMCSET_HIPCC}")
+else()
+    message(STATUS "HIP code object: none (set AMCSET_HIPCC; HIP then compiles the kernel with hiprtc at run time)")
+endif()
+set(AMCSET_HIP_ARCHITECTURES "gfx1100;gfx1101;gfx1102;gfx1030;gfx1200;gfx1201;gfx90a;gfx942"
+    CACHE STRING "GPU architectures of the HIP code object")
+foreach(_variant double mixed)
+    set(_hip_co_${_variant} "")
+    if(AMCSET_HIPCC)
+        set(_hip_co_${_variant} ${CMAKE_CURRENT_BINARY_DIR}/generated/trim_kernel_${_variant}.hipfb)
+        set(_hip_src ${CMAKE_CURRENT_BINARY_DIR}/generated/trim_kernel.hip)
+        file(WRITE ${_hip_src} "#include <hip/hip_runtime.h>\n#include \"${PROJECT_SOURCE_DIR}/common/src/compute/trim_kernel.h\"\n")
+        set(_hip_flags --genco -O3 -ffp-contract=off)
+        if(_variant STREQUAL "mixed")
+            list(APPEND _hip_flags -DAMK_MIXED)
+        endif()
+        foreach(a ${AMCSET_HIP_ARCHITECTURES})
+            list(APPEND _hip_flags --offload-arch=${a})
+        endforeach()
+        get_filename_component(_hip_root "${AMCSET_HIPCC}" DIRECTORY)
+        get_filename_component(_hip_root "${_hip_root}" DIRECTORY)
+        add_custom_command(
+            OUTPUT ${_hip_co_${_variant}}
+            COMMAND ${CMAKE_COMMAND} -E env HIP_PATH=${_hip_root}
+                    ${AMCSET_HIPCC} ${_hip_flags} -o ${_hip_co_${_variant}} ${_hip_src}
+            DEPENDS ${PROJECT_SOURCE_DIR}/common/src/compute/trim_kernel.h
+            COMMENT "Compiling the GPU kernel with hipcc (${_variant} precision; ${AMCSET_HIP_ARCHITECTURES})"
+        )
+    endif()
+    set(_fn hip_code_object)
+    if(_variant STREQUAL "mixed")
+        set(_fn hip_code_object_mixed)
+    endif()
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/${_fn}.cpp
+        COMMAND ${CMAKE_COMMAND} -DINPUT=${_hip_co_${_variant}} -DFUNCTION=${_fn}
+                -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/generated/${_fn}.cpp
+                -P ${PROJECT_SOURCE_DIR}/common/cmake/embed_kernel.cmake
+        DEPENDS ${_hip_co_${_variant}} ${PROJECT_SOURCE_DIR}/common/cmake/embed_kernel.cmake
+        COMMENT "Embedding the HIP code object (${_variant} precision)"
+    )
+    target_sources(amcset-common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated/${_fn}.cpp)
+endforeach()
+if(UNIX)
+    target_link_libraries(amcset-common PUBLIC ${CMAKE_DL_LIBS})
+endif()
+# Optional Kokkos backend (Kokkos's default execution space; docs/GPU.md).
+option(AMCSET_WITH_KOKKOS "Build the Kokkos compute backend (needs a Kokkos installation)" OFF)
+if(AMCSET_WITH_KOKKOS)
+    find_package(Kokkos 4 REQUIRED)
+    target_sources(amcset-common PRIVATE
+        ${PROJECT_SOURCE_DIR}/common/src/compute/kokkos_double.cpp
+        ${PROJECT_SOURCE_DIR}/common/src/compute/kokkos_mixed.cpp
+        ${PROJECT_SOURCE_DIR}/common/src/compute/kokkos_device.h
+        ${PROJECT_SOURCE_DIR}/common/src/compute/kokkos_impl.inc)
+    target_link_libraries(amcset-common PUBLIC Kokkos::kokkos)
+    target_compile_definitions(amcset-common PRIVATE AMCSET_WITH_KOKKOS)
+endif()
 
 target_link_libraries(amcset-common PUBLIC
     compiler_flags
